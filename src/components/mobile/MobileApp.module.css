@@ -1,0 +1,475 @@
+.outer {
+  display: flex;
+  flex-direction: column;
+}
+.docked {
+  position: absolute;
+  top: 70px;
+  right: 16px;
+  width: 300px;
+  z-index: 50;
+}
+.fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.page {
+  height: 100%;
+  width: 100%;
+}
+.bezelless {
+  height: 100%;
+  width: 100%;
+}
+.bezelless .screen {
+  border-radius: 0;
+  height: 100vh;
+  height: 100dvh;
+}
+
+.chromeRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  position: absolute;
+  top: -34px;
+  left: 0;
+  right: 0;
+}
+.chromeBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 600 11px/1 var(--font-sans);
+  color: var(--ink-600);
+  background: #fff;
+  border: 1px solid var(--ink-200);
+  border-radius: 999px;
+  padding: 5px 10px;
+  box-shadow: var(--shadow-xs);
+}
+.chromeClose {
+  width: 26px;
+  height: 26px;
+  background: #fff;
+  border: 1px solid var(--ink-200);
+  box-shadow: var(--shadow-xs);
+  border-radius: var(--radius-md);
+  color: var(--ink-700);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+
+.bezel {
+  width: 100%;
+  max-width: 380px;
+  aspect-ratio: 9 / 18.5;
+  background: #0e1726;
+  border-radius: 34px;
+  padding: 10px;
+  box-shadow: 0 24px 56px rgba(40, 54, 72, 0.3);
+  margin: 0 auto;
+}
+.docked .bezel {
+  max-width: 100%;
+  aspect-ratio: 9 / 17;
+  border-radius: 22px;
+  padding: 7px;
+}
+.screen {
+  height: 100%;
+  width: 100%;
+  background: var(--bg-app);
+  border-radius: 24px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+.docked .screen {
+  border-radius: 16px;
+}
+
+.statusBar {
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 18px;
+  font: 600 11px/1 var(--font-sans);
+  color: var(--ink-900);
+  background: #fff;
+  flex-shrink: 0;
+}
+.notch {
+  position: absolute;
+  left: 50%;
+  top: 7px;
+  transform: translateX(-50%);
+  width: 70px;
+  height: 16px;
+  background: #0e1726;
+  border-radius: 999px;
+}
+
+.header {
+  background: var(--blue-500);
+  color: #fff;
+  padding: 10px 12px;
+  flex-shrink: 0;
+}
+.headerRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.floorSwitch {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.16);
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 6px 9px;
+  color: #fff;
+  cursor: pointer;
+}
+.floorSwitch:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+.floorLabel {
+  flex: 1;
+  min-width: 0;
+  font: 600 12px/1 var(--font-sans);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+}
+.locateBtn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  font: 600 11px/1 var(--font-sans);
+  cursor: pointer;
+}
+.qrBtn {
+  position: relative;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  cursor: pointer;
+}
+.qrBtn:active {
+  background: rgba(255, 255, 255, 0.3);
+}
+.iconBadge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--danger-500);
+  color: #fff;
+  font: 700 9px/1 var(--font-sans);
+  box-shadow: 0 0 0 1.5px var(--blue-600);
+}
+.locateBtn:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+.dateStatic {
+  flex-shrink: 0;
+  font: 500 11px/1 var(--font-sans);
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.tabs {
+  display: flex;
+  gap: 3px;
+  background: rgba(0, 0, 0, 0.16);
+  border-radius: var(--radius-lg);
+  padding: 3px;
+  margin-top: 8px;
+}
+.tab,
+.tabActive {
+  flex: 1;
+  height: 28px;
+  border: none;
+  border-radius: var(--radius-md);
+  font: 600 12px/1 var(--font-sans);
+  cursor: pointer;
+}
+.tab {
+  background: transparent;
+  color: rgba(255, 255, 255, 0.85);
+}
+.tabActive {
+  background: #fff;
+  color: var(--blue-600);
+}
+
+.slotPicker {
+  margin-top: 8px;
+  background: #fff;
+  border-radius: 12px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-shadow: 0 1px 3px rgba(16, 24, 40, 0.08);
+}
+.slotFieldLabel {
+  font: 700 8px/1 var(--font-sans);
+  color: var(--ink-400);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* Date field — formatted value with the native picker overlaid invisibly. */
+.slotDateField {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 46px;
+  padding: 0 12px;
+  border: 1px solid var(--ink-200);
+  border-radius: 10px;
+  background: var(--ink-050);
+  cursor: pointer;
+}
+.slotDateText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.slotDateValue {
+  font: 600 13.5px/1 var(--font-sans);
+  color: var(--ink-900);
+}
+
+/* Start → End row with a duration chip. */
+.slotTimeRow {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+.slotArrow {
+  flex-shrink: 0;
+  align-self: center;
+}
+.timeFieldBtn {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 3px;
+  height: 46px;
+  border: 1px solid var(--ink-200);
+  border-radius: 10px;
+  padding: 0 12px;
+  background: var(--ink-050);
+  cursor: pointer;
+}
+.timeFieldValue {
+  font: 700 15px/1 var(--font-sans);
+  color: var(--ink-900);
+}
+.timeFieldBtnActive {
+  border-color: var(--blue-500);
+  background: var(--blue-025);
+  box-shadow: 0 0 0 2px var(--blue-100);
+}
+.slotDuration {
+  flex-shrink: 0;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--blue-050);
+  color: var(--blue-700);
+  font: 700 11px/1 var(--font-sans);
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+.mapCard {
+  flex: 1;
+  min-height: 220px;
+  position: relative;
+  /* Same neutral canvas + faint dot grid as the desktop stage, so the mobile
+     map surface matches the connected-app treatment (was a blue-grey island). */
+  background: radial-gradient(circle, rgba(100, 116, 139, 0.09) 1px, transparent 1.4px) 0 0 / 24px 24px, var(--bg-app);
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--ink-200);
+}
+.zoomBtns {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.zoomBtn {
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--ink-200);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.95);
+  color: var(--ink-700);
+  font: 600 16px/1 var(--font-sans);
+  cursor: pointer;
+  box-shadow: var(--shadow-xs);
+}
+.zoomBtn:active {
+  background: var(--ink-050);
+}
+.marker {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  transform-origin: center center;
+}
+.markerDot {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: 700 8.5px/1 var(--font-sans);
+  letter-spacing: 0.02em;
+}
+.markerLabel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  background: #fff;
+  border: 1px solid var(--ink-200);
+  border-radius: 6px;
+  padding: 3px 6px;
+  white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(16, 24, 40, 0.18);
+}
+.markerLabelName {
+  font: 700 10px/1.1 var(--font-sans);
+  color: var(--ink-900);
+}
+.markerLabelSub {
+  font: 500 9px/1.1 var(--font-sans);
+  color: var(--ink-500);
+}
+.countPill {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: 600 11px/1 var(--font-sans);
+  color: var(--ink-700);
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--ink-200);
+  border-radius: 999px;
+  padding: 7px 11px;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(40, 54, 72, 0.12);
+}
+.countPill:active {
+  background: var(--ink-050);
+}
+.legend {
+  position: absolute;
+  left: 10px;
+  top: 10px;
+  display: flex;
+  gap: 6px;
+}
+.legendChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: 600 10px/1 var(--font-sans);
+  color: var(--ink-700);
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--ink-200);
+  border-radius: 999px;
+  padding: 4px 8px;
+}
+.legendDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+}
+
+.noPlan {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  text-align: center;
+  background: #fff;
+  border: 1px dashed var(--ink-200);
+  border-radius: 12px;
+  padding: 24px;
+}
+.noPlanTitle {
+  font: 600 13px/1.3 var(--font-sans);
+  color: var(--ink-700);
+}
+.noPlanSub {
+  font: 400 11px/1.4 var(--font-sans);
+  color: var(--ink-500);
+}
+

@@ -1,0 +1,134 @@
+/* Design tokens ported from the Facilio Atom design system (colors_and_type.css).
+   Fonts are loaded via Google Fonts in index.html instead of self-hosted @font-face. */
+:root {
+  /* Brand */
+  --brand-indigo: #3c229d;
+  --brand-indigo-600: #5e3ed3;
+  --brand-indigo-400: #7d63dc;
+  --brand-indigo-050: #f3efff;
+  --brand-pink: #ff3b7f;
+  --brand-cyan: #2ed1ff;
+
+  /* Primary (Facilio Blue) */
+  --blue-700: #0024d6;
+  --blue-600: #0047ab;
+  --blue-500: #0059d6;
+  --blue-400: #1673f6;
+  --blue-300: #3d8bfa;
+  --blue-200: #6ca8fc;
+  --blue-100: #a2c8fe;
+  --blue-050: #cce2ff;
+  --blue-025: #eaf2ff;
+
+  /* Neutrals (slate) */
+  --ink-900: #283648;
+  --ink-700: #384a62;
+  --ink-600: #607796;
+  --ink-500: #7b91b0;
+  --ink-400: #9cafca;
+  --ink-300: #b9b9b9;
+  --ink-200: #d8e3f1;
+  --ink-100: #ececec;
+  --ink-050: #fafafa;
+  --white: #ffffff;
+  --black: #000000;
+
+  /* Semantic */
+  --success-700: #0f6f06;
+  --success-600: #1d8712;
+  --success-500: #29a01e;
+  --success-400: #49b83f;
+  --success-050: #e9f7e7;
+
+  --warning-500: #ffd405;
+  --warning-700: #8a6d00;
+  --warning-050: #fff8d6;
+
+  --danger-700: #8e1313;
+  --danger-600: #a11616;
+  --danger-500: #b61919;
+  --danger-050: #fde7e7;
+
+  --info-500: #0059d6;
+  --info-050: #eaf2ff;
+
+  /* Surfaces & borders */
+  /* Neutral light-grey app canvas — blends with the host's white chrome in the
+     connected-app embed, still contrasts the white floating panels/sheet. */
+  --bg-app: #f3f5f8;
+  --bg-surface: #ffffff;
+  --bg-surface-alt: var(--ink-050);
+  --bg-overlay: rgba(40, 54, 72, 0.48);
+
+  --border-subtle: var(--ink-100);
+  --border-default: var(--ink-200);
+  --border-strong: var(--ink-400);
+  --border-focus: var(--blue-500);
+
+  --text-primary: var(--ink-900);
+  --text-secondary: var(--ink-600);
+  --text-muted: var(--ink-500);
+  --text-onBrand: var(--white);
+  --text-link: var(--blue-500);
+
+  /* Radii */
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-pill: 999px;
+
+  /* Spacing (4px base) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* Shadows */
+  --shadow-xs: 0 1px 2px rgba(40, 54, 72, 0.06);
+  --shadow-sm: 0 1px 3px rgba(40, 54, 72, 0.08), 0 1px 2px rgba(40, 54, 72, 0.04);
+  --shadow-md: 0 4px 12px rgba(40, 54, 72, 0.08), 0 1px 2px rgba(40, 54, 72, 0.04);
+  --shadow-lg: 0 12px 32px rgba(40, 54, 72, 0.12), 0 2px 4px rgba(40, 54, 72, 0.04);
+  --shadow-xl: 0 24px 56px rgba(40, 54, 72, 0.16);
+  --shadow-focus: 0 0 0 3px rgba(0, 89, 214, 0.2);
+
+  /* Typography */
+  --font-sans: 'Roboto', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Roboto Condensed', 'Roboto', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --fs-display: 48px;
+  --lh-display: 56px;
+  --fs-h1: 32px;
+  --lh-h1: 40px;
+  --fs-h2: 24px;
+  --lh-h2: 32px;
+  --fs-h3: 20px;
+  --lh-h3: 28px;
+  --fs-h4: 16px;
+  --lh-h4: 24px;
+  --fs-body: 14px;
+  --lh-body: 20px;
+  --fs-small: 12px;
+  --lh-small: 16px;
+  --fs-tiny: 11px;
+  --lh-tiny: 14px;
+
+  /* Motion */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-emphasis: cubic-bezier(0.2, 0, 0, 1.2);
+  --dur-fast: 120ms;
+  --dur-base: 180ms;
+  --dur-slow: 260ms;
+
+  /* Breakpoints (used via JS matchMedia; documented here for reference) */
+  --bp-mobile: 720px;
+  --bp-tablet: 1080px;
+}

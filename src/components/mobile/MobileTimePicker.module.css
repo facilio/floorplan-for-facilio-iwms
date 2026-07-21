@@ -1,0 +1,82 @@
+.backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 9;
+  background: rgba(14, 23, 38, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.sheet {
+  width: 100%;
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 12px 32px rgba(40, 54, 72, 0.3);
+  padding: 16px;
+}
+.title {
+  font: 700 13px/1 var(--font-sans);
+  color: var(--ink-900);
+  text-align: center;
+  margin-bottom: 14px;
+}
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+.stepper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.stepBtn {
+  width: 40px;
+  height: 30px;
+  border: 1px solid var(--ink-200);
+  border-radius: var(--radius-lg);
+  background: #fff;
+  color: var(--ink-600);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+.stepLabel {
+  font: 700 30px/1 var(--font-sans);
+  color: var(--ink-900);
+  min-width: 44px;
+  text-align: center;
+}
+.colon {
+  font: 700 30px/1 var(--font-sans);
+  color: var(--ink-400);
+}
+.ampm {
+  margin-left: 4px;
+  align-self: center;
+  width: 46px;
+  height: 38px;
+  border: 1px solid var(--blue-300);
+  border-radius: var(--radius-lg);
+  background: var(--blue-050);
+  color: var(--blue-700);
+  font: 700 13px/1 var(--font-sans);
+  cursor: pointer;
+}
+.done {
+  width: 100%;
+  height: 38px;
+  margin-top: 16px;
+  border: none;
+  border-radius: var(--radius-lg);
+  background: var(--blue-500);
+  color: #fff;
+  font: 600 13px/1 var(--font-sans);
+  cursor: pointer;
+}
+.done:hover {
+  background: var(--blue-600);
+}

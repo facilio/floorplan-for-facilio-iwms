@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/facilio-atom-design-system-262fe304-f14e-49f6-a3e4-920d99af3d20/colors_and_type.css">
+  <link rel="stylesheet" href="_ds/facilio-atom-design-system-262fe304-f14e-49f6-a3e4-920d99af3d20/ui_kits/web_dashboard/styles.css">
+  <script src="_ds/facilio-atom-design-system-262fe304-f14e-49f6-a3e4-920d99af3d20/_ds_bundle.js"></script>
+  <style>
+    html, body { margin:0; padding:0; height:100%; }
+    a { color:#0059D6; text-decoration:none; } a:hover { text-decoration:underline; }
+    input, select, button, textarea { font-family:"Roboto", system-ui, sans-serif; }
+    @keyframes fpe-toast { from { opacity:0; transform:translate(-50%,8px); } to { opacity:1; transform:translate(-50%,0); } }
+    @keyframes fpe-in { from { opacity:0; transform:scale(0.97) translateY(-6px); } to { opacity:1; transform:none; } }
+    @keyframes fpe-slidedown { from { opacity:0; transform:translate(-50%,-10px); } to { opacity:1; transform:translate(-50%,0); } }
+  </style>
+</helmet>
+
+<div style="position:fixed; inset:0; display:flex; flex-direction:column; background:#F7F9FC; font-family:var(--font-sans);" data-screen-label="Floorplan editor">
+
+  <!-- ══ Top bar ══ -->
+  <div style="flex-shrink:0; height:60px; display:flex; align-items:center; gap:26px; padding:0 22px; background:#fff; border-bottom:1px solid var(--ink-200); z-index:40;">
+    <div style="font:800 24px/1 var(--font-sans); color:#1B1B3A; letter-spacing:-0.02em; display:flex; align-items:center;">facilio<span style="color:#FF3B7F;">.</span></div>
+    <div style="display:flex; align-items:center; gap:2px;">
+      <sc-for list="{{ topTabs }}" as="t" hint-placeholder-count="7">
+        <button onClick="{{ t.onClick }}" style="height:36px; padding:0 14px; border:none; border-radius:8px; background: {{ t.bg }}; color: {{ t.fg }}; font:500 14px/1 var(--font-sans); cursor:pointer; white-space:nowrap;" style-hover="background: var(--ink-050);">{{ t.label }}</button>
+      </sc-for>
+    </div>
+    <div style="flex:1;"></div>
+    <button title="Search" style="width:38px; height:38px; border:none; border-radius:8px; background:transparent; color:var(--ink-600); cursor:pointer; display:grid; place-items:center;" style-hover="background: var(--ink-050);">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.3-4.3"></path></svg>
+    </button>
+    <button title="Notifications" style="width:38px; height:38px; border:none; border-radius:8px; background:transparent; color:var(--ink-600); cursor:pointer; display:grid; place-items:center;" style-hover="background: var(--ink-050);">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.7 21a2 2 0 0 1-3.4 0"></path></svg>
+    </button>
+    <span style="width:36px; height:36px; border-radius:999px; background:#6D5AE6; color:#fff; display:grid; place-items:center; font:600 13px/1 var(--font-sans);">FI</span>
+  </div>
+
+  <!-- ══ Stage ══ -->
+  <div ref="{{ setStageEl }}" style="flex:1; position:relative; min-height:0; background-color:#F7F9FC; background-image: radial-gradient(var(--ink-200) 1px, transparent 1px); background-size:22px 22px;">
+
+    <!-- Canvas card -->
+    <div style="position:absolute; left:352px; right:352px; top:18px; bottom:92px;">
+      <div ref="{{ setCanvasEl }}" onMouseDown="{{ onCanvasDown }}" onClick="{{ onCanvasClick }}" onDoubleClick="{{ onCanvasDbl }}"
+           style="position:absolute; inset:0; background:#fff; border:1px solid var(--ink-200); border-radius:10px; overflow:hidden; cursor: {{ canvasCursor }}; user-select:none; box-shadow:0 1px 3px rgba(40,54,72,0.06);">
+        <div style="position:absolute; left:0; top:0; width:1492px; height:1054px; transform: translate({{ view.tx }}px, {{ view.ty }}px) scale({{ view.z }}); transform-origin:0 0; --inv: {{ invZ }};">
+          <img src="assets/floorplan.png" draggable="false" style="position:absolute; inset:0; width:1492px; height:1054px; pointer-events:none;">
+
+          <sc-if value="{{ showGrid }}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute; inset:0; pointer-events:none; background-image:linear-gradient(rgba(0,89,214,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(0,89,214,0.08) 1px, transparent 1px); background-size:24px 24px;"></div>
+          </sc-if>
+
+          <!-- room areas (polygons) -->
+          <sc-for list="{{ polyAreas }}" as="pa" hint-placeholder-count="0">
+            <div onClick="{{ pa.onClick }}" style="position:absolute; inset:0; clip-path: {{ pa.clip }}; background: {{ pa.fill }}; cursor:pointer;"></div>
+          </sc-for>
+          <sc-for list="{{ polyAreas }}" as="pa" hint-placeholder-count="0">
+            <div style="position:absolute; left: {{ pa.left }}; top: {{ pa.top }}; transform: translate(-50%,-50%) scale(var(--inv)); pointer-events:none; background:rgba(255,255,255,0.95); color:#5B3FBF; border:1px solid var(--ink-200); border-radius:5px; padding:3px 7px; font:600 10.5px/1 var(--font-sans); white-space:nowrap; box-shadow:var(--shadow-xs);">{{ pa.label }}</div>
+          </sc-for>
+
+          {{ draftOverlay }}
+
+          <!-- room chips -->
+          <sc-for list="{{ roomChips }}" as="r" hint-placeholder-count="4">
+            <div onClick="{{ r.onClick }}" onMouseDown="{{ r.onMouseDown }}" style="position:absolute; left: {{ r.left }}; top: {{ r.top }}; transform: translate(-50%,-50%) scale(var(--inv)); background: {{ r.bg }}; color: {{ r.fg }}; border:1px solid {{ r.bd }}; box-shadow: {{ r.shadow }}; border-radius:5px; padding:3px 7px; font:600 10.5px/1 var(--font-sans); white-space:nowrap; cursor: {{ r.cursor }};">{{ r.label }}</div>
+          </sc-for>
+
+          <!-- point markers -->
+          <sc-for list="{{ markers }}" as="m" hint-placeholder-count="12">
+            <div title="{{ m.title }}" onClick="{{ m.onClick }}" onMouseDown="{{ m.onMouseDown }}"
+                 style="position:absolute; left: {{ m.left }}; top: {{ m.top }}; width: {{ m.size }}; height: {{ m.size }}; transform: translate(-50%,-50%) scale(var(--inv)); background: {{ m.bg }}; border:2px {{ m.borderStyle }} {{ m.bd }}; color: {{ m.fg }}; border-radius: {{ m.radius }}; box-shadow: {{ m.shadow }}; display:flex; align-items:center; justify-content:center; cursor: {{ m.cursor }}; z-index: {{ m.zi }};">{{ m.icon }}<sc-if value="{{ m.showLabel }}" hint-placeholder-val="{{ false }}"><span style="position:absolute; top:118%; left:50%; transform:translateX(-50%); pointer-events:none; background:rgba(255,255,255,0.95); color:var(--ink-700); border:1px solid var(--ink-200); border-radius:4px; padding:2px 5px; font:600 8px/1 var(--font-sans); white-space:nowrap; box-shadow:var(--shadow-xs);">{{ m.label }}</span></sc-if></div>
+          </sc-for>
+        </div>
+
+        <!-- marquee -->
+        <sc-if value="{{ marquee }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute; left: {{ marquee.left }}px; top: {{ marquee.top }}px; width: {{ marquee.w }}px; height: {{ marquee.h }}px; background:rgba(0,89,214,0.08); border:1px solid var(--blue-500); border-radius:2px; pointer-events:none; z-index:50;"></div>
+        </sc-if>
+
+        <!-- legend -->
+        <div style="position:absolute; left:12px; bottom:12px; display:flex; gap:6px; flex-wrap:wrap; max-width:80%;">
+          <sc-for list="{{ legend }}" as="lg" hint-placeholder-count="7">
+            <span style="display:inline-flex; align-items:center; gap:6px; height:26px; padding:0 10px; background:#fff; border:1px solid var(--ink-200); border-radius:999px; font:500 11px/1 var(--font-sans); color:var(--ink-700); box-shadow:var(--shadow-xs);"><span style="width:9px; height:9px; border-radius:3px; background: {{ lg.color }};"></span>{{ lg.label }}</span>
+          </sc-for>
+        </div>
+
+        <!-- plan scale indicator -->
+        <span style="position:absolute; right:12px; bottom:12px; background:#fff; border:1px solid var(--ink-200); border-radius:5px; padding:4px 8px; font:500 10px/1 var(--font-sans); color:var(--ink-500); box-shadow:var(--shadow-xs);">1492px plan · {{ zoomPct }}</span>
+      </div>
+
+      <!-- zoom controls -->
+      <div style="position:absolute; right:-46px; bottom:0; display:flex; flex-direction:column; gap:8px;">
+        <div style="display:flex; flex-direction:column; background:#fff; border:1px solid var(--ink-200); border-radius:6px; box-shadow:var(--shadow-md); overflow:hidden;">
+          <button title="Zoom in" onClick="{{ zoomIn }}" style="width:34px; height:34px; border:none; border-bottom:1px solid var(--ink-100); background:#fff; color:var(--ink-700); cursor:pointer; display:grid; place-items:center;" style-hover="background: var(--ink-050);"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></button>
+          <button title="Zoom out" onClick="{{ zoomOut }}" style="width:34px; height:34px; border:none; background:#fff; color:var(--ink-700); cursor:pointer; display:grid; place-items:center;" style-hover="background: var(--ink-050);"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"></path></svg></button>
+        </div>
+        <button title="Fit to view" onClick="{{ zoomFit }}" style="width:34px; height:34px; border:1px solid var(--ink-200); border-radius:6px; background:#fff; color:var(--ink-700); cursor:pointer; display:grid; place-items:center; box-shadow:var(--shadow-md);" style-hover="background: var(--ink-050);"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"></path></svg></button>
+      </div>
+    </div>
+
+    <!-- top center: save bar OR drag hint -->
+    <sc-if value="{{ dirty }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute; top:18px; left:50%; transform:translateX(-50%); z-index:45; display:flex; align-items:center; gap:12px; background:var(--ink-900); color:#fff; border-radius:10px; padding:8px 10px 8px 16px; box-shadow:0 12px 30px rgba(5,16,30,0.3); animation: fpe-slidedown 160ms cubic-bezier(0.2,0,0,1);">
+        <span style="font:500 12.5px/1 var(--font-sans);">{{ dirtyText }}</span>
+        <button onClick="{{ discardChanges }}" style="height:32px; padding:0 12px; border:1px solid rgba(255,255,255,0.25); border-radius:7px; background:transparent; color:#fff; font:600 12px/1 var(--font-sans); cursor:pointer;" style-hover="background: rgba(255,255,255,0.1);">Discard</button>
+        <button onClick="{{ saveChanges }}" style="height:32px; padding:0 14px; border:none; border-radius:7px; background:var(--blue-500); color:#fff; font:600 12px/1 var(--font-sans); cursor:pointer;" style-hover="background: var(--blue-600);">Save changes</button>
+      </div>
+    </sc-if>
+    <sc-if value="{{ showDragHint }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute; top:18px; left:50%; transform:translateX(-50%); z-index:44; background:var(--ink-900); color:#fff; border-radius:8px; padding:8px 14px; font:500 12.5px/1 var(--font-sans); box-shadow:var(--shadow-md); pointer-events:none;">Drag units to move them · Shift+drag to multi-select</div>
+    </sc-if>
+
+    <!-- ══ Left panel: Location ══ -->
+    <div style="position:absolute; left:24px; top:18px; width:300px; z-index:30; background:#fff; border:1px solid var(--ink-200); border-radius:14px; box-shadow:0 8px 24px rgba(40,54,72,0.08); overflow:hidden;">
+      <div style="display:flex; align-items:center; gap:8px; padding:12px 14px; border-bottom:1px solid var(--ink-100);">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--ink-400)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="6" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="18" r="1"></circle><circle cx="15" cy="6" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="18" r="1"></circle></svg>
+        <span style="flex:1; font:600 13px/1 var(--font-sans); color:var(--ink-700);">Location</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ink-400)" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"></path></svg>
+      </div>
+      <div style="padding:14px;">
+        <div style="display:flex; align-items:center; gap:10px; border:1px solid var(--ink-200); border-radius:8px; padding:9px 10px; cursor:pointer;" style-hover="background: var(--ink-050);">
+          <span style="flex-shrink:0; width:34px; height:34px; border-radius:8px; background:var(--blue-025); color:var(--blue-600); display:grid; place-items:center;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"></path><path d="M2 12l10 5 10-5"></path><path d="M2 17l10 5 10-5"></path></svg></span>
+          <div style="flex:1; min-width:0;">
+            <div style="font:400 11px/1.2 var(--font-sans); color:var(--ink-500); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">RCU - CAMPUS › Facility Office Build…</div>
+            <div style="font:700 15px/1.2 var(--font-sans); color:var(--ink-900); margin-top:2px;">Ground Floor</div>
+          </div>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ink-400)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>
+        </div>
+
+        <button onClick="{{ cycleLayer }}" style="width:100%; margin-top:10px; height:40px; display:flex; align-items:center; justify-content:space-between; padding:0 12px; border:1px solid var(--ink-200); border-radius:8px; background:#fff; color:var(--ink-900); font:500 13px/1 var(--font-sans); cursor:pointer;" style-hover="background: var(--ink-050);">
+          <span>{{ layerName }}</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ink-400)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>
+        </button>
+
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-top:18px;">
+          <span style="font:600 12px/1 var(--font-sans); color:var(--ink-700);">Available to place</span>
+          <span style="font:600 11px/1 var(--font-sans); color:var(--ink-500); background:var(--ink-050); border:1px solid var(--ink-200); border-radius:999px; min-width:22px; text-align:center; padding:3px 7px;">{{ availCount }}</span>
+        </div>
+        <div style="position:relative; margin-top:10px;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--ink-400)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position:absolute; left:10px; top:50%; transform:translateY(-50%); pointer-events:none;"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.3-4.3"></path></svg>
+          <input value="{{ availSearch }}" onChange="{{ onAvailSearch }}" placeholder="Search available spaces" style="width:100%; height:36px; border:1px solid var(--ink-200); border-radius:8px; padding:0 12px 0 30px; font:400 12.5px/1 var(--font-sans); color:var(--ink-900); outline:none; box-sizing:border-box;" style-focus="border-color: var(--blue-500); box-shadow: var(--shadow-focus);">
+        </div>
+        <div style="display:flex; gap:6px; margin-top:10px;">
+          <span style="display:inline-flex; align-items:center; gap:5px; height:26px; padding:0 10px; border-radius:999px; background:var(--blue-025); border:1px solid var(--blue-200); color:var(--blue-600); font:600 11px/1 var(--font-sans);">All <span style="background:#fff; border-radius:999px; padding:1px 6px;">{{ availCount }}</span></span>
+        </div>
+
+        <div style="margin-top:12px; max-height:280px; overflow-y:auto; display:flex; flex-direction:column; gap:6px;">
+          <sc-if value="{{ availEmpty }}" hint-placeholder-val="{{ true }}">
+            <p style="text-align:center; font:400 12px/1.6 var(--font-sans); color:var(--ink-400); padding:26px 12px;">No unplaced spaces — deleting a placed marker moves its record here, or create new ones from the map dialog.</p>
+          </sc-if>
+          <sc-for list="{{ available }}" as="a" hint-placeholder-count="0">
+            <div onMouseDown="{{ a.onDown }}" style="display:flex; align-items:center; gap:10px; padding:9px 10px; border:1px solid {{ a.bd }}; border-radius:8px; background: {{ a.bg }}; cursor:grab;" style-hover="border-color: var(--blue-300);">
+              <span style="flex-shrink:0; width:26px; height:26px; border-radius:6px; background: {{ a.iconBg }}; color: {{ a.iconFg }}; display:grid; place-items:center;">{{ a.icon }}</span>
+              <div style="flex:1; min-width:0;">
+                <div style="font:600 12.5px/1.2 var(--font-sans); color:var(--ink-900);">{{ a.label }}</div>
+                <div style="font:400 11px/1.2 var(--font-sans); color:var(--ink-500); margin-top:1px;">{{ a.typeName }}</div>
+              </div>
+              <sc-if value="{{ a.placing }}" hint-placeholder-val="{{ false }}">
+                <span style="flex-shrink:0; font:600 10px/1 var(--font-sans); color:var(--blue-600); background:var(--blue-025); border-radius:999px; padding:4px 8px;">Click map</span>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ Right panel: Edit view ══ -->
+    <div style="position:absolute; right:24px; top:18px; width:300px; z-index:30; display:flex; flex-direction:column; gap:14px;">
+      <div style="background:#fff; border:1px solid var(--ink-200); border-radius:14px; box-shadow:0 8px 24px rgba(40,54,72,0.08); overflow:hidden;">
+        <div style="display:flex; align-items:center; gap:8px; padding:12px 14px; border-bottom:1px solid var(--ink-100);">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--ink-400)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="6" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="18" r="1"></circle><circle cx="15" cy="6" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="18" r="1"></circle></svg>
+          <span style="flex:1; font:600 13px/1 var(--font-sans); color:var(--ink-700);">Edit view</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ink-400)" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"></path></svg>
+        </div>
+        <div style="padding:14px;">
+          <div style="display:flex; gap:4px; background:var(--ink-050); border-radius:8px; padding:3px; margin-bottom:14px;">
+            <button onClick="{{ setToolsTab }}" style="flex:1; height:32px; border:none; border-radius:6px; background: {{ toolsTabBg }}; color: {{ toolsTabFg }}; font:600 12px/1 var(--font-sans); cursor:pointer;">Tools</button>
+            <button onClick="{{ setMarkersTab }}" style="flex:1; height:32px; border:none; border-radius:6px; background: {{ markersTabBg }}; color: {{ markersTabFg }}; font:600 12px/1 var(--font-sans); cursor:pointer;">Markers</button>
+          </div>
+          <sc-if value="{{ isToolsTab }}" hint-placeholder-val="{{ true }}">
+          <!-- live active-tool banner -->
+          <div style="display:flex; align-items:center; gap:10px; background:var(--blue-025); border:1px solid var(--blue-100); border-radius:10px; padding:10px 12px;">
+            <span style="flex-shrink:0; width:32px; height:32px; border-radius:8px; background:var(--blue-500); color:#fff; display:grid; place-items:center;">{{ activeIcon }}</span>
+            <div style="min-width:0;">
+              <div style="font:700 13px/1.2 var(--font-sans); color:var(--ink-900);">{{ activeToolName }}</div>
+              <div style="font:400 11px/1.35 var(--font-sans); color:var(--ink-500); margin-top:1px;">{{ activeToolHint }}</div>
+            </div>
+          </div>
+
+          <!-- work with units -->
+          <div style="font:600 10px/1 var(--font-sans); color:var(--ink-500); text-transform:uppercase; letter-spacing:.05em; margin:16px 0 8px;">Work with units</div>
+          <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px;">
+            <sc-for list="{{ workTools }}" as="t" hint-placeholder-count="3">
+              <button onClick="{{ t.onClick }}" title="{{ t.title }}" style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px; height:56px; border:1px solid {{ t.bd }}; border-radius:9px; background: {{ t.bg }}; color: {{ t.fg }}; cursor:pointer;">
+                <span style="display:grid; place-items:center;">{{ t.icon }}</span>
+                <span style="font:600 10.5px/1 var(--font-sans);">{{ t.label }}</span>
+              </button>
+            </sc-for>
+          </div>
+
+          <!-- add to plan -->
+          <div style="font:600 10px/1 var(--font-sans); color:var(--ink-500); text-transform:uppercase; letter-spacing:.05em; margin:16px 0 8px;">Add to plan</div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+            <sc-for list="{{ addTools }}" as="t" hint-placeholder-count="5">
+              <button onMouseDown="{{ t.onDown }}" title="Drag onto the plan, or click to arm" style="display:flex; align-items:center; gap:9px; height:42px; padding:0 12px; border:1px solid {{ t.bd }}; border-radius:9px; background: {{ t.bg }}; color: {{ t.fg }}; font:600 12.5px/1 var(--font-sans); cursor:grab;">
+                <span style="flex-shrink:0; width:22px; height:22px; border-radius:6px; background: {{ t.chip }}; color: {{ t.chipFg }}; display:grid; place-items:center;">{{ t.icon }}</span>{{ t.label }}
+              </button>
+            </sc-for>
+          </div>
+
+          <button onClick="{{ uploadStub }}" style="width:100%; margin-top:16px; height:42px; border:1px solid var(--ink-200); border-radius:9px; background:#fff; color:var(--ink-700); font:600 12.5px/1 var(--font-sans); cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:8px;" style-hover="background: var(--ink-050);">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"></path></svg>
+            Upload / replace image
+          </button>
+          </sc-if>
+
+          <sc-if value="{{ isMarkersTab }}" hint-placeholder-val="{{ false }}">
+            <div style="font:400 11.5px/1.5 var(--font-sans); color:var(--ink-500); margin-bottom:10px;">Drag a marker onto the plan. Markers are facility points like stairs, restrooms or fire exits.</div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+              <sc-for list="{{ markerTools }}" as="m" hint-placeholder-count="8">
+                <button onMouseDown="{{ m.onDown }}" title="Drag onto the plan" style="display:flex; align-items:center; gap:9px; height:42px; padding:0 10px; border:1px solid var(--ink-200); border-radius:9px; background:#fff; color:var(--ink-700); font:600 12px/1 var(--font-sans); cursor:grab;" style-hover="border-color: var(--blue-300);">
+                  <span style="flex-shrink:0; width:24px; height:24px; border-radius:999px; background: {{ m.chipBg }}; color:#fff; display:grid; place-items:center; overflow:hidden;">{{ m.chip }}</span><span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ m.name }}</span>
+                </button>
+              </sc-for>
+            </div>
+            <sc-if value="{{ showNewMarker }}" hint-placeholder-val="{{ false }}">
+              <div style="margin-top:12px; border:1px solid var(--ink-200); border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:10px;">
+                <div style="font:600 12px/1 var(--font-sans); color:var(--ink-900);">New marker</div>
+                <input value="{{ nmName }}" onChange="{{ onNmName }}" placeholder="Name (e.g. Water cooler)" style="height:34px; border:1px solid var(--ink-200); border-radius:6px; padding:0 10px; font:400 12.5px/1 var(--font-sans); color:var(--ink-900); outline:none;" style-focus="border-color: var(--blue-500); box-shadow: var(--shadow-focus);">
+                <input value="{{ nmText }}" onChange="{{ onNmText }}" placeholder="Short label (1–2 chars) e.g. WC" style="height:34px; border:1px solid var(--ink-200); border-radius:6px; padding:0 10px; font:400 12.5px/1 var(--font-sans); color:var(--ink-900); outline:none;" style-focus="border-color: var(--blue-500); box-shadow: var(--shadow-focus);">
+                <input value="{{ nmImg }}" onChange="{{ onNmImg }}" placeholder="Image URL (optional)" style="height:34px; border:1px solid var(--ink-200); border-radius:6px; padding:0 10px; font:400 12.5px/1 var(--font-sans); color:var(--ink-900); outline:none;" style-focus="border-color: var(--blue-500); box-shadow: var(--shadow-focus);">
+                <div style="display:flex; gap:6px;">
+                  <sc-for list="{{ nmSwatches }}" as="sw" hint-placeholder-count="6">
+                    <button onClick="{{ sw.onClick }}" title="{{ sw.hex }}" style="width:24px; height:24px; border-radius:6px; border:none; background: {{ sw.hex }}; box-shadow: {{ sw.ring }}; cursor:pointer; padding:0;"></button>
+                  </sc-for>
+                </div>
+                <div style="display:flex; gap:8px;">
+                  <button onClick="{{ cancelNewMarker }}" style="flex:1; height:34px; border:1px solid var(--ink-200); border-radius:7px; background:#fff; color:var(--ink-700); font:600 12px/1 var(--font-sans); cursor:pointer;">Cancel</button>
+                  <button onClick="{{ saveNewMarker }}" style="flex:1; height:34px; border:none; border-radius:7px; background:var(--blue-500); color:#fff; font:600 12px/1 var(--font-sans); cursor:pointer;">Add marker</button>
+                </div>
+              </div>
+            </sc-if>
+            <sc-if value="{{ showNewMarker }}" hint-placeholder-val="{{ true }}"><div></div></sc-if>
+            <sc-if value="{{ hideNewMarker }}" hint-placeholder-val="{{ false }}">
+              <button onClick="{{ openNewMarker }}" style="width:100%; margin-top:12px; height:42px; border:1px dashed var(--ink-300); border-radius:9px; background:#fff; color:var(--ink-700); font:600 12.5px/1 var(--font-sans); cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:8px;" style-hover="background: var(--ink-050); border-color: var(--blue-300);">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>New marker
+              </button>
+            </sc-if>
+          </sc-if>
+        </div>
+      </div>
+
+      <sc-if value="{{ inspector }}" hint-placeholder-val="{{ false }}">
+        <div style="background:#fff; border:1px solid var(--ink-200); border-radius:14px; box-shadow:0 8px 24px rgba(40,54,72,0.08); padding:14px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+            <span style="font:600 13px/1 var(--font-sans); color:var(--ink-700);">{{ inspector.count }}</span>
+            <button onClick="{{ clearSelection }}" title="Deselect" style="width:24px; height:24px; border:none; background:transparent; color:var(--ink-400); cursor:pointer; display:grid; place-items:center; border-radius:5px;" style-hover="background: var(--ink-050);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"></path></svg></button>
+          </div>
+          <sc-if value="{{ inspector.single }}" hint-placeholder-val="{{ false }}">
+            <div style="font-size:11px; color:var(--ink-500); margin-bottom:4px;">Label</div>
+            <input value="{{ inspector.label }}" onChange="{{ onLabelChange }}" style="width:100%; height:34px; border:1px solid var(--ink-200); border-radius:6px; padding:0 10px; font:400 13px/1 var(--font-sans); color:var(--ink-900); outline:none; box-sizing:border-box;" style-focus="border-color: var(--blue-500); box-shadow: var(--shadow-focus);">
+            <div style="font-size:11px; color:var(--ink-500); margin:12px 0 4px;">Type · {{ inspector.typeName }}</div>
+          </sc-if>
+          <div style="display:flex; gap:8px; margin-top:14px;">
+            <button onClick="{{ deleteSelected }}" style="flex:1; height:36px; border:1px solid var(--danger-050); border-radius:7px; background:#fff; color:var(--danger-500); font:600 12.5px/1 var(--font-sans); cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:6px;" style-hover="background: var(--danger-050);">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path></svg>
+              {{ inspector.deleteLabel }}
+            </button>
+          </div>
+          <p style="margin-top:10px; font:400 11px/1.5 var(--font-sans); color:var(--ink-400);">Deleting keeps the record — it moves to “Available to place” so you can re-position it later.</p>
+        </div>
+      </sc-if>
+
+    </div>
+
+    <!-- ══ Bottom nav ══ -->
+    <div style="position:absolute; bottom:18px; left:50%; transform:translateX(-50%); z-index:35; display:flex; align-items:center; gap:4px; background:#fff; border:1px solid var(--ink-200); border-radius:999px; padding:6px; box-shadow:0 10px 28px rgba(40,54,72,0.14);">
+      <sc-for list="{{ bottomNav }}" as="n" hint-placeholder-count="4">
+        <button onClick="{{ n.onClick }}" style="display:inline-flex; align-items:center; gap:8px; height:42px; padding:0 20px; border:none; border-radius:999px; background: {{ n.bg }}; color: {{ n.fg }}; font:600 13.5px/1 var(--font-sans); cursor:pointer;">
+          <span style="display:grid; place-items:center;">{{ n.icon }}</span>{{ n.label }}
+        </button>
+      </sc-for>
+    </div>
+  </div>
+
+  <!-- drag ghost -->
+  <sc-if value="{{ dragGhost }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed; left: {{ dragGhost.x }}px; top: {{ dragGhost.y }}px; z-index:200; transform:translate(-50%,-50%); pointer-events:none; width:22px; height:22px; border-radius:999px; background: {{ dragGhost.chipBg }}; border:2px solid {{ dragGhost.color }}; color: {{ dragGhost.chipFg }}; display:grid; place-items:center; box-shadow:0 6px 16px rgba(5,16,30,0.28); opacity: {{ dragGhost.opacity }};">{{ dragGhost.icon }}</div>
+  </sc-if>
+
+  <!-- toast -->
+  <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed; bottom:88px; left:50%; transform:translateX(-50%); z-index:120; background:var(--ink-900); color:#fff; border-radius:8px; padding:10px 16px; font:500 12.5px/1 var(--font-sans); box-shadow:var(--shadow-lg); animation: fpe-toast 200ms ease;">{{ toast }}</div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{}">
+class Component extends DCLogic {
+  IMG_W = 1492; IMG_H = 1054;
+  canvasRef = React.createRef();
+
+  TYPE = {
+    workstation: { name: 'Desk', prefix: 'WS', color: '#0059D6' },
+    locker: { name: 'Locker', prefix: 'LK', color: '#29A01E' },
+    parking: { name: 'Parking stall', prefix: 'PK', color: '#1E9E5A' },
+    room: { name: 'Room', prefix: 'RM', color: '#7C5CE6' },
+    amenity: { name: 'Amenity', prefix: 'AM', color: '#2BB6E6' },
+    asset: { name: 'Asset', prefix: 'AS', color: '#3C229D' },
+    stairs: { name: 'Stairs', prefix: 'ST', color: '#0EA5A5' },
+    elevator: { name: 'Elevator', prefix: 'EL', color: '#C2761A' },
+  };
+
+  constructor(props) {
+    super(props);
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem('fpe_units_v2') || 'null'); } catch (e) { saved = null; }
+    const units = saved ? saved.map(u => (u.geom && u.filled === undefined) ? { ...u, filled: true } : u) : this.seed();
+    this.state = {
+      units,
+      saved: JSON.parse(JSON.stringify(units)),
+      view: { tx: 0, ty: 0, z: 0.5 },
+      tool: 'select',
+      selected: [],
+      draft: [],
+      calib: [],
+      placingId: null,
+      layer: 'workstation',
+      availSearch: '',
+      dirty: false,
+      marquee: null,
+      showGrid: false,
+      toast: null,
+      tab: 'floorplan',
+      nav: 'floorplans',
+      dragGhost: null,
+      rightTab: 'tools',
+      showNewMarker: false,
+      nm: { name: '', text: '', img: '', color: '#607796' },
+      markerLib: [
+        { id: 'stairs', name: 'Stairs', color: '#0EA5A5', iconType: 'stairs' },
+        { id: 'elevator', name: 'Elevator', color: '#C2761A', iconType: 'elevator' },
+        { id: 'restroom', name: 'Restroom', color: '#6D5AE6', text: 'WC' },
+        { id: 'firstaid', name: 'First aid', color: '#29A01E', text: '+' },
+        { id: 'fireexit', name: 'Fire exit', color: '#B61919', text: 'FE' },
+        { id: 'printer', name: 'Printer', color: '#607796', text: 'PR' },
+        { id: 'coffee', name: 'Pantry', color: '#B5761A', text: 'CF' },
+        { id: 'reception', name: 'Reception', color: '#0059D6', text: 'RC' },
+      ],
+    };
+  }
+
+  seed() {
+    const u = [];
+    let n = { workstation: 0, locker: 0, parking: 0, room: 0, amenity: 0, asset: 0, stairs: 0, elevator: 0 };
+    const add = (type, x, y, filled) => { n[type]++; u.push({ id: 't' + type + n[type], type, label: this.TYPE[type].prefix + '-' + String(n[type]).padStart(2, '0'), filled: filled !== false, geom: { kind: 'point', x, y } }); };
+    const rec = (type) => { n[type]++; u.push({ id: 't' + type + n[type], type, label: this.TYPE[type].prefix + '-' + String(n[type]).padStart(2, '0'), filled: false, geom: null }); };
+    const cols = [0.335, 0.395, 0.455, 0.515, 0.575, 0.635];
+    const rows = [0.33, 0.42, 0.60, 0.69];
+    let k = 0;
+    for (const y of rows) for (const x of cols) { add('workstation', x, y, !(k === 3 || k === 9 || k === 16 || k === 21)); k++; }
+    ['RM-06', 'RM-07', 'RM-08'].forEach((_, i) => add('room', 0.135, 0.36 + i * 0.16));
+    for (let i = 0; i < 5; i++) add('room', 0.865, 0.33 + i * 0.13);
+    add('locker', 0.14, 0.84); add('locker', 0.19, 0.84, false);
+    add('parking', 0.90, 0.90);
+    add('amenity', 0.15, 0.55);
+    add('asset', 0.63, 0.64);
+    add('stairs', 0.55, 0.55);
+    add('elevator', 0.50, 0.79); add('elevator', 0.545, 0.79);
+    rec('workstation'); rec('workstation'); rec('workstation'); rec('locker'); rec('locker');
+    return u;
+  }
+
+  /* ---------- lifecycle ---------- */
+  setStageEl = (el) => { this._stageEl = el; };
+  setCanvasEl = (el) => {
+    if (this._canvasEl === el) return;
+    if (this._canvasEl) this._canvasEl.removeEventListener('wheel', this.onWheel);
+    this._canvasEl = el;
+    if (el) {
+      el.addEventListener('wheel', this.onWheel, { passive: false });
+      requestAnimationFrame(() => this.fit());
+    }
+  };
+  componentDidMount() { window.addEventListener('keydown', this.onKey); }
+  componentWillUnmount() { window.removeEventListener('keydown', this.onKey); }
+
+  fit = () => {
+    const el = this._canvasEl; if (!el) return;
+    const r = el.getBoundingClientRect();
+    const z = Math.min(r.width / this.IMG_W, r.height / this.IMG_H) * 0.96;
+    this.setState({ view: { z, tx: (r.width - this.IMG_W * z) / 2, ty: (r.height - this.IMG_H * z) / 2 } });
+  };
+  zoomFit = () => this.fit();
+  zoomAt(f, cx, cy) {
+    const v = this.state.view;
+    const z = Math.max(0.2, Math.min(3, v.z * f));
+    this.setState({ view: { z, tx: cx - (cx - v.tx) * (z / v.z), ty: cy - (cy - v.ty) * (z / v.z) } });
+  }
+  zoomIn = () => { const r = this._canvasEl.getBoundingClientRect(); this.zoomAt(1.25, r.width / 2, r.height / 2); };
+  zoomOut = () => { const r = this._canvasEl.getBoundingClientRect(); this.zoomAt(0.8, r.width / 2, r.height / 2); };
+  onWheel = (e) => {
+    e.preventDefault();
+    const r = this._canvasEl.getBoundingClientRect();
+    this.zoomAt(e.deltaY < 0 ? 1.1 : 0.9, e.clientX - r.left, e.clientY - r.top);
+  };
+
+  toNorm(e) {
+    const el = this._canvasEl; if (!el) return null;
+    const r = el.getBoundingClientRect(); const v = this.state.view;
+    return { x: (e.clientX - r.left - v.tx) / v.z / this.IMG_W, y: (e.clientY - r.top - v.ty) / v.z / this.IMG_H };
+  }
+  screenOf(u) {
+    const v = this.state.view;
+    return { x: v.tx + u.geom.x * this.IMG_W * v.z, y: v.ty + u.geom.y * this.IMG_H * v.z };
+  }
+
+  isPlaceTool() { return ['workstation', 'locker', 'parking', 'amenity', 'asset', 'stairs', 'elevator'].includes(this.state.tool); }
+  isDraw() { return this.isPlaceTool() || this.state.tool === 'room' || this.state.tool === 'calibrate'; }
+
+  nextLabel(type) {
+    const meta = this.TYPE[type];
+    let max = 0;
+    this.state.units.forEach(u => { if (u.type === type) { const m = /(\d+)$/.exec(u.label); if (m) max = Math.max(max, +m[1]); } });
+    return meta.prefix + '-' + String(max + 1).padStart(2, '0');
+  }
+
+  markDirty() { if (!this.state.dirty) this.setState({ dirty: true }); }
+  commit(units, extra) { this.setState(Object.assign({ units, dirty: true }, extra || {})); }
+  saveChanges = () => { this.setState({ saved: JSON.parse(JSON.stringify(this.state.units)), dirty: false }); try { localStorage.setItem('fpe_units_v2', JSON.stringify(this.state.units)); } catch (e) {} this.toast('Changes saved'); };
+  discardChanges = () => { this.setState({ units: JSON.parse(JSON.stringify(this.state.saved)), dirty: false, selected: [], placingId: null }); this.toast('Changes discarded'); };
+  toast(m) { this.setState({ toast: m }); clearTimeout(this._tt); this._tt = setTimeout(() => this.setState({ toast: null }), 2000); }
+
+  /* ---------- canvas interaction ---------- */
+  onCanvasDown = (e) => {
+    if (e.button !== 0) return;
+    if (this.isDraw()) return;
+    if (e.shiftKey) {
+      const r = this._canvasEl.getBoundingClientRect();
+      this._mq = { sx: e.clientX - r.left, sy: e.clientY - r.top, add: true };
+      this.setState({ marquee: { left: this._mq.sx, top: this._mq.sy, w: 0, h: 0 } });
+      window.addEventListener('mousemove', this.onMarqueeMove);
+      window.addEventListener('mouseup', this.onMarqueeUp);
+      return;
+    }
+    const v = this.state.view;
+    this._pan = { sx: e.clientX, sy: e.clientY, tx: v.tx, ty: v.ty, moved: false };
+    window.addEventListener('mousemove', this.onPanMove);
+    window.addEventListener('mouseup', this.onPanUp);
+  };
+  onPanMove = (e) => {
+    if (!this._pan) return;
+    const dx = e.clientX - this._pan.sx, dy = e.clientY - this._pan.sy;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) this._pan.moved = true;
+    if (this._pan.moved) this.setState({ view: { ...this.state.view, tx: this._pan.tx + dx, ty: this._pan.ty + dy } });
+  };
+  onPanUp = () => {
+    window.removeEventListener('mousemove', this.onPanMove);
+    window.removeEventListener('mouseup', this.onPanUp);
+    if (this._pan && this._pan.moved) { this._suppress = true; setTimeout(() => { this._suppress = false; }, 0); }
+    this._pan = null;
+  };
+  onMarqueeMove = (e) => {
+    if (!this._mq) return;
+    const r = this._canvasEl.getBoundingClientRect();
+    const cx = e.clientX - r.left, cy = e.clientY - r.top;
+    this.setState({ marquee: { left: Math.min(this._mq.sx, cx), top: Math.min(this._mq.sy, cy), w: Math.abs(cx - this._mq.sx), h: Math.abs(cy - this._mq.sy) } });
+  };
+  onMarqueeUp = () => {
+    window.removeEventListener('mousemove', this.onMarqueeMove);
+    window.removeEventListener('mouseup', this.onMarqueeUp);
+    const m = this.state.marquee;
+    if (m && (m.w > 4 || m.h > 4)) {
+      const ids = this.state.units.filter(u => u.geom).filter(u => { const s = this.screenOf(u); return s.x >= m.left && s.x <= m.left + m.w && s.y >= m.top && s.y <= m.top + m.h; }).map(u => u.id);
+      this.setState({ selected: ids });
+      this._suppress = true; setTimeout(() => { this._suppress = false; }, 0);
+    }
+    this._mq = null; this.setState({ marquee: null });
+  };
+
+  onCanvasClick = (e) => {
+    if (this._suppress) return;
+    const S = this.state;
+    const n = this.toNorm(e); if (!n) return;
+    const inb = n.x >= 0 && n.x <= 1 && n.y >= 0 && n.y <= 1;
+    if (S.placingId) {
+      if (!inb) return;
+      this.commit(S.units.map(u => u.id === S.placingId ? { ...u, geom: { kind: 'point', x: n.x, y: n.y } } : u), { placingId: null, selected: [S.placingId] });
+      this.toast('Placed on plan');
+      return;
+    }
+    if (this.isPlaceTool()) {
+      if (!inb) return;
+      const label = this.nextLabel(S.tool);
+      const unit = { id: 'u' + Date.now(), type: S.tool, label, geom: { kind: 'point', x: n.x, y: n.y } };
+      this.commit([...S.units, unit], { selected: [unit.id] });
+      this.toast(label + ' added');
+      return;
+    }
+    if (S.tool === 'room') {
+      const d = S.draft;
+      if (d.length >= 3) { const f = d[0]; if (Math.hypot((n.x - f[0]) * this.IMG_W, (n.y - f[1]) * this.IMG_H) * S.view.z < 12) { this.closeDraft(); return; } }
+      this.setState({ draft: [...d, [n.x, n.y]] });
+      return;
+    }
+    if (S.tool === 'select') this.setState({ selected: [] });
+  };
+  onCanvasDbl = () => { if (this.state.tool === 'room' && this.state.draft.length >= 3) this.closeDraft(); };
+  closeDraft() {
+    const S = this.state;
+    const label = this.nextLabel('room');
+    const unit = { id: 'u' + Date.now(), type: 'room', label, geom: { kind: 'poly', pts: S.draft } };
+    this.commit([...S.units, unit], { draft: [], tool: 'select', selected: [unit.id] });
+    this.toast(label + ' created');
+  }
+
+  onKey = (e) => {
+    const tag = (document.activeElement && document.activeElement.tagName) || '';
+    if (['INPUT', 'SELECT', 'TEXTAREA'].includes(tag)) return;
+    const S = this.state;
+    if (e.key === 'Escape') this.setState({ selected: [], draft: [], calib: [], tool: 'select', placingId: null });
+    if (e.key === 'Enter' && S.tool === 'room' && S.draft.length >= 3) this.closeDraft();
+    if ((e.key === 'Delete' || e.key === 'Backspace') && S.selected.length) this.deleteSelected();
+    if (e.key === 'v' || e.key === 'V') this.setState({ tool: 'select' });
+  };
+
+  /* ---------- marker interaction ---------- */
+  onMarkerDown = (id, e) => {
+    const S = this.state;
+    if (S.tool !== 'select') return;
+    e.stopPropagation();
+    let sel = S.selected;
+    if (e.shiftKey) { sel = sel.includes(id) ? sel.filter(x => x !== id) : [...sel, id]; this.setState({ selected: sel }); return; }
+    if (!sel.includes(id)) { sel = [id]; this.setState({ selected: sel }); }
+    this._mv = { ids: sel, mx: e.clientX, my: e.clientY, lx: e.clientX, ly: e.clientY, moved: false, orig: {} };
+    this.state.units.forEach(u => { if (sel.includes(u.id) && u.geom) this._mv.orig[u.id] = { ...u.geom }; });
+    window.addEventListener('mousemove', this.onMarkerMove);
+    window.addEventListener('mouseup', this.onMarkerUp);
+  };
+  onMarkerMove = (e) => {
+    if (!this._mv) return;
+    const dx = e.clientX - this._mv.mx, dy = e.clientY - this._mv.my;
+    if (!this._mv.moved && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) this._mv.moved = true;
+    if (!this._mv.moved) return;
+    this._mv.mx = e.clientX; this._mv.my = e.clientY; this._mv.lx = e.clientX; this._mv.ly = e.clientY;
+    const v = this.state.view;
+    const ndx = dx / v.z / this.IMG_W, ndy = dy / v.z / this.IMG_H;
+    const ids = this._mv.ids;
+    this.setState({ dirty: true, units: this.state.units.map(u => (ids.includes(u.id) && u.geom && u.geom.kind === 'point') ? { ...u, geom: { ...u.geom, x: Math.max(0, Math.min(1, u.geom.x + ndx)), y: Math.max(0, Math.min(1, u.geom.y + ndy)) } } : u) });
+  };
+  onMarkerUp = () => {
+    window.removeEventListener('mousemove', this.onMarkerMove);
+    window.removeEventListener('mouseup', this.onMarkerUp);
+    const mv = this._mv;
+    if (mv && mv.moved) {
+      this._suppress = true; setTimeout(() => { this._suppress = false; }, 0);
+      if (mv.ids.length === 1) {
+        const id = mv.ids[0];
+        const moved = this.state.units.find(u => u.id === id);
+        const ev = { clientX: mv.lx, clientY: mv.ly };
+        const t = this.markerAt(ev);
+        if (t && t.id !== id && t.type === moved.type) {
+          if (t.filled === false) {
+            // drop desk into an empty slot: desk takes the slot, its old spot is freed
+            this.commit(this.state.units.filter(u => u.id !== t.id).map(u => u.id === id ? { ...u, filled: true, geom: { kind: 'point', x: t.geom.x, y: t.geom.y } } : u), { selected: [id] });
+            this.toast(moved.label + ' placed in ' + t.label);
+          } else {
+            // occupied — replace: existing occupant moves to Available, this desk takes the slot
+            this.commit(this.state.units.map(u => u.id === t.id ? { ...u, geom: null, filled: false } : (u.id === id ? { ...u, filled: true, geom: { kind: 'point', x: t.geom.x, y: t.geom.y } } : u)), { selected: [id] });
+            this.toast(moved.label + ' replaced ' + t.label + ' — it moved to Available');
+          }
+        }
+      }
+    }
+    this._mv = null;
+  };
+
+  clearSelection = () => this.setState({ selected: [] });
+  deleteSelected = () => {
+    const S = this.state;
+    if (!S.selected.length) return;
+    this.commit(S.units.map(u => S.selected.includes(u.id) ? { ...u, geom: null } : u), { selected: [] });
+    this.toast(S.selected.length > 1 ? S.selected.length + ' units unplaced' : 'Moved to Available to place');
+  };
+  onLabelChange = (e) => {
+    const v = e.target.value, id = this.state.selected[0];
+    this.commit(this.state.units.map(u => u.id === id ? { ...u, label: v } : u));
+  };
+  unassignSelected = () => {
+    const id = this.state.selected[0]; if (!id) return;
+    const u = this.state.units.find(x => x.id === id); if (!u || !u.assigned) return;
+    this.commit(this.state.units.map(x => x.id === id ? { ...x, assigned: false, assignedLabel: undefined } : x));
+    this.toast('Unassigned');
+  };
+  uploadStub = () => this.toast('Upload is stubbed in this prototype');
+
+  /* ---------- drag to place (from panel onto plan) ---------- */
+  startDrag = (payload, e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    this._drag = { ...payload, sx: e.clientX, sy: e.clientY, moved: false };
+    window.addEventListener('mousemove', this.dragMove);
+    window.addEventListener('mouseup', this.dragUp);
+  };
+  dragMove = (e) => {
+    if (!this._drag) return;
+    if (!this._drag.moved && (Math.abs(e.clientX - this._drag.sx) > 4 || Math.abs(e.clientY - this._drag.sy) > 4)) this._drag.moved = true;
+    if (!this._drag.moved) return;
+    const el = this._canvasEl;
+    const over = !!el && (() => { const r = el.getBoundingClientRect(); return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom; })();
+    let assignTo = null;
+    if (over && this._drag.kind === 'record') { const t = this.markerAt(e); if (t && t.id !== this._drag.id && t.type === this._drag.type) assignTo = t.id; }
+    const g = this._drag;
+    this.setState({ dragGhost: { x: e.clientX, y: e.clientY, over, assignTo, kind: g.kind, type: g.type, markerKind: g.markerKind, color: g.color, text: g.text, img: g.img, iconType: g.iconType } });
+  };
+  markerAt(e) {
+    const el = this._canvasEl; if (!el) return null;
+    const r = el.getBoundingClientRect();
+    const px = e.clientX - r.left, py = e.clientY - r.top;
+    let best = null, bd = 18;
+    for (const u of this.state.units) {
+      if (!u.geom || u.geom.kind !== 'point') continue;
+      const s = this.screenOf(u); const dist = Math.hypot(s.x - px, s.y - py);
+      if (dist < bd) { bd = dist; best = u; }
+    }
+    return best;
+  }
+
+  dragUp = (e) => {
+    window.removeEventListener('mousemove', this.dragMove);
+    window.removeEventListener('mouseup', this.dragUp);
+    const d = this._drag; this._drag = null;
+    this.setState({ dragGhost: null });
+    if (!d) return;
+    if (!d.moved) {
+      if (d.kind === 'add') this.setState({ tool: d.type, draft: [], calib: [], placingId: null, selected: [] });
+      else if (d.kind === 'record') this.setState({ placingId: this.state.placingId === d.id ? null : d.id, tool: 'select' });
+      return;
+    }
+    const el = this._canvasEl; if (!el) return;
+    const r = el.getBoundingClientRect();
+    if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) return;
+    const S = this.state;
+    // dropped onto an existing compatible marker → assign
+    const target = this.markerAt(e);
+    if (d.kind === 'record' && target && target.id !== d.id && target.type === d.type) {
+      if (target.filled === false) {
+        this.commit(S.units.filter(u => u.id !== d.id).map(u => u.id === target.id ? { ...u, filled: true } : u), { placingId: null, selected: [target.id] });
+        this.toast(this.TYPE[d.type].name + ' placed in ' + target.label);
+      } else {
+        const g = { kind: 'point', x: target.geom.x, y: target.geom.y };
+        this.commit(S.units.map(u => u.id === target.id ? { ...u, geom: null, filled: false } : (u.id === d.id ? { ...u, filled: true, geom: g } : u)), { placingId: null, selected: [d.id] });
+        this.toast(d.label + ' replaced ' + target.label + ' — it moved to Available');
+      }
+      return;
+    }
+    const n = this.toNorm(e); if (!n || n.x < 0 || n.x > 1 || n.y < 0 || n.y > 1) return;
+    if (d.kind === 'marker') {
+      const def = this.markerDef(d.markerKind);
+      const cnt = S.units.filter(u => u.type === 'marker' && u.markerKind === d.markerKind).length + 1;
+      const unit = { id: 'u' + Date.now(), type: 'marker', markerKind: d.markerKind, label: def.name + ' ' + cnt, filled: true, geom: { kind: 'point', x: n.x, y: n.y } };
+      this.commit([...S.units, unit], { selected: [unit.id] });
+      this.toast(def.name + ' placed');
+      return;
+    }
+    if (d.kind === 'add') {
+      const label = this.nextLabel(d.type);
+      const unit = { id: 'u' + Date.now(), type: d.type, label, filled: true, geom: { kind: 'point', x: n.x, y: n.y } };
+      this.commit([...S.units, unit], { selected: [unit.id] });
+      this.toast(label + ' added');
+    } else if (d.kind === 'record') {
+      this.commit(S.units.map(u => u.id === d.id ? { ...u, filled: true, geom: { kind: 'point', x: n.x, y: n.y } } : u), { placingId: null, selected: [d.id] });
+      this.toast('Placed on plan');
+    }
+  };
+
+  /* ---------- icons ---------- */
+  icon(type, sz) {
+    const h = React.createElement;
+    const s = { width: sz || 13, height: sz || 13, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.9, strokeLinecap: 'round', strokeLinejoin: 'round' };
+    const P = {
+      select: [h('path', { key: 1, d: 'M3 3l7 18 2.5-7.5L20 11z' })],
+      room: [h('path', { key: 1, d: 'M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2' })],
+      workstation: [h('rect', { key: 1, x: 3, y: 4, width: 18, height: 12, rx: 2 }), h('path', { key: 2, d: 'M8 20h8M12 16v4' })],
+      locker: [h('rect', { key: 1, x: 4, y: 11, width: 16, height: 10, rx: 2 }), h('path', { key: 2, d: 'M8 11V7a4 4 0 0 1 8 0v4' })],
+      parking: [h('circle', { key: 1, cx: 12, cy: 12, r: 9 }), h('path', { key: 2, d: 'M9.5 16V8h3.5a2.5 2.5 0 0 1 0 5H9.5' })],
+      amenity: [h('path', { key: 1, d: 'M4 8h13v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5z' }), h('path', { key: 2, d: 'M17 9h2a2 2 0 0 1 0 4h-2' })],
+      asset: [h('path', { key: 1, d: 'M12 2l8 4.5v9L12 20l-8-4.5v-9z' }), h('path', { key: 2, d: 'M4 6.5L12 11l8-4.5M12 11v9' })],
+      stairs: [h('path', { key: 1, d: 'M4 20h4v-4h4v-4h4V8h4' })],
+      elevator: [h('rect', { key: 1, x: 5, y: 3, width: 14, height: 18, rx: 2 }), h('path', { key: 2, d: 'M10 9l2-2 2 2M10 15l2 2 2-2' })],
+      calibrate: [h('path', { key: 1, d: 'M21.3 8.7l-6-6L2.7 15.3l6 6z' }), h('path', { key: 2, d: 'M14 6l1.5 1.5M11 9l1.5 1.5M8 12l1.5 1.5' })],
+    };
+    return h('svg', s, P[type] || P.select);
+  }
+
+  markerDef(id) { return (this.state.markerLib || []).find(m => m.id === id) || { id: id, name: id, color: '#607796', text: '?' }; }
+  tName(u) { return u.type === 'marker' ? this.markerDef(u.markerKind).name : (this.TYPE[u.type] ? this.TYPE[u.type].name : u.type); }
+  tColor(u) { return u.type === 'marker' ? this.markerDef(u.markerKind).color : (this.TYPE[u.type] ? this.TYPE[u.type].color : '#607796'); }
+  tIcon(u, sz) { return u.type === 'marker' ? this.chipNode(this.markerDef(u.markerKind), sz) : this.icon(u.type, sz); }
+  chipNode(def, sz) {
+    const h = React.createElement;
+    if (def.img) return h('img', { src: def.img, style: { width: '100%', height: '100%', objectFit: 'cover', borderRadius: '999px' } });
+    if (def.iconType) return this.icon(def.iconType, sz || 12);
+    return h('span', { style: { font: '700 ' + (sz && sz > 13 ? 10 : 8) + 'px/1 var(--font-sans)' } }, def.text || '?');
+  }
+
+  renderVals() {
+    const S = this.state;
+    const h = React.createElement;
+
+    /* top tabs */
+    const tabDefs = [['desks', 'Desks'], ['parking', 'Parking Stalls'], ['lockers', 'Lockers'], ['floor', 'Floor'], ['delivery', 'Delivery Area'], ['rooms', 'Rooms'], ['floorplan', 'Floor Plan']];
+    const topTabs = tabDefs.map(([id, label]) => { const on = S.tab === id; return { id, label, bg: on ? 'var(--blue-025)' : 'transparent', fg: on ? 'var(--blue-600)' : 'var(--ink-700)', onClick: () => this.setState({ tab: id }) }; });
+
+    /* markers + room chips */
+    const selSet = S.selected;
+    const placed = S.units.filter(u => u.geom);
+    const markers = placed.filter(u => u.geom.kind === 'point' && u.type !== 'room').map(u => {
+      const isM = u.type === 'marker';
+      const def = isM ? this.markerDef(u.markerKind) : null;
+      const c = isM ? def.color : this.TYPE[u.type].color;
+      const on = selSet.includes(u.id);
+      const empty = u.filled === false;
+      const light = u.type === 'workstation';
+      const dropHi = S.dragGhost && S.dragGhost.assignTo === u.id;
+      return {
+        id: u.id, title: u.label + (empty ? ' — empty slot' : ' — ' + (isM ? def.name : this.TYPE[u.type].name)),
+        left: (u.geom.x * 100) + '%', top: (u.geom.y * 100) + '%',
+        size: '22px', radius: (u.type === 'asset') ? '6px' : (u.type === 'elevator' ? '5px' : '999px'),
+        borderStyle: empty ? 'dashed' : 'solid',
+        bg: empty ? '#fff' : c, bd: empty ? 'var(--ink-300)' : c, fg: empty ? 'var(--ink-400)' : '#fff',
+        icon: isM ? this.chipNode(def, 12) : this.icon(u.type, 12),
+        label: u.label, showLabel: !empty,
+        shadow: dropHi ? '0 0 0 4px rgba(41,160,30,0.4)' : (on ? ('0 0 0 3px rgba(0,89,214,0.35)') : (empty ? 'none' : '0 1px 3px rgba(40,54,72,0.3)')),
+        zi: (on || dropHi) ? 6 : 3,
+        cursor: S.tool === 'select' ? 'grab' : 'pointer',
+        onMouseDown: (e) => this.onMarkerDown(u.id, e),
+        onClick: (e) => { e.stopPropagation(); if (S.tool === 'select' && !e.shiftKey && !this._suppress) this.setState({ selected: [u.id] }); },
+      };
+    });
+    const roomChips = placed.filter(u => u.geom.kind === 'point' && u.type === 'room').length ? [] : [];
+    // rooms are points here → render as chips instead of icon markers:
+    const pointRooms = placed.filter(u => u.type === 'room' && u.geom.kind === 'point');
+    const polyAreas = placed.filter(u => u.type === 'room' && u.geom.kind === 'poly').map(u => {
+      const on = selSet.includes(u.id);
+      const cx = u.geom.pts.reduce((a, p) => a + p[0], 0) / u.geom.pts.length;
+      const cy = u.geom.pts.reduce((a, p) => a + p[1], 0) / u.geom.pts.length;
+      return {
+        id: u.id, label: u.label,
+        clip: 'polygon(' + u.geom.pts.map(p => (p[0] * 100) + '% ' + (p[1] * 100) + '%').join(', ') + ')',
+        fill: on ? 'rgba(124,92,230,0.28)' : 'rgba(124,92,230,0.16)',
+        left: (cx * 100) + '%', top: (cy * 100) + '%',
+        onClick: (e) => { e.stopPropagation(); if (S.tool === 'select' && !this._suppress) this.setState({ selected: [u.id] }); },
+      };
+    });
+    const chips = pointRooms.map(u => {
+      const on = selSet.includes(u.id);
+      return {
+        id: u.id, label: u.label, left: (u.geom.x * 100) + '%', top: (u.geom.y * 100) + '%',
+        bg: on ? '#EDE7FB' : 'rgba(255,255,255,0.95)', fg: '#5B3FBF', bd: on ? '#7C5CE6' : 'var(--ink-200)',
+        shadow: on ? '0 0 0 3px rgba(124,92,230,0.3)' : 'var(--shadow-xs)',
+        cursor: S.tool === 'select' ? 'grab' : 'pointer',
+        onMouseDown: (e) => this.onMarkerDown(u.id, e),
+        onClick: (e) => { e.stopPropagation(); if (S.tool === 'select' && !e.shiftKey && !this._suppress) this.setState({ selected: [u.id] }); },
+      };
+    });
+    const pointMarkers = markers.filter(m => { const u = S.units.find(x => x.id === m.id); return u.type !== 'room'; });
+
+    /* available to place */
+    const q = S.availSearch.trim().toLowerCase();
+    const availList = S.units.filter(u => !u.geom).filter(u => !q || u.label.toLowerCase().includes(q) || this.tName(u).toLowerCase().includes(q));
+    const available = availList.map(u => ({
+      id: u.id, label: u.label, typeName: this.tName(u),
+      icon: this.tIcon(u, 15), iconBg: this.tColor(u), iconFg: '#fff',
+      bg: S.placingId === u.id ? 'var(--blue-025)' : '#fff', bd: S.placingId === u.id ? 'var(--blue-300)' : 'var(--ink-200)',
+      placing: S.placingId === u.id,
+      onDown: (e) => this.startDrag({ kind: 'record', id: u.id, type: u.type, label: u.label }, e),
+    }));
+
+    /* tools */
+    const mkTool = (id, label, title) => { const on = S.tool === id; return { id, label, title: title || label, icon: this.icon(id, 16), onClick: () => this.setState({ tool: id, draft: [], calib: [], placingId: null, selected: id === 'select' ? S.selected : [] }), bg: on ? 'var(--blue-500)' : '#fff', bd: on ? 'var(--blue-500)' : 'var(--ink-200)', fg: on ? '#fff' : 'var(--ink-700)' }; };
+    const workTools = [mkTool('select', 'Select', 'Select & move (V)'), mkTool('room', 'Room', 'Draw a room'), mkTool('calibrate', 'Scale', 'Calibrate scale')];
+    const addDefs = [['workstation', 'Desk'], ['locker', 'Locker'], ['parking', 'Parking'], ['asset', 'Asset']];
+    const addTools = addDefs.map(([id, label]) => { const on = S.tool === id; return { id, label, icon: this.icon(id, 13), onDown: (e) => this.startDrag({ kind: 'add', type: id, label: this.TYPE[id].name }, e), bg: on ? 'var(--blue-500)' : '#fff', bd: on ? 'var(--blue-500)' : 'var(--ink-200)', fg: on ? '#fff' : 'var(--ink-700)', chip: on ? 'rgba(255,255,255,0.22)' : this.TYPE[id].color, chipFg: '#fff' }; });
+
+    const toolNames = { select: 'Select & move', room: 'Draw room', calibrate: 'Set scale', workstation: 'Place desks', locker: 'Place lockers', parking: 'Place parking', amenity: 'Place amenities', asset: 'Place assets' };
+    let activeToolHint = 'Click a unit to edit it · drag to move · Shift+drag to select many.';
+    if (S.tool === 'room') activeToolHint = 'Click corners on the plan; click the first point or press Enter to finish.';
+    else if (S.tool === 'calibrate') activeToolHint = 'Click two points a known distance apart to set scale.';
+    else if (this.isPlaceTool()) activeToolHint = 'Click anywhere on the plan to drop one. Keep clicking to add more.';
+    const activeToolName = toolNames[S.tool] || 'Select & move';
+    const activeIcon = this.icon(S.tool === 'select' ? 'select' : S.tool, 17);
+
+    /* legend */
+    const legend = [['workstation', 'Desk'], ['locker', 'Locker'], ['parking', 'Parking'], ['room', 'Room'], ['stairs', 'Stairs'], ['elevator', 'Elevator'], ['asset', 'Asset']].map(([t, l]) => ({ label: l, color: this.TYPE[t].color }));
+
+    /* bottom nav */
+    const navDefs = [['floorplans', 'Floorplans', 'M9 3L4 5v16l5-2 6 2 5-2V3l-5 2-6-2z'], ['bookings', 'Bookings', 'M3 4h18v17H3zM16 2v4M8 2v4M3 10h18'], ['people', 'People', 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8'], ['settings', 'Settings', 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z']];
+    const bottomNav = navDefs.map(([id, label, d]) => { const on = S.nav === id; return { id, label, icon: h('svg', { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' }, h('path', { d })), bg: on ? 'var(--blue-500)' : 'transparent', fg: on ? '#fff' : 'var(--ink-600)', onClick: () => this.setState({ nav: id }) }; });
+
+    /* inspector */
+    let inspector = null;
+    if (S.selected.length === 1) {
+      const u = S.units.find(x => x.id === S.selected[0]);
+      if (u) inspector = { single: true, count: u.label, label: u.label, typeName: this.tName(u), deleteLabel: 'Delete', assigned: !!u.assigned, assignedLabel: u.assignedLabel || '' };
+    } else if (S.selected.length > 1) {
+      inspector = { single: false, count: S.selected.length + ' selected', deleteLabel: 'Delete ' + S.selected.length };
+    }
+
+    /* draft overlay */
+    let draftOverlay = null;
+    if (S.tool === 'room' && S.draft.length) {
+      draftOverlay = h('svg', { key: 'd', width: this.IMG_W, height: this.IMG_H, viewBox: '0 0 ' + this.IMG_W + ' ' + this.IMG_H, style: { position: 'absolute', inset: 0, pointerEvents: 'none' } },
+        h('polyline', { points: S.draft.map(p => (p[0] * this.IMG_W) + ',' + (p[1] * this.IMG_H)).join(' '), fill: 'rgba(0,89,214,0.1)', stroke: '#0059D6', strokeWidth: 2 }),
+        S.draft.map((p, i) => h('circle', { key: i, cx: p[0] * this.IMG_W, cy: p[1] * this.IMG_H, r: 5, fill: '#fff', stroke: '#0059D6', strokeWidth: 2 })));
+    }
+
+    return {
+      topTabs,
+      setStageEl: this.setStageEl, setCanvasEl: this.setCanvasEl,
+      view: S.view, invZ: 1 / S.view.z,
+      canvasCursor: this.isDraw() || S.placingId ? 'crosshair' : 'default',
+      showGrid: S.tool === 'select' ? false : this.isPlaceTool(),
+      draftOverlay,
+      markers: pointMarkers, roomChips: chips, polyAreas,
+      marquee: S.marquee,
+      zoomPct: Math.round(S.view.z * 100) + '%',
+      zoomIn: this.zoomIn, zoomOut: this.zoomOut, zoomFit: this.zoomFit,
+      onCanvasDown: this.onCanvasDown, onCanvasClick: this.onCanvasClick, onCanvasDbl: this.onCanvasDbl,
+      legend,
+      dirty: S.dirty, dirtyText: 'You have unsaved changes', saveChanges: this.saveChanges, discardChanges: this.discardChanges,
+      showDragHint: !S.dirty && S.tool === 'select' && !S.placingId,
+      layerName: this.TYPE[S.layer].name + 's', cycleLayer: () => { const keys = ['workstation', 'locker', 'parking', 'room', 'amenity', 'asset']; const i = keys.indexOf(S.layer); this.setState({ layer: keys[(i + 1) % keys.length] }); },
+      availCount: availList.length, availEmpty: availList.length === 0, available,
+      availSearch: S.availSearch, onAvailSearch: (e) => this.setState({ availSearch: e.target.value }),
+      workTools, addTools, activeToolName, activeToolHint, activeIcon, uploadStub: this.uploadStub,
+      inspector, clearSelection: this.clearSelection, deleteSelected: this.deleteSelected, onLabelChange: this.onLabelChange, unassignSelected: this.unassignSelected,
+      bottomNav,
+      dragGhost: S.dragGhost ? (function (g, self) { const isM = g.kind === 'marker'; const col = isM ? g.color : self.TYPE[g.type].color; const light = g.type === 'workstation'; return { x: g.x, y: g.y, color: col, chipBg: (light && !isM) ? '#fff' : col, chipFg: (light && !isM) ? col : '#fff', icon: isM ? self.chipNode({ iconType: g.iconType, text: g.text, img: g.img, color: col }, 12) : self.icon(g.type, 12), opacity: g.over ? 1 : 0.6 }; })(S.dragGhost, this) : null,
+      rightTab: S.rightTab, isToolsTab: S.rightTab === 'tools', isMarkersTab: S.rightTab === 'markers',
+      setToolsTab: () => this.setState({ rightTab: 'tools' }), setMarkersTab: () => this.setState({ rightTab: 'markers' }),
+      toolsTabBg: S.rightTab === 'tools' ? '#fff' : 'transparent', toolsTabFg: S.rightTab === 'tools' ? 'var(--blue-600)' : 'var(--ink-600)',
+      markersTabBg: S.rightTab === 'markers' ? '#fff' : 'transparent', markersTabFg: S.rightTab === 'markers' ? 'var(--blue-600)' : 'var(--ink-600)',
+      markerTools: (S.markerLib || []).map(def => ({ id: def.id, name: def.name, chipBg: def.color, chip: this.chipNode(def, 13), onDown: (e) => this.startDrag({ kind: 'marker', markerKind: def.id, label: def.name, color: def.color, text: def.text, img: def.img, iconType: def.iconType }, e) })),
+      showNewMarker: S.showNewMarker, hideNewMarker: !S.showNewMarker,
+      openNewMarker: () => this.setState({ showNewMarker: true, nm: { name: '', text: '', img: '', color: '#607796' } }),
+      cancelNewMarker: () => this.setState({ showNewMarker: false }),
+      saveNewMarker: () => { const nm = this.state.nm; if (!nm.name.trim()) { this.toast('Enter a name'); return; } const id = 'm' + Date.now(); this.setState({ markerLib: [...this.state.markerLib, { id, name: nm.name.trim(), color: nm.color, text: (nm.text || nm.name).slice(0, 2).toUpperCase(), img: nm.img.trim() || undefined }], showNewMarker: false }); this.toast('Marker "' + nm.name.trim() + '" added'); },
+      nmName: S.nm.name, nmText: S.nm.text, nmImg: S.nm.img,
+      onNmName: (e) => this.setState({ nm: { ...this.state.nm, name: e.target.value } }),
+      onNmText: (e) => this.setState({ nm: { ...this.state.nm, text: e.target.value } }),
+      onNmImg: (e) => this.setState({ nm: { ...this.state.nm, img: e.target.value } }),
+      nmSwatches: ['#0059D6', '#3C229D', '#29A01E', '#B61919', '#C2761A', '#0EA5A5', '#607796'].map(hex => ({ hex, ring: this.state.nm.color === hex ? '0 0 0 2px #fff, 0 0 0 4px ' + hex : 'none', onClick: () => this.setState({ nm: { ...this.state.nm, color: hex } }) })),
+      toast: S.toast,
+    };
+  }
+}
+</script>
+</body>
+</html>

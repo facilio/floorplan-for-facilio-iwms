@@ -1,0 +1,25 @@
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-lg);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink-600);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-standard), color var(--dur-fast);
+  padding: 0;
+  flex-shrink: 0;
+}
+.btn:hover {
+  background: var(--ink-050);
+  color: var(--ink-900);
+}
+.active {
+  background: var(--blue-025);
+  color: var(--blue-600);
+  border-color: var(--blue-200);
+}
+.active:hover {
+  background: var(--blue-050);
+}

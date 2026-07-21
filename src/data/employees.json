@@ -1,0 +1,72 @@
+[
+  {
+    "id": "e1",
+    "name": "Amrithya",
+    "dept": "Operations"
+  },
+  {
+    "id": "e2",
+    "name": "Jonas Weber",
+    "dept": "Engineering"
+  },
+  {
+    "id": "e3",
+    "name": "Maria Silva",
+    "dept": "Finance"
+  },
+  {
+    "id": "e4",
+    "name": "Anna Schmidt",
+    "dept": "HR"
+  },
+  {
+    "id": "e5",
+    "name": "David Chen",
+    "dept": "Engineering"
+  },
+  {
+    "id": "e6",
+    "name": "Lena Hoffmann",
+    "dept": "Operations"
+  },
+  {
+    "id": "e7",
+    "name": "Tom Becker",
+    "dept": "Engineering"
+  },
+  {
+    "id": "e8",
+    "name": "Sofia Rossi",
+    "dept": "Finance"
+  },
+  {
+    "id": "e9",
+    "name": "Mark Janssen",
+    "dept": "Operations"
+  },
+  {
+    "id": "e10",
+    "name": "Emma Fischer",
+    "dept": "Engineering"
+  },
+  {
+    "id": "e11",
+    "name": "Lukas Braun",
+    "dept": "HR"
+  },
+  {
+    "id": "e12",
+    "name": "Nina Keller",
+    "dept": "Operations"
+  },
+  {
+    "id": "e13",
+    "name": "Omar Haddad",
+    "dept": "Engineering"
+  },
+  {
+    "id": "e14",
+    "name": "Julia Wagner",
+    "dept": "Finance"
+  }
+]

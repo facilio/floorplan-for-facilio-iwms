@@ -1,0 +1,664 @@
+.page {
+  position: absolute;
+  inset: 0;
+  z-index: 80;
+  background: var(--bg-app);
+  overflow-y: auto;
+}
+.inner {
+  max-width: 1360px;
+  margin: 0 auto;
+  /* Extra bottom padding clears the floating bottom nav bar. */
+  padding: 16px 28px 96px;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  box-sizing: border-box;
+}
+
+.headerRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  color: var(--ink-500);
+  margin-bottom: 5px;
+}
+
+/* The portfolio-tab switcher, transplanted into the calendar header. */
+.locSwitcherWrap {
+  position: relative;
+  min-width: 240px;
+  max-width: 320px;
+}
+.locPopover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  width: 300px;
+  max-height: 360px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid var(--ink-200);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  padding: 6px;
+  z-index: 60;
+}
+.crumbSep {
+  color: var(--ink-300);
+}
+.crumbCurrent {
+  color: var(--ink-900);
+  font-weight: 600;
+}
+.h1 {
+  font: 700 20px/1.2 var(--font-sans);
+  color: var(--ink-900);
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+/* Subtitle removed from the layout — it only ate vertical space above the
+   calendar; kept in the DOM as sr-only for context. */
+.sub {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+.myBookings {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 14px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--ink-200);
+  background: #fff;
+  color: var(--ink-700);
+  font: 600 13px/1 var(--font-sans);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.myBookings:hover {
+  background: var(--ink-050);
+}
+.myBookingsActive {
+  border-color: var(--blue-200);
+  color: var(--blue-600);
+}
+.myBadge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--blue-500);
+  color: #fff;
+  font: 700 11px/1 var(--font-sans);
+}
+
+.pickerRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+.catTabs {
+  display: flex;
+  gap: 6px;
+}
+.catTab {
+  height: 34px;
+  padding: 0 14px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--ink-200);
+  background: #fff;
+  color: var(--ink-700);
+  font: 500 13px/1 var(--font-sans);
+  cursor: pointer;
+}
+.catTab:hover {
+  background: var(--ink-050);
+}
+.catTabActive {
+  border-color: var(--blue-300);
+  background: var(--blue-025);
+  color: var(--blue-600);
+  font-weight: 600;
+}
+.resourcePick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 300px;
+}
+.resourcePick > :first-child {
+  min-width: 260px;
+}
+.searchBtn {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--ink-200);
+  background: #fff;
+  color: var(--ink-600);
+  cursor: pointer;
+}
+.searchBtn:hover {
+  background: var(--ink-050);
+}
+.searchInput {
+  margin-top: 10px;
+  align-self: flex-end;
+  width: 300px;
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--blue-300);
+  border-radius: var(--radius-lg);
+  font: 400 13px/1 var(--font-sans);
+  outline: none;
+}
+
+.hint {
+  font-size: 13px;
+  color: var(--ink-600);
+  margin: 16px 0 0;
+}
+.hint strong {
+  color: var(--ink-900);
+}
+
+.calToolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+/* Calendar area wraps the scroll grid + a loading overlay. */
+.calArea {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  animation: calFade 0.25s ease;
+}
+@keyframes calFade {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.calLoading {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(1px);
+  font: 500 13px/1 var(--font-sans);
+  color: var(--ink-600);
+  border-radius: var(--radius-lg);
+}
+.calSpinner {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid var(--ink-200);
+  border-top-color: var(--blue-500);
+  animation: calSpin 0.8s linear infinite;
+}
+@keyframes calSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.viewSeg {
+  display: inline-flex;
+  gap: 3px;
+  padding: 3px;
+  background: var(--ink-050);
+  border: 1px solid var(--ink-200);
+  border-radius: var(--radius-lg);
+}
+.viewBtn {
+  height: 28px;
+  padding: 0 14px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--ink-600);
+  font: 500 12.5px/1 var(--font-sans);
+  cursor: pointer;
+}
+.viewBtnActive {
+  background: var(--blue-500);
+  color: #fff;
+}
+.navGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.navBtn {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--ink-200);
+  background: #fff;
+  color: var(--ink-700);
+  cursor: pointer;
+}
+.navBtn:hover {
+  background: var(--ink-050);
+}
+.todayBtn {
+  height: 32px;
+  padding: 0 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--ink-200);
+  background: #fff;
+  color: var(--ink-700);
+  font: 500 12.5px/1 var(--font-sans);
+  cursor: pointer;
+}
+.todayBtn:hover {
+  background: var(--ink-050);
+}
+.rangeLabel {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--ink-600);
+}
+.rangeLabel strong {
+  color: var(--ink-900);
+}
+
+/* ---- Calendar (day/week) ---- */
+.calWrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--ink-200);
+  border-radius: var(--radius-lg);
+  background: #fff;
+  overflow: hidden;
+}
+.dayHeaderRow {
+  display: flex;
+  border-bottom: 1px solid var(--ink-200);
+  background: var(--ink-050);
+}
+.gutterHead {
+  width: 56px;
+  flex-shrink: 0;
+}
+.dayHead {
+  flex: 1;
+  text-align: center;
+  padding: 10px 4px;
+  font: 600 13px/1 var(--font-sans);
+  color: var(--ink-700);
+  border-left: 1px solid var(--ink-100);
+}
+.dayHeadToday {
+  color: var(--blue-600);
+  background: var(--blue-025);
+}
+.calScroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  /* Breathing room so the first (06:00) and last (22:00) hour labels —
+     absolutely positioned at the calBody edges — aren't clipped by the
+     scroll boundary. Was the "timing hidden at top and bottom" bug. */
+  padding: 12px 0 16px;
+}
+.calBody {
+  display: flex;
+  position: relative;
+}
+.gutter {
+  width: 56px;
+  flex-shrink: 0;
+  position: relative;
+  border-right: 1px solid var(--ink-100);
+}
+.hourLabel {
+  position: absolute;
+  right: 8px;
+  transform: translateY(-6px);
+  font: 500 11px/1 var(--font-sans);
+  color: var(--ink-400);
+}
+.dayCol {
+  flex: 1;
+  position: relative;
+  border-left: 1px solid var(--ink-100);
+  cursor: crosshair;
+}
+.hourCell {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px solid var(--ink-100);
+}
+.block {
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  border-radius: var(--radius-sm);
+  padding: 4px 7px;
+  overflow: hidden;
+  cursor: default;
+  z-index: 2;
+  animation: blockIn 0.22s cubic-bezier(0.2, 0, 0, 1);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+/* Explicit cancel affordance on your own bookings — revealed on hover so blocks stay clean. */
+.blockCancel {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 17px;
+  height: 17px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.28);
+  color: currentColor;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease, background 0.12s ease;
+}
+.block:hover .blockCancel {
+  opacity: 1;
+}
+.blockCancel:hover {
+  background: rgba(255, 255, 255, 0.5);
+}
+@keyframes blockIn {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.blockMine {
+  background: var(--blue-500);
+  color: #fff;
+}
+.blockMine:hover {
+  background: var(--blue-600);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(0, 89, 214, 0.3);
+}
+.blockOther {
+  background: var(--danger-050);
+  border: 1px solid var(--danger-500);
+  color: var(--danger-700);
+  cursor: default;
+}
+.blockTime {
+  font: 600 11px/1.3 var(--font-sans);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.blockName {
+  font: 500 12px/1.3 var(--font-sans);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.selBlock {
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  background: rgba(0, 89, 214, 0.18);
+  border: 1.5px solid var(--blue-500);
+  border-radius: var(--radius-sm);
+  z-index: 3;
+  pointer-events: none;
+  display: flex;
+  align-items: flex-start;
+  padding: 3px 6px;
+}
+.selLabel {
+  font: 600 10.5px/1 var(--font-sans);
+  color: var(--blue-700);
+}
+.nowLine {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  border-top: 2px solid var(--danger-500);
+  z-index: 4;
+  pointer-events: none;
+}
+.nowDot {
+  position: absolute;
+  left: -4px;
+  top: -4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--danger-500);
+  box-shadow: 0 0 0 3px rgba(182, 25, 25, 0.18);
+}
+.nowLabel {
+  position: absolute;
+  left: 6px;
+  top: -8px;
+  font: 700 9px/1 var(--font-sans);
+  color: #fff;
+  background: var(--danger-500);
+  border-radius: 3px;
+  padding: 2px 4px;
+  letter-spacing: 0.02em;
+}
+
+/* ---- Month ---- */
+.monthWrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--ink-200);
+  border-radius: var(--radius-lg);
+  background: #fff;
+  overflow: hidden;
+}
+.monthHead {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  background: var(--ink-050);
+  border-bottom: 1px solid var(--ink-200);
+}
+.monthHeadCell {
+  text-align: center;
+  padding: 9px 0;
+  font: 600 12px/1 var(--font-sans);
+  color: var(--ink-600);
+}
+.monthGrid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  grid-auto-rows: 1fr;
+}
+.monthCell {
+  border-left: 1px solid var(--ink-100);
+  border-top: 1px solid var(--ink-100);
+  background: #fff;
+  min-height: 92px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: stretch;
+  text-align: left;
+  cursor: pointer;
+}
+.monthCell:hover {
+  background: var(--blue-025);
+}
+.monthCellDim {
+  background: var(--ink-050);
+}
+.monthCellDim .monthDate {
+  color: var(--ink-400);
+}
+.monthDate {
+  font: 600 12.5px/1 var(--font-sans);
+  color: var(--ink-700);
+  align-self: flex-start;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+}
+.monthDateToday {
+  background: var(--blue-500);
+  color: #fff;
+}
+.monthBars {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.monthBar {
+  font: 600 10px/1.4 var(--font-sans);
+  color: #fff;
+  background: var(--blue-500);
+  border-radius: 3px;
+  padding: 1px 5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.monthMore {
+  font: 600 10px/1 var(--font-sans);
+  color: var(--ink-500);
+}
+
+/* ---- Resource grid ---- */
+.rgWrap {
+  flex: 1;
+  border: 1px solid var(--ink-200);
+  border-radius: var(--radius-lg);
+  background: #fff;
+  overflow: hidden;
+}
+.rgScroll {
+  overflow: auto;
+  max-height: 100%;
+}
+.rgTable {
+  border-collapse: collapse;
+  width: 100%;
+}
+.rgCorner,
+.rgDayHead {
+  position: sticky;
+  top: 0;
+  background: var(--ink-050);
+  padding: 11px 14px;
+  font: 600 12.5px/1 var(--font-sans);
+  color: var(--ink-700);
+  text-align: left;
+  border-bottom: 1px solid var(--ink-200);
+  z-index: 1;
+}
+.rgDayHead {
+  text-align: center;
+  white-space: nowrap;
+}
+.rgName {
+  padding: 8px 14px;
+  font: 600 13px/1 var(--font-sans);
+  color: var(--ink-900);
+  border-bottom: 1px solid var(--ink-100);
+  white-space: nowrap;
+}
+.rgCell {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--ink-100);
+  border-left: 1px solid var(--ink-100);
+  text-align: center;
+}
+.rgPill {
+  min-width: 74px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  font: 600 11.5px/1 var(--font-sans);
+  cursor: pointer;
+}
+.rgPillFree {
+  background: var(--success-050);
+  color: var(--success-700);
+  border-color: rgba(41, 160, 30, 0.25);
+}
+.rgPillBooked {
+  background: var(--blue-025);
+  color: var(--blue-600);
+  border-color: var(--blue-200);
+}
+
+/* ---- Empty states ---- */
+.empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 60px 24px;
+  text-align: center;
+}
+.emptyTitle {
+  font: 600 16px/1.3 var(--font-sans);
+  color: var(--ink-900);
+}
+.emptySub {
+  font-size: 13px;
+  color: var(--ink-600);
+  max-width: 380px;
+}

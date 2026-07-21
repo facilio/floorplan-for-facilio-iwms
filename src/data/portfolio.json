@@ -1,0 +1,99 @@
+[
+  {
+    "id": "sBer",
+    "name": "HQ Berlin",
+    "buildings": [
+      {
+        "id": "bA",
+        "name": "Building A",
+        "floors": [
+          {
+            "id": "hqA1",
+            "name": "Floor 1"
+          },
+          {
+            "id": "hqA2",
+            "name": "Floor 2"
+          },
+          {
+            "id": "hqA3",
+            "name": "Floor 3",
+            "hasPlan": true,
+            "plans": [
+              {
+                "id": "workstation",
+                "name": "Workstations"
+              },
+              {
+                "id": "locker",
+                "name": "Lockers"
+              },
+              {
+                "id": "parking",
+                "name": "Parking stalls"
+              },
+              {
+                "id": "custom",
+                "name": "Custom"
+              }
+            ]
+          },
+          {
+            "id": "hqA4",
+            "name": "Floor 4"
+          }
+        ]
+      },
+      {
+        "id": "bB",
+        "name": "Building B",
+        "floors": [
+          {
+            "id": "hqB1",
+            "name": "Floor 1"
+          },
+          {
+            "id": "hqB2",
+            "name": "Floor 2"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "sMuc",
+    "name": "Campus München",
+    "buildings": [
+      {
+        "id": "mH1",
+        "name": "Haus 1",
+        "floors": [
+          {
+            "id": "mucH1EG",
+            "name": "Erdgeschoss"
+          },
+          {
+            "id": "mucH1O1",
+            "name": "Obergeschoss 1"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "sAms",
+    "name": "Amsterdam Office",
+    "buildings": [
+      {
+        "id": "aM",
+        "name": "Main building",
+        "floors": [
+          {
+            "id": "amsM1",
+            "name": "Floor 1"
+          }
+        ]
+      }
+    ]
+  }
+]

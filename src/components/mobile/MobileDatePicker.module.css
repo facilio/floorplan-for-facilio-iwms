@@ -1,0 +1,103 @@
+.backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 9;
+  background: rgba(14, 23, 38, 0.35);
+}
+.sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+  background: #fff;
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -8px 24px rgba(40, 54, 72, 0.24);
+  padding: 10px 14px calc(16px + env(safe-area-inset-bottom));
+}
+.handle {
+  width: 36px;
+  height: 4px;
+  background: var(--ink-200);
+  border-radius: 999px;
+  margin: 0 auto 12px;
+}
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.monthLabel {
+  font: 700 15px/1 var(--font-sans);
+  color: var(--ink-900);
+}
+.navBtn {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--ink-200);
+  border-radius: var(--radius-lg);
+  background: #fff;
+  color: var(--ink-700);
+  cursor: pointer;
+}
+.navBtn:active {
+  background: var(--ink-050);
+}
+.weekRow {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  margin-bottom: 4px;
+}
+.weekCell {
+  text-align: center;
+  font: 700 10px/1 var(--font-sans);
+  color: var(--ink-400);
+  padding: 4px 0;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+.day {
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: var(--ink-900);
+  font: 600 14px/1 var(--font-sans);
+  cursor: pointer;
+}
+.day:active {
+  background: var(--ink-050);
+}
+.dayDim {
+  color: var(--ink-300);
+}
+.dayToday {
+  color: var(--blue-600);
+  box-shadow: inset 0 0 0 1.5px var(--blue-200);
+}
+.daySel {
+  background: var(--blue-500);
+  color: #fff;
+}
+.todayBtn {
+  width: 100%;
+  height: 40px;
+  margin-top: 12px;
+  border: 1px solid var(--ink-200);
+  border-radius: var(--radius-lg);
+  background: #fff;
+  color: var(--blue-600);
+  font: 600 13px/1 var(--font-sans);
+  cursor: pointer;
+}
+.todayBtn:active {
+  background: var(--blue-025);
+}

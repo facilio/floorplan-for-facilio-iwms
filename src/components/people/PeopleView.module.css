@@ -1,0 +1,115 @@
+.page {
+  position: absolute;
+  inset: 0;
+  z-index: 80;
+  background: var(--bg-app);
+  overflow-y: auto;
+}
+.inner {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 28px 20px 96px;
+}
+.head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.h1 {
+  font: 700 26px/1.2 var(--font-sans);
+  color: var(--ink-900);
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+.sub {
+  font-size: 13.5px;
+  color: var(--ink-600);
+  margin: 4px 0 0;
+}
+.search {
+  width: 260px;
+  height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--ink-200);
+  border-radius: var(--radius-lg);
+  font: 400 13px/1 var(--font-sans);
+  background: #fff;
+  outline: none;
+}
+.search:focus {
+  border-color: var(--blue-400);
+  box-shadow: var(--shadow-focus);
+}
+.list {
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border: 1px solid var(--ink-200);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--ink-100);
+}
+.row:last-child {
+  border-bottom: none;
+}
+.avatar {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--blue-050);
+  color: var(--blue-600);
+  display: grid;
+  place-items: center;
+  font: 700 12px/1 var(--font-sans);
+}
+.meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.name {
+  font: 600 14px/1.2 var(--font-sans);
+  color: var(--ink-900);
+}
+.dept {
+  font-size: 12px;
+  color: var(--ink-500);
+}
+.deskPill {
+  font: 600 11.5px/1 var(--font-sans);
+  color: var(--blue-600);
+  background: var(--blue-025);
+  border: 1px solid var(--blue-200);
+  border-radius: var(--radius-pill);
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+.openLink {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-md);
+  color: var(--ink-500);
+}
+.openLink:hover {
+  background: var(--ink-050);
+  color: var(--blue-600);
+}
+.empty {
+  padding: 48px;
+  text-align: center;
+  color: var(--ink-500);
+  font-size: 14px;
+}

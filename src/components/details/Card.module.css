@@ -1,0 +1,61 @@
+.card {
+  background: #fff;
+  border: 1px solid var(--ink-200);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.cardHead {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--ink-100);
+}
+.cardTitle {
+  margin: 0;
+  font: 600 13px/1.2 var(--font-sans);
+  color: var(--ink-900);
+}
+.cardBody {
+  padding: 12px 14px;
+}
+.label {
+  display: block;
+  font: 500 11px/1 var(--font-sans);
+  color: var(--ink-600);
+  margin-bottom: 6px;
+}
+.input {
+  width: 100%;
+  height: 34px;
+  border: 1px solid var(--ink-200);
+  border-radius: var(--radius-sm);
+  padding: 0 10px;
+  font: 400 13px/1 var(--font-sans);
+  color: var(--ink-900);
+  outline: none;
+  box-sizing: border-box;
+}
+.input:focus {
+  border-color: var(--blue-500);
+  box-shadow: var(--shadow-focus);
+}
+.statRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 0;
+  border-top: 1px solid var(--ink-100);
+  font-size: 12px;
+}
+.statLabel {
+  color: var(--ink-500);
+}
+.statValue {
+  color: var(--ink-900);
+  font-weight: 500;
+  text-align: right;
+}
+.helper {
+  font-size: 11px;
+  color: var(--ink-500);
+  line-height: 1.5;
+  margin: 0 0 10px;
+}

@@ -1,0 +1,2782 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/facilio-atom-design-system-262fe304-f14e-49f6-a3e4-920d99af3d20/colors_and_type.css">
+  <link rel="stylesheet" href="_ds/facilio-atom-design-system-262fe304-f14e-49f6-a3e4-920d99af3d20/ui_kits/web_dashboard/styles.css">
+  <script src="_ds/facilio-atom-design-system-262fe304-f14e-49f6-a3e4-920d99af3d20/_ds_bundle.js"></script>
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; }
+    a { color: #0059D6; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    input, select, button, textarea { font-family: "Roboto", system-ui, sans-serif; }
+    @keyframes fp-toast { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+    @keyframes fp-panel-in { from { opacity: 0; transform: scale(0.965) translateY(-6px); } to { opacity: 1; transform: none; } }
+    @keyframes fp-icon-in { from { opacity: 0; transform: scale(0.7); } to { opacity: 1; transform: scale(1); } }
+    /* responsive: tighten command bar before it can clip */
+    @media (max-width: 1280px) {
+      .fp-hdr-mid { display: none !important; }
+    }
+    @media (max-width: 1060px) {
+      .fp-toolbar { gap: 5px !important; }
+      .fp-toolbar input[type="date"] { width: 112px; }
+      .fp-toolbar button, .fp-toolbar select { flex-shrink: 0; }
+    }
+    /* responsive: phone-width layout */
+    @media (max-width: 760px) {
+      .fp-nav, .fp-port, .fp-picon, .fp-legend, .fp-preview, .fp-reset { display: none !important; }
+      .fp-toolbar { padding: 0 8px !important; overflow-x: auto; }
+      .fp-hdr-mid { display: none !important; }
+      .fp-ctx { left: 10px !important; top: 66px !important; width: calc(100vw - 20px) !important; }
+      .fp-det { left: 0 !important; top: auto !important; bottom: 60px !important; width: 100vw !important; max-height: 42vh !important; border-radius: 16px 16px 0 0 !important; }
+      .fp-zoom { bottom: 72px !important; right: 10px !important; }
+      .fp-tabbar { display: flex !important; }
+    }
+  </style>
+</helmet>
+
+<div class="fds" style="position:relative; height:100vh; display:flex; background:#EEF3F9; overflow:hidden; font-family:var(--font-sans);" data-screen-label="{{ modeLabel }}">
+
+  <!-- ══════════ Icon-rail nav (collapsible) ══════════ -->
+  <div class="fp-nav" style="width: {{ navW }}; flex-shrink:0; background:#0E1726; border-right:1px solid rgba(255,255,255,0.08); display:flex; flex-direction:column; z-index:45; transition: width 200ms cubic-bezier(0.2,0,0,1); overflow:hidden;">
+    <div style="display:flex; align-items:center; height:60px; padding:0 16px; gap:10px; border-bottom:1px solid rgba(255,255,255,0.08); flex-shrink:0;">
+      <span class="logo" style="font-size:20px; flex-shrink:0; color:#fff;">facilio<span class="dot"></span><span class="sq"></span></span>
+      <sc-if value="{{ navOpen }}" hint-placeholder-val="{{ false }}"><span class="logo-sub" style="color:rgba(255,255,255,0.55);">Atom</span></sc-if>
+      <button class="icon-btn" onClick="{{ toggleNav }}" title="Toggle menu" style="width:28px; height:28px; margin-left:auto; flex-shrink:0; color:rgba(255,255,255,0.8);">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h18M3 6h18M3 18h18"></path></svg>
+      </button>
+    </div>
+    <div style="flex:1; padding:12px; display:flex; flex-direction:column; gap:4px; overflow:hidden;">
+      <div onClick="{{ openMap }}" title="Floorplans" style="display:flex; align-items:center; gap:12px; height:40px; padding:0 12px; border-radius:8px; background: {{ navMapBg }}; color: {{ navMapFg }}; font:500 13px/1 var(--font-sans); cursor:pointer; white-space:nowrap;">
+        <svg width="18" height="18" style="flex-shrink:0;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3L4 5v16l5-2 6 2 5-2V3l-5 2-6-2z"></path><path d="M9 3v16M15 5v16"></path></svg>
+        <sc-if value="{{ navOpen }}" hint-placeholder-val="{{ false }}"><span>Floorplans</span></sc-if>
+      </div>
+      <div title="Bookings" style="display:flex; align-items:center; gap:12px; height:40px; padding:0 12px; border-radius:8px; color:rgba(255,255,255,0.62); font:500 13px/1 var(--font-sans); cursor:pointer; white-space:nowrap;" style-hover="background: rgba(255,255,255,0.08); color: #fff;">
+        <svg width="18" height="18" style="flex-shrink:0;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"></rect><path d="M16 2v4M8 2v4M3 10h18"></path></svg>
+        <sc-if value="{{ navOpen }}" hint-placeholder-val="{{ false }}"><span style="flex:1;">Bookings</span><span class="nav-badge">{{ bookingCount }}</span></sc-if>
+      </div>
+      <div title="People" style="display:flex; align-items:center; gap:12px; height:40px; padding:0 12px; border-radius:8px; color:rgba(255,255,255,0.62); font:500 13px/1 var(--font-sans); cursor:pointer; white-space:nowrap;" style-hover="background: rgba(255,255,255,0.08); color: #fff;">
+        <svg width="18" height="18" style="flex-shrink:0;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+        <sc-if value="{{ navOpen }}" hint-placeholder-val="{{ false }}"><span>People</span></sc-if>
+      </div>
+      <div style="flex:1;"></div>
+      <div onClick="{{ openSettings }}" title="Settings" style="display:flex; align-items:center; gap:12px; height:40px; padding:0 12px; border-radius:8px; background: {{ navSettingsBg }}; color: {{ navSettingsFg }}; font:500 13px/1 var(--font-sans); cursor:pointer; white-space:nowrap;" style-hover="background: rgba(255,255,255,0.08);">
+        <svg width="18" height="18" style="flex-shrink:0;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+        <sc-if value="{{ navOpen }}" hint-placeholder-val="{{ false }}"><span>Settings</span></sc-if>
+      </div>
+    </div>
+    <div style="border-top:1px solid rgba(255,255,255,0.08); padding:12px; flex-shrink:0;">
+      <sc-if value="{{ navOpen }}" hint-placeholder-val="{{ false }}">
+        <div style="font:600 9px/1 var(--font-sans); color:rgba(255,255,255,0.45); text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px;">Viewing as</div>
+        <div style="display:flex; gap:3px; background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.12); border-radius:8px; padding:3px; margin-bottom:12px;">
+          <sc-for list="{{ roleChips }}" as="rc" hint-placeholder-count="3">
+            <button onClick="{{ rc.onClick }}" style="flex:1; height:26px; border:none; border-radius:5px; background: {{ rc.bg }}; color: {{ rc.fg }}; font:600 10.5px/1 var(--font-sans); cursor:pointer;">{{ rc.name }}</button>
+          </sc-for>
+        </div>
+      </sc-if>
+      <div style="display:flex; align-items:center; gap:10px; white-space:nowrap;">
+        <span class="avatar" style="flex-shrink:0;">AK</span>
+        <sc-if value="{{ navOpen }}" hint-placeholder-val="{{ false }}">
+          <span style="min-width:0; overflow:hidden;"><span style="display:block; font:500 12px/1.2 var(--font-sans); color:#fff; overflow:hidden; text-overflow:ellipsis;">Amelia Koch</span><span style="display:block; font:400 11px/1.3 var(--font-sans); color:rgba(255,255,255,0.5);">{{ currentRoleName }}</span></span>
+        </sc-if>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ Stage (full-bleed map) ══════════ -->
+  <div ref="{{ setStageEl }}" style="flex:1; position:relative; min-width:0; background: radial-gradient(circle, rgba(96,119,150,0.15) 1px, transparent 1.4px) 0 0 / 24px 24px, #EEF3F9;">
+
+    <!-- ══ Location panel (draggable) ══ -->
+    <!-- ══ Location + Portfolio + Spaces (combined, draggable) ══ -->
+    <sc-if value="{{ panelPort.open }}" hint-placeholder-val="{{ true }}">
+      <div class="fp-port" style="position:absolute; left: {{ panelPort.x }}px; top: {{ panelPort.y }}px; z-index:42; width:248px; max-height: {{ panelPort.maxH }}px; display:flex; flex-direction:column; background:rgba(255,255,255,0.93); backdrop-filter:blur(14px); border:1px solid rgba(216,227,241,0.9); border-radius:14px; box-shadow:0 20px 50px rgba(5,16,30,0.42); overflow:hidden; animation: fp-panel-in 180ms cubic-bezier(0.2,0,0,1);" data-screen-label="Location & portfolio">
+        <div onMouseDown="{{ panelPort.headerDown }}" style="display:flex; align-items:center; gap:7px; padding:7px 8px 7px 12px; border-bottom:1px solid var(--ink-100); cursor:grab; flex-shrink:0;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--ink-400)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><circle cx="9" cy="6" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="18" r="1"></circle><circle cx="15" cy="6" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="18" r="1"></circle></svg>
+          <span style="flex:1; font:600 12px/1 var(--font-sans); color:var(--ink-600);">Location</span>
+          <button onClick="{{ panelPort.toggle }}" title="Collapse" class="icon-btn" style="width:24px; height:24px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"></path></svg>
+          </button>
+        </div>
+        <!-- portfolio tree -->
+        <div onClick="{{ togglePort }}" style="display:flex; align-items:center; gap:6px; padding:9px 12px 4px; flex-shrink:0; cursor:pointer; user-select:none;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--ink-500)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="transform: rotate({{ portChevRot }}); transition: transform 120ms cubic-bezier(0.2,0,0,1); flex-shrink:0;"><path d="M9 18l6-6-6-6"></path></svg>
+          <span style="flex:1; font:600 10px/1 var(--font-sans); color:var(--ink-500); text-transform:uppercase; letter-spacing:.05em;">Portfolio</span>
+        </div>
+        <sc-if value="{{ portOpen }}" hint-placeholder-val="{{ true }}">
+        <div style="max-height:190px; overflow-y:auto; padding:0 6px 6px; display:flex; flex-direction:column; gap:1px; flex-shrink:0; border-bottom:1px solid var(--ink-100);">
+          <sc-for list="{{ treeItems }}" as="n" hint-placeholder-count="8">
+            <div onClick="{{ n.onClick }}" style="display:flex; align-items:center; gap:6px; padding:6px 8px 6px {{ n.pad }}; border-radius:4px; cursor:pointer; background: {{ n.bg }}; color: {{ n.fg }}; font:500 12.5px/1.2 var(--font-sans); user-select:none;" style-hover="background: var(--ink-050);">
+              <sc-if value="{{ n.hasChildren }}" hint-placeholder-val="{{ false }}">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transform: rotate({{ n.rot }}); transition: transform 120ms cubic-bezier(0.2,0,0,1); color:var(--ink-500); flex-shrink:0;"><path d="M9 18l6-6-6-6"></path></svg>
+              </sc-if>
+              <sc-if value="{{ n.isSite }}" hint-placeholder-val="{{ false }}">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0; color:var(--ink-600);"><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 0 1 16 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+              </sc-if>
+              <sc-if value="{{ n.isBuilding }}" hint-placeholder-val="{{ false }}">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0; color:var(--ink-600);"><rect x="4" y="2" width="16" height="20" rx="1"></rect><path d="M9 22v-4h6v4M8 6h.01M16 6h.01M12 6h.01M8 10h.01M16 10h.01M12 10h.01M8 14h.01M16 14h.01M12 14h.01"></path></svg>
+              </sc-if>
+              <sc-if value="{{ n.isFloor }}" hint-placeholder-val="{{ false }}">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M12 2L2 7l10 5 10-5-10-5z"></path><path d="M2 12l10 5 10-5"></path><path d="M2 17l10 5 10-5"></path></svg>
+              </sc-if>
+              <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ n.name }}</span>
+              <sc-if value="{{ n.badge }}" hint-placeholder-val="{{ false }}">
+                <span style="font:600 10px/1 var(--font-sans); color:var(--ink-500); background:var(--ink-100); border-radius:999px; padding:2px 6px; flex-shrink:0;">{{ n.badge }}</span>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+        </sc-if>
+        <!-- spaces search + list -->
+        <div style="padding:9px 10px 8px; flex-shrink:0; border-bottom:1px solid var(--ink-100);">
+          <div style="font:600 10px/1 var(--font-sans); color:var(--ink-500); text-transform:uppercase; letter-spacing:.05em; margin-bottom:7px;">Spaces</div>
+          <input placeholder="Search spaces…" value="{{ spaceSearch }}" onChange="{{ onSpaceSearch }}"
+                 style="width:100%; height:32px; border:1px solid var(--ink-200); border-radius:6px; padding:0 10px; font:400 12.5px/1 var(--font-sans); color:var(--ink-900); outline:none; background:var(--ink-050);"
+                 style-focus="border-color: var(--blue-500); box-shadow: var(--shadow-focus); background:#fff;">
+          <div style="display:flex; gap:4px; margin-top:8px; flex-wrap:wrap;">
+            <sc-for list="{{ typeChips }}" as="tc" hint-placeholder-count="5">
+              <button onClick="{{ tc.onClick }}" style="height:24px; padding:0 9px; border-radius:999px; border:1px solid {{ tc.bd }}; background: {{ tc.bg }}; color: {{ tc.fg }}; font:500 11px/1 var(--font-sans); cursor:pointer;">{{ tc.name }}</button>
+            </sc-for>
+          </div>
+        </div>
+        <div style="flex:1; min-height:0; overflow-y:auto; padding:5px 6px 8px; display:flex; flex-direction:column; gap:1px;">
+          <sc-for list="{{ spaceRows }}" as="sr" hint-placeholder-count="8">
+            <div onClick="{{ sr.onClick }}" style="display:flex; align-items:center; gap:8px; padding:7px 8px; border-radius:6px; cursor:pointer; background: {{ sr.bg }};" style-hover="background: var(--ink-050);">
+              <span style="width:8px; height:8px; border-radius:999px; background: {{ sr.dot }}; flex-shrink:0;"></span>
+              <span style="flex:1; min-width:0;">
+                <span style="display:block; font:600 12.5px/1.2 var(--font-sans); color:var(--ink-900);">{{ sr.label }}</span>
+                <span style="display:block; font:400 10.5px/1.3 var(--font-sans); color:var(--ink-500); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ sr.sub }}</span>
+              </span>
+              <span style="flex-shrink:0; font:500 10px/1.2 var(--font-sans); color:var(--ink-600); max-width:86px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ sr.status }}</span>
+            </div>
+          </sc-for>
+          <sc-if value="{{ noSpaceRows }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:12px; font-size:12px; color:var(--ink-500);">No spaces match.</div>
+          </sc-if>
+        </div>
+      </div>
+    </sc-if>
+    <sc-if value="{{ panelPort.closed }}" hint-placeholder-val="{{ false }}">
+      <div class="fp-picon" onMouseDown="{{ panelPort.iconDown }}" onClick="{{ panelPort.iconClick }}" title="Open Location" style="position:absolute; left: {{ panelPort.x }}px; top: {{ panelPort.y }}px; z-index:42; width:46px; height:46px; border-radius:12px; background:rgba(255,255,255,0.93); backdrop-filter:blur(10px); border:1px solid rgba(216,227,241,0.9); box-shadow:0 12px 32px rgba(5,16,30,0.4); display:grid; place-items:center; cursor:grab; color:var(--ink-700); animation: fp-icon-in 160ms cubic-bezier(0.2,0,0,1);">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 0 1 16 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+      </div>
+    </sc-if>
+
+      <!-- floating mode toolbar (centered in free space, never overlaps side cards) -->
+      <div class="fp-toolbar" style="position:absolute; top:0; left:0; right:0; height:56px; z-index:46; background:#fff; border-bottom:1px solid var(--ink-200); display:flex; align-items:center; gap:8px; padding:0 12px; overflow-x:auto;">
+        <button onClick="{{ panelPort.toggle }}" title="Change floor" style="display:inline-flex; align-items:center; gap:8px; height:36px; padding:0 10px; border-radius:6px; border:1px solid var(--ink-200); background:#fff; cursor:pointer; font:600 13px/1 var(--font-sans); color:var(--ink-900); white-space:nowrap; flex-shrink:0;" style-hover="background: var(--ink-050);">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="color:var(--ink-600);"><rect x="4" y="2" width="16" height="20" rx="1"></rect><path d="M9 22v-4h6v4"></path></svg>
+          {{ floorName }}
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--ink-500);"><path d="M6 9l6 6 6-6"></path></svg>
+        </button>
+        <sc-if value="{{ hasPlans }}" hint-placeholder-val="{{ true }}">
+          <select value="{{ planId }}" onChange="{{ onPlanChange }}" style="height:36px; border:1px solid var(--ink-200); border-radius:6px; padding:0 8px; font:500 12px/1 var(--font-sans); color:var(--ink-700); background:#fff; outline:none; cursor:pointer; flex-shrink:0;" style-focus="border-color: var(--blue-500); box-shadow: var(--shadow-focus);">
+            <sc-for list="{{ planOptions }}" as="p" hint-placeholder-count="3">
+              <option value="{{ p.id }}">{{ p.name }}</option>
+            </sc-for>
+          </select>
+        </sc-if>
+        <span class="fp-hdr-mid" style="font-size:11px; color:var(--ink-500); white-space:nowrap;">{{ countsText }}</span>
+        <sc-if value="{{ isBook }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex; align-items:center; gap:6px; padding-left:8px; border-left:1px solid var(--ink-100);">
+            <input type="date" value="{{ dateVal }}" onChange="{{ onDate }}" style="height:36px; border:1px solid var(--ink-200); border-radius:6px; padding:0 8px; font:400 12px/1 var(--font-sans); color:var(--ink-900); outline:none;" style-focus="border-color: var(--blue-500); box-shadow: var(--shadow-focus);">
+            <select value="{{ bookStart }}" onChange="{{ onStart }}" style="height:36px; border:1px solid var(--ink-200); border-radius:6px; padding:0 6px; font:400 12px/1 var(--font-sans); color:var(--ink-900); outline:none; background:#fff;">
+              <sc-for list="{{ timeOptions }}" as="t" hint-placeholder-count="4"><option value="{{ t.v }}">{{ t.label }}</option></sc-for>
+            </select>
+            <span style="color:var(--ink-500); font-size:12px;">–</span>
+            <select value="{{ bookEnd }}" onChange="{{ onEnd }}" style="height:36px; border:1px solid var(--ink-200); border-radius:6px; padding:0 6px; font:400 12px/1 var(--font-sans); color:var(--ink-900); outline:none; background:#fff;">
+              <sc-for list="{{ timeOptions }}" as="t" hint-placeholder-count="4"><option value="{{ t.v }}">{{ t.label }}</option></sc-for>
+            </select>
+            <span class="badge b-done fp-hdr-mid">{{ availText }}</span>
+          </div>
+        </sc-if>
+        <div style="flex:1;"></div>
+        <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
+          <div style="display:flex; gap:3px; background:var(--ink-050); border:1px solid var(--ink-200); border-radius:8px; padding:3px;">
+            <sc-if value="{{ showAssignBtn }}" hint-placeholder-val="{{ true }}">
+              <button onClick="{{ setAssign }}" style="height:32px; padding:0 12px; border:none; border-radius:6px; background: {{ modeBtn.assign.bg }}; color: {{ modeBtn.assign.fg }}; box-shadow: {{ modeBtn.assign.sh }}; font:500 12.5px/1 var(--font-sans); cursor:pointer; white-space:nowrap;">Assignment</button>
+            </sc-if>
+            <sc-if value="{{ showBookBtn }}" hint-placeholder-val="{{ true }}">
+              <button onClick="{{ setBook }}" style="height:32px; padding:0 12px; border:none; border-radius:6px; background: {{ modeBtn.book.bg }}; color: {{ modeBtn.book.fg }}; box-shadow: {{ modeBtn.book.sh }}; font:500 12.5px/1 var(--font-sans); cursor:pointer; white-space:nowrap;">Booking</button>
+            </sc-if>
+          </div>
+          <sc-if value="{{ showEditBtn }}" hint-placeholder-val="{{ false }}">
+          <button onClick="{{ toggleEdit }}" title="{{ editTitle }}" style="display:inline-flex; align-items:center; gap:6px; height:38px; padding:0 11px; border-radius:8px; border:1px solid {{ editBtn.bd }}; background: {{ editBtn.bg }}; color: {{ editBtn.fg }}; font:500 12.5px/1 var(--font-sans); cursor:pointer; white-space:nowrap;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"></path></svg>
+            Edit
+          </button>
+          </sc-if>
+          <sc-if value="{{ hasMyDesk }}" hint-placeholder-val="{{ false }}">
+            <button onClick="{{ locateMyDesk }}" title="Locate my desk" style="display:inline-flex; align-items:center; gap:6px; height:38px; padding:0 11px; border-radius:8px; border:1px solid var(--blue-200); background:var(--blue-025); color:var(--blue-600); font:600 12.5px/1 var(--font-sans); cursor:pointer; white-space:nowrap;" style-hover="background: var(--blue-050);">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v3M12 19v3M2 12h3M19 12h3"></path><circle cx="12" cy="12" r="4"></circle></svg>
+              My desk
+            </button>
+          </sc-if>
+          <button onClick="{{ toggleMobile }}" title="Mobile preview" style="display:inline-flex; align-items:center; justify-content:center; width:38px; height:38px; border-radius:8px; border:1px solid {{ mobBtnBd }}; background: {{ mobBtnBg }}; color: {{ mobBtnFg }}; cursor:pointer;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="3"></rect><path d="M11 18h2"></path></svg>
+          </button>
+          <button onClick="{{ togglePanel }}" title="{{ panelToggleLabel }}" style="display:inline-flex; align-items:center; justify-content:center; width:38px; height:38px; border-radius:8px; border:1px solid {{ panelToggleBd }}; background: {{ panelToggleBg }}; color: {{ panelToggleFg }}; cursor:pointer;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M15 3v18"></path></svg>
+          </button>
+        </div>
+      </div>
+
+        <sc-if value="{{ noPlan }}" hint-placeholder-val="{{ false }}">
+          <div class="empty" style="position:absolute; inset:0; padding-top:56px;">
+            <div class="ill">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3L4 5v16l5-2 6 2 5-2V3l-5 2-6-2z"></path><path d="M9 3v16M15 5v16"></path></svg>
+            </div>
+            <h3>No floorplan yet</h3>
+            <p>Upload a rendered plan for {{ floorName }} to start mapping rooms, desks, lockers, and parking stalls.</p>
+            <button class="btn btn-secondary" onClick="{{ uploadStub }}" style="margin-top:14px;">Upload floorplan</button>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ hasPlan }}" hint-placeholder-val="{{ true }}">
+        <div ref="{{ setCanvasEl }}" onMouseDown="{{ onCanvasMouseDown }}" onClick="{{ onCanvasClick }}" onDoubleClick="{{ onCanvasDblClick }}"
+             style="position:absolute; inset:0; overflow:hidden; background:transparent; cursor: {{ canvasCursor }}; user-select:none;">
+
+          <!-- plane -->
+          <div style="position:absolute; left:0; top:0; width:1492px; height:1054px; transform: translate({{ view.tx }}px, {{ view.ty }}px) scale({{ view.z }}); transform-origin:0 0; --inv: {{ invZ }};">
+            <img src="assets/floorplan.png" draggable="false" style="position:absolute; left:0; top:0; width:1492px; height:1054px; border-radius:6px; box-shadow: 0 8px 40px rgba(40,54,72,0.18); pointer-events:none;">
+
+            <!-- room polygons -->
+            <sc-for list="{{ rooms }}" as="r" hint-placeholder-count="3">
+              <div onClick="{{ r.onClick }}" style="position:absolute; inset:0; clip-path: {{ r.clip }}; background: {{ r.fill }}; cursor:pointer;"></div>
+            </sc-for>
+
+            <!-- draft / calibration / selection overlay -->
+            {{ draftOverlay }}
+
+            <!-- room label chips -->
+            <sc-for list="{{ roomLabels }}" as="rl" hint-placeholder-count="3">
+              <div style="position:absolute; left: {{ rl.left }}; top: {{ rl.top }}; transform: translate(-50%,-50%) scale(var(--inv)); pointer-events:none; display:flex; flex-direction:column; align-items:center; gap:2px;">
+                <span style="background: {{ rl.bg }}; color: {{ rl.fg }}; border:1px solid {{ rl.bd }}; border-radius:4px; padding:3px 8px; font:600 11px/1 var(--font-sans); box-shadow:var(--shadow-xs); white-space:nowrap;">{{ rl.label }}</span>
+                <sc-if value="{{ rl.sub }}" hint-placeholder-val="{{ false }}">
+                  <span style="background:rgba(255,255,255,0.92); color: {{ rl.subFg }}; border-radius:4px; padding:2px 6px; font:500 10px/1 var(--font-sans); white-space:nowrap;">{{ rl.sub }}</span>
+                </sc-if>
+              </div>
+            </sc-for>
+
+            <!-- point markers -->
+            <sc-for list="{{ markers }}" as="m" hint-placeholder-count="8">
+              <div title="{{ m.title }}" onClick="{{ m.onClick }}" onMouseEnter="{{ m.onMouseEnter }}" onMouseLeave="{{ m.onMouseLeave }}" onDragOver="{{ m.onDragOver }}" onDragLeave="{{ m.onDragLeave }}" onDrop="{{ m.onDrop }}"
+                   style="position:absolute; left: {{ m.left }}; top: {{ m.top }}; width: {{ m.size }}; height: {{ m.size }}; transform: translate(-50%,-50%) scale(var(--inv)); background: {{ m.bg }}; border: 2px {{ m.borderStyle }} {{ m.bd }}; color: {{ m.fg }}; border-radius: {{ m.radius }}; box-shadow: {{ m.shadow }}; opacity: {{ m.opacity }}; display:flex; align-items:center; justify-content:center; cursor:pointer; z-index: {{ m.zi }}; transition: box-shadow 120ms, transform 120ms;">
+                <sc-if value="{{ m.occ }}" hint-placeholder-val="{{ false }}">
+                  <span style="font:700 9px/1 var(--font-sans); letter-spacing:0;">{{ m.occ }}</span>
+                </sc-if>
+                <sc-if value="{{ m.iconWs }}" hint-placeholder-val="{{ false }}">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"></rect><path d="M8 20h8M12 16v4"></path></svg>
+                </sc-if>
+                <sc-if value="{{ m.iconLk }}" hint-placeholder-val="{{ false }}">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>
+                </sc-if>
+                <sc-if value="{{ m.iconPk }}" hint-placeholder-val="{{ false }}">
+                  <span style="font:700 11px/1 var(--font-sans);">P</span>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+
+          <!-- hover quick-details chip -->
+          <sc-if value="{{ hoverInfo }}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute; left: {{ hoverInfo.left }}; top: {{ hoverInfo.top }}; transform: {{ hoverInfo.transform }}; z-index:21; pointer-events:none; background:var(--ink-900); color:#fff; border-radius:8px; padding:8px 10px; box-shadow:var(--shadow-lg); white-space:nowrap; animation: fp-icon-in 100ms ease-out;">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span style="font:700 12px/1 var(--font-sans);">{{ hoverInfo.label }}</span>
+                <span style="font:600 10px/1 var(--font-sans); background:rgba(255,255,255,0.16); border-radius:999px; padding:3px 7px;">{{ hoverInfo.status }}</span>
+              </div>
+              <div style="margin-top:4px; font:400 10.5px/1.3 var(--font-sans); color:rgba(255,255,255,0.75);">{{ hoverInfo.sub }}</div>
+            </div>
+          </sc-if>
+
+          <!-- click tooltip anchored to unit -->
+          <sc-if value="{{ tooltip }}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute; left: {{ tooltip.left }}; top: {{ tooltip.top }}; transform: {{ tooltip.transform }}; z-index:22; width:214px; background:#fff; border:1px solid var(--ink-200); border-radius:8px; box-shadow:var(--shadow-lg); padding:11px 12px; pointer-events:auto;">
+              <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:8px;">
+                <div style="min-width:0;">
+                  <div style="font:600 10px/1 var(--font-sans); color:var(--ink-400); text-transform:uppercase; letter-spacing:.05em; margin-bottom:2px;">{{ tooltip.primaryLabel }}</div>
+                  <div style="font:700 15px/1.15 var(--font-sans); color:var(--ink-900); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ tooltip.primary }}</div>
+                </div>
+                <button onClick="{{ tooltip.onClose }}" title="Close" style="flex-shrink:0; width:22px; height:22px; border:none; background:transparent; color:var(--ink-400); cursor:pointer; display:grid; place-items:center; border-radius:4px;" style-hover="background: var(--ink-050); color: var(--ink-700);">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"></path></svg>
+                </button>
+              </div>
+              <div style="margin-top:8px;">
+                <div style="font:600 10px/1 var(--font-sans); color:var(--ink-400); text-transform:uppercase; letter-spacing:.05em; margin-bottom:2px;">{{ tooltip.secondaryLabel }}</div>
+                <div style="font:500 12px/1.3 var(--font-sans); color:var(--ink-700);">{{ tooltip.secondary }}</div>
+              </div>
+              <sc-if value="{{ tooltip.hasRoom }}" hint-placeholder-val="{{ false }}">
+                <div style="margin-top:8px;">
+                  <div style="font:600 10px/1 var(--font-sans); color:var(--ink-400); text-transform:uppercase; letter-spacing:.05em; margin-bottom:2px;">Room</div>
+                  <div style="font:500 12px/1.3 var(--font-sans); color:var(--ink-700);">{{ tooltip.room }}</div>
+                </div>
+              </sc-if>
+              <div style="margin-top:10px;">
+                <span style="display:inline-block; background: {{ tooltip.statusBg }}; color: {{ tooltip.statusFg }}; border-radius:999px; padding:4px 10px; font:600 11px/1 var(--font-sans);">{{ tooltip.statusText }}</span>
+              </div>
+              <sc-if value="{{ tooltip.above }}" hint-placeholder-val="{{ true }}">
+                <div style="position:absolute; left:50%; bottom:-7px; transform:translateX(-50%); width:12px; height:12px; background:#fff; border-right:1px solid var(--ink-200); border-bottom:1px solid var(--ink-200); rotate:45deg;"></div>
+              </sc-if>
+              <sc-if value="{{ tooltip.below }}" hint-placeholder-val="{{ false }}">
+                <div style="position:absolute; left:50%; top:-7px; transform:translateX(-50%); width:12px; height:12px; background:#fff; border-left:1px solid var(--ink-200); border-top:1px solid var(--ink-200); rotate:45deg;"></div>
+              </sc-if>
+            </div>
+          </sc-if>
+
+          <!-- drawing hint -->
+          <sc-if value="{{ canvasHint }}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute; top:68px; left:50%; transform:translateX(-50%); background:var(--ink-900); color:#fff; border-radius:6px; padding:7px 12px; font:500 12px/1 var(--font-sans); box-shadow:var(--shadow-md); pointer-events:none; white-space:nowrap; z-index:30;">{{ canvasHint }}</div>
+          </sc-if>
+
+          <!-- legend -->
+          <div class="fp-legend" style="position:absolute; left:12px; bottom:12px; display:flex; gap:6px; flex-wrap:wrap; max-width:70%;">
+            <sc-for list="{{ legendItems }}" as="lg" hint-placeholder-count="3">
+              <span style="display:inline-flex; align-items:center; gap:6px; height:24px; padding:0 10px; background:#fff; border:1px solid var(--ink-200); border-radius:999px; font:500 11px/1 var(--font-sans); color:var(--ink-700); box-shadow:var(--shadow-xs);">
+                <span style="width:8px; height:8px; border-radius:2px; background: {{ lg.color }};"></span>{{ lg.label }}
+              </span>
+            </sc-for>
+          </div>
+
+        </div>
+        </sc-if>
+
+        <!-- map zoom controls — always pinned to viewer corner, above all panels -->
+        <div class="fp-zoom" style="position:absolute; right:16px; bottom:16px; z-index:60; display:flex; flex-direction:column; align-items:flex-end; gap:8px;">
+          <span style="background:#fff; border:1px solid var(--ink-200); border-radius:5px; padding:4px 8px; font:500 10px/1 var(--font-sans); color:var(--ink-600); box-shadow:var(--shadow-xs);">{{ scaleText }} · {{ zoomPct }}</span>
+          <div style="display:flex; flex-direction:column; background:#fff; border:1px solid var(--ink-200); border-radius:6px; box-shadow:var(--shadow-md); overflow:hidden;">
+            <button title="Zoom in" onClick="{{ zoomIn }}" style="width:34px; height:34px; border:none; border-bottom:1px solid var(--ink-100); background:#fff; color:var(--ink-700); cursor:pointer; display:grid; place-items:center;" style-hover="background: var(--ink-050);">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
+            </button>
+            <button title="Zoom out" onClick="{{ zoomOut }}" style="width:34px; height:34px; border:none; background:#fff; color:var(--ink-700); cursor:pointer; display:grid; place-items:center;" style-hover="background: var(--ink-050);">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"></path></svg>
+            </button>
+          </div>
+          <button title="Fit to view" onClick="{{ zoomFit }}" style="width:34px; height:34px; border:1px solid var(--ink-200); border-radius:6px; background:#fff; color:var(--ink-700); cursor:pointer; display:grid; place-items:center; box-shadow:var(--shadow-md);" style-hover="background: var(--ink-050);">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"></path></svg>
+          </button>
+        </div>
+
+        <!-- ══ Details panel (draggable) ══ -->
+        <sc-if value="{{ panelDet.open }}" hint-placeholder-val="{{ true }}">
+        <div class="fp-det" style="position:absolute; left: {{ panelDet.x }}px; top: {{ panelDet.y }}px; z-index:41; width:304px; max-height: {{ panelDet.maxH }}px; display:flex; flex-direction:column; background:rgba(255,255,255,0.95); backdrop-filter:blur(14px); border:1px solid rgba(216,227,241,0.9); border-radius:14px; box-shadow:0 20px 50px rgba(5,16,30,0.45); overflow:hidden; animation: fp-panel-in 180ms cubic-bezier(0.2,0,0,1);">
+          <div onMouseDown="{{ panelDet.headerDown }}" style="display:flex; align-items:center; gap:7px; padding:8px 8px 8px 12px; border-bottom:1px solid var(--ink-100); cursor:grab; flex-shrink:0;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--ink-400)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><circle cx="9" cy="6" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="18" r="1"></circle><circle cx="15" cy="6" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="18" r="1"></circle></svg>
+            <span style="flex:1; font:600 12px/1 var(--font-sans); color:var(--ink-600);">{{ modeLabel }}</span>
+            <button onClick="{{ panelDet.toggle }}" title="Collapse" class="icon-btn" style="width:24px; height:24px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"></path></svg>
+            </button>
+          </div>
+          <div style="flex:1; min-height:0; overflow-y:auto; padding:12px; display:flex; flex-direction:column; gap:12px;">
+
+        <!-- ═══ EDIT panel ═══ -->
+        <sc-if value="{{ isEdit }}" hint-placeholder-val="{{ false }}">
+          <div class="card" data-screen-label="Edit panel">
+            <div class="card-hd" style="padding:10px 14px;"><h3>Tools</h3></div>
+            <div class="card-bd" style="padding:12px 14px;">
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                <button onClick="{{ toolBtn.select.onClick }}" style="display:flex; align-items:center; gap:8px; height:34px; padding:0 10px; border-radius:4px; border:1px solid {{ toolBtn.select.bd }}; background: {{ toolBtn.select.bg }}; color: {{ toolBtn.select.fg }}; font:500 12px/1 var(--font-sans); cursor:pointer;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l7 18 2.5-7.5L20 11z"></path></svg>
+                  Select
+                </button>
+                <button onClick="{{ toolBtn.room.onClick }}" style="display:flex; align-items:center; gap:8px; height:34px; padding:0 10px; border-radius:4px; border:1px solid {{ toolBtn.room.bd }}; background: {{ toolBtn.room.bg }}; color: {{ toolBtn.room.fg }}; font:500 12px/1 var(--font-sans); cursor:pointer;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"></path></svg>
+                  Draw room
+                </button>
+                <button onClick="{{ toolBtn.workstation.onClick }}" style="display:flex; align-items:center; gap:8px; height:34px; padding:0 10px; border-radius:4px; border:1px solid {{ toolBtn.workstation.bd }}; background: {{ toolBtn.workstation.bg }}; color: {{ toolBtn.workstation.fg }}; font:500 12px/1 var(--font-sans); cursor:pointer;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"></rect><path d="M8 20h8M12 16v4"></path></svg>
+                  Desk
+                </button>
+                <button onClick="{{ toolBtn.locker.onClick }}" style="display:flex; align-items:center; gap:8px; height:34px; padding:0 10px; border-radius:4px; border:1px solid {{ toolBtn.locker.bd }}; background: {{ toolBtn.locker.bg }}; color: {{ toolBtn.locker.fg }}; font:500 12px/1 var(--font-sans); cursor:pointer;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>
+                  Locker
+                </button>
+                <button onClick="{{ toolBtn.parking.onClick }}" style="display:flex; align-items:center; gap:8px; height:34px; padding:0 10px; border-radius:4px; border:1px solid {{ toolBtn.parking.bd }}; background: {{ toolBtn.parking.bg }}; color: {{ toolBtn.parking.fg }}; font:500 12px/1 var(--font-sans); cursor:pointer;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M9.5 16V8h3.5a2.5 2.5 0 0 1 0 5H9.5"></path></svg>
+                  Parking stall
+                </button>
+                <button onClick="{{ toolBtn.calibrate.onClick }}" style="display:flex; align-items:center; gap:8px; height:34px; padding:0 10px; border-radius:4px; border:1px solid {{ toolBtn.calibrate.bd }}; background: {{ toolBtn.calibrate.bg }}; color: {{ toolBtn.calibrate.fg }}; font:500 12px/1 var(--font-sans); cursor:pointer;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21.3 8.7l-6-6L2.7 15.3l6 6zM14 6l1.5 1.5M11 9l1.5 1.5M8 12l1.5 1.5"></path></svg>
+                  Calibrate
+                </button>
+              </div>
+              <p style="margin-top:10px; font-size:11px; color:var(--ink-500); line-height:1.5;">Point tools place a marker per click. Draw room: click vertices, double-click or ⏎ to close. Esc cancels.</p>
+            </div>
+          </div>
+
+          <sc-if value="{{ calibActive }}" hint-placeholder-val="{{ false }}">
+            <div class="card">
+              <div class="card-hd" style="padding:10px 14px;"><h3>Calibration</h3></div>
+              <div class="card-bd" style="padding:12px 14px;">
+                <p style="font-size:12px; color:var(--ink-700); line-height:1.5;">{{ calibStep }}</p>
+                <sc-if value="{{ calibReady }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex; gap:8px; margin-top:10px;">
+                    <input type="number" min="0.1" step="0.1" placeholder="Distance in meters" value="{{ calibLen }}" onChange="{{ onCalibLen }}"
+                           style="flex:1; height:32px; border:1px solid var(--ink-200); border-radius:4px; padding:0 10px; font:400 13px/1 var(--font-sans); color:var(--ink-900); outline:none;"
+                           style-focus="border-color: var(--blue-500); box-shadow: var(--shadow-focus);">
+                    <button class="btn btn-primary" onClick="{{ applyCalib }}">Apply</button>
+                  </div>
+                </sc-if>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ hasSelection }}" hint-placeholder-val="{{ false }}">
+            <div class="card">
+              <div class="card-hd" style="padding:10px 14px;"><h3>Selection</h3></div>
+              <div class="card-bd" style="padding:12px 14px; display:flex; flex-direction:column; gap:10px;">
+                <div>
+                  <div style="font-size:11px; color:var(--ink-500); margin-bottom:4px;">Label <span style="color:var(--ink-400);">· primary</span></div>
+                  <input value="{{ sel.label }}" onChange="{{ onLabelChange }}"
+                         style="width:100%; height:32px; border:1px solid var(--ink-200); border-radius:4px; padding:0 10px; font:400 13px/1 var(--font-sans); color:var(--ink-900); outline:none;"
+                         style-focus="border-color: var(--blue-500); box-shadow: var(--shadow-focus);">
+                </div>
+                <sc-if value="{{ sel.isDesk }}" hint-placeholder-val="{{ false }}">
+                  <div>
+                    <div style="font-size:11px; color:var(--ink-500); margin-bottom:4px;">Seat type <span style="color:var(--ink-400);">· secondary</span></div>
+                    <input value="{{ sel.secondary }}" onChange="{{ onSecondaryChange }}" placeholder="e.g. Sit-stand · dual monitor"
+                           style="width:100%; height:32px; border:1px solid var(--ink-200); border-radius:4px; padding:0 10px; font:400 13px/1 var(--font-sans); color:var(--ink-900); outline:none;"
+                           style-focus="border-color: var(--blue-500); box-shadow: var(--shadow-focus);">
+                  </div>
+                </sc-if>
+                <div style="display:flex; gap:16px; font-size:12px; color:var(--ink-700);">
+                  <div><span style="color:var(--ink-500);">Type</span><br>{{ sel.typeName }}</div>
+                  <div><span style="color:var(--ink-500);">Room</span><br>{{ sel.roomName }}</div>
+                  <sc-if value="{{ sel.areaText }}" hint-placeholder-val="{{ false }}">
+                    <div><span style="color:var(--ink-500);">Area</span><br>{{ sel.areaText }}</div>
+                  </sc-if>
+                </div>
+                <div style="font-size:11px; color:var(--ink-500);">Geometry (normalized 0–1)</div>
+                <div class="id-mono" style="font-size:11px; word-break:break-all; background:var(--ink-050); border-radius:4px; padding:8px;">{{ sel.geomText }}</div>
+                <button class="btn btn-secondary" onClick="{{ deleteSelected }}" style="color:var(--danger-500); border-color:var(--danger-050); align-self:flex-start;">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path></svg>
+                  Delete unit
+                </button>
+              </div>
+            </div>
+          </sc-if>
+
+          <div class="card">
+            <div class="card-bd" style="padding:12px 14px; display:flex; align-items:center; justify-content:space-between; gap:8px;">
+              <span style="font-size:11px; color:var(--ink-500); line-height:1.4;">Changes are stored locally in this prototype.</span>
+              <button class="btn btn-secondary" onClick="{{ resetDemo }}" style="flex-shrink:0;">Reset demo data</button>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- ═══ ASSIGNMENT panel ═══ -->
+        <sc-if value="{{ isAssign }}" hint-placeholder-val="{{ false }}">
+          <sc-if value="{{ hasSelection }}" hint-placeholder-val="{{ false }}">
+            <div class="card">
+              <div class="card-hd" style="padding:10px 14px;"><h3>{{ sel.label }}</h3><span style="font-size:11px; color:var(--ink-500);">{{ sel.typeName }}</span></div>
+              <div class="card-bd" style="padding:12px 14px; display:flex; flex-direction:column; gap:10px;">
+                <sc-if value="{{ sel.assignable }}" hint-placeholder-val="{{ true }}">
+                  <sc-if value="{{ sel.isAssigned }}" hint-placeholder-val="{{ false }}">
+                    <div style="display:flex; align-items:center; gap:10px; background:var(--blue-050); border-radius:8px; padding:9px 11px;">
+                      <span style="flex-shrink:0; width:28px; height:28px; border-radius:999px; background:var(--blue-500); color:#fff; display:grid; place-items:center; font:600 11px/1 var(--font-sans);">{{ sel.assigneeInitials }}</span>
+                      <span style="flex:1; min-width:0; font:600 13px/1.2 var(--font-sans); color:var(--blue-700); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ sel.assigneeName }}</span>
+                    </div>
+                    <sc-if value="{{ sel.reassigning }}" hint-placeholder-val="{{ false }}">
+                      <select value="{{ sel.assignee }}" onChange="{{ sel.onAssignSel }}" style="width:100%; height:38px; border:1px solid var(--ink-200); border-radius:6px; padding:0 10px; font:500 13px/1 var(--font-sans); color:var(--ink-900); background:#fff; cursor:pointer; outline:none;" style-focus="border-color: var(--blue-500); box-shadow: var(--shadow-focus);">
+                        <option value="">— Choose a person —</option>
+                        <sc-for list="{{ sel.empOptions }}" as="eo" hint-placeholder-count="4"><option value="{{ eo.id }}">{{ eo.name }}</option></sc-for>
+                      </select>
+                    </sc-if>
+                    <div style="display:flex; gap:8px;">
+                      <button class="btn btn-secondary" onClick="{{ vacateSel }}" style="flex:1; justify-content:center; color:var(--danger-700); border-color:var(--danger-050);">Vacate</button>
+                      <button class="btn btn-primary" onClick="{{ sel.onReassign }}" style="flex:1; justify-content:center;">Reassign</button>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ sel.isFree }}" hint-placeholder-val="{{ true }}">
+                    <div style="font-size:11px; color:var(--ink-500);">Assign to</div>
+                    <select value="{{ sel.assignee }}" onChange="{{ sel.onAssignSel }}" style="width:100%; height:38px; border:1px solid var(--ink-200); border-radius:6px; padding:0 10px; font:500 13px/1 var(--font-sans); color:var(--ink-900); background:#fff; cursor:pointer; outline:none;" style-focus="border-color: var(--blue-500); box-shadow: var(--shadow-focus);">
+                      <option value="">— Choose a person —</option>
+                      <sc-for list="{{ sel.empOptions }}" as="eo" hint-placeholder-count="4"><option value="{{ eo.id }}">{{ eo.name }}</option></sc-for>
+                    </select>
+                    <div style="font-size:11px; color:var(--ink-400);">…or drag a person from the list below onto the desk.</div>
+                  </sc-if>
+                </sc-if>
+                <sc-if value="{{ sel.notAssignable }}" hint-placeholder-val="{{ false }}">
+                  <div style="font-size:13px; color:var(--ink-900);">{{ sel.assignInfo }}</div>
+                </sc-if>
+              </div>
+            </div>
+          </sc-if>
+
+          <div class="card" style="display:flex; flex-direction:column; min-height:0; flex:1;" data-screen-label="Assignment panel">
+            <div class="card-hd" style="padding:10px 14px;"><h3>People</h3><span style="font-size:11px; color:var(--ink-500);">{{ assignedCountText }}</span></div>
+            <div style="padding:10px 14px 4px;">
+              <input placeholder="Search people…" value="{{ empSearch }}" onChange="{{ onEmpSearch }}"
+                     style="width:100%; height:32px; border:1px solid var(--ink-200); border-radius:4px; padding:0 10px; font:400 13px/1 var(--font-sans); color:var(--ink-900); outline:none; background:var(--ink-050);"
+                     style-focus="border-color: var(--blue-500); box-shadow: var(--shadow-focus); background:#fff;">
+              <p style="font-size:11px; color:var(--ink-500); margin-top:8px; line-height:1.5;">Drag a person onto a free <b style="color:var(--ink-700);">assigned desk</b> or <b style="color:var(--ink-700);">locker</b>. Hot desks, rooms and parking are booked, not assigned.</p>
+            </div>
+            <div style="flex:1; overflow-y:auto; padding:6px 8px 10px; display:flex; flex-direction:column; gap:2px;">
+              <sc-for list="{{ employees }}" as="e" hint-placeholder-count="6">
+                <div draggable="true" onDragStart="{{ e.onDragStart }}" onDragEnd="{{ e.onDragEnd }}"
+                     style="display:flex; align-items:center; gap:10px; padding:7px 8px; border-radius:4px; cursor:grab; opacity: {{ e.opacity }};"
+                     style-hover="background: var(--ink-050);">
+                  <span style="width:26px; height:26px; border-radius:999px; background:var(--blue-050); color:var(--blue-600); font:600 10px/1 var(--font-sans); display:grid; place-items:center; flex-shrink:0;">{{ e.initials }}</span>
+                  <span style="flex:1; min-width:0;">
+                    <span style="display:block; font:500 13px/1.2 var(--font-sans); color:var(--ink-900);">{{ e.name }}</span>
+                    <span style="display:block; font:400 11px/1.3 var(--font-sans); color:var(--ink-500);">{{ e.dept }}</span>
+                  </span>
+                  <sc-if value="{{ e.badge }}" hint-placeholder-val="{{ false }}">
+                    <span class="badge b-open">{{ e.badge }}</span>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- ═══ BOOKING panel ═══ -->
+        <sc-if value="{{ isBook }}" hint-placeholder-val="{{ false }}">
+          <sc-if value="{{ hasSelection }}" hint-placeholder-val="{{ false }}">
+            <div class="card">
+              <div class="card-hd" style="padding:10px 14px;"><h3>{{ sel.label }}</h3><span style="font-size:11px; color:var(--ink-500);">{{ sel.typeName }}</span></div>
+              <div class="card-bd" style="padding:12px 14px; display:flex; flex-direction:column; gap:10px;">
+
+                <div>
+                  <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px;">
+                    <div style="font-size:11px; color:var(--ink-500); text-transform:uppercase; letter-spacing:.04em; font-weight:500;">Schedule · {{ dateShort }}</div>
+                    <div style="display:flex; gap:2px; background:var(--ink-050); border:1px solid var(--ink-200); border-radius:4px; padding:2px;">
+                      <button onClick="{{ setSchedList }}" style="height:22px; padding:0 9px; border:none; border-radius:3px; background: {{ schedBtn.list.bg }}; color: {{ schedBtn.list.fg }}; box-shadow: {{ schedBtn.list.sh }}; font:500 11px/1 var(--font-sans); cursor:pointer;">List</button>
+                      <button onClick="{{ setSchedCal }}" style="height:22px; padding:0 9px; border:none; border-radius:3px; background: {{ schedBtn.cal.bg }}; color: {{ schedBtn.cal.fg }}; box-shadow: {{ schedBtn.cal.sh }}; font:500 11px/1 var(--font-sans); cursor:pointer;">Calendar</button>
+                    </div>
+                  </div>
+
+                  <sc-if value="{{ isSchedList }}" hint-placeholder-val="{{ true }}">
+                    <sc-if value="{{ hasSelBookings }}" hint-placeholder-val="{{ false }}">
+                      <div style="display:flex; flex-direction:column; gap:6px;">
+                        <sc-for list="{{ selBookings }}" as="b" hint-placeholder-count="2">
+                          <div style="display:flex; align-items:center; gap:8px; border:1px solid var(--ink-100); border-radius:4px; padding:7px 10px;">
+                            <span class="id-mono" style="font-size:11px; color:var(--ink-900); flex-shrink:0;">{{ b.time }}</span>
+                            <span style="flex:1; min-width:0; font-size:12px; color:var(--ink-700); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ b.byName }}<sc-if value="{{ b.purpose }}" hint-placeholder-val="{{ false }}"> · {{ b.purpose }}</sc-if></span>
+                            <a onClick="{{ b.onCancel }}" style="font-size:11px; color:var(--danger-500); cursor:pointer; flex-shrink:0;">Cancel</a>
+                          </div>
+                        </sc-for>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ noSelBookings }}" hint-placeholder-val="{{ false }}">
+                      <div style="font-size:12px; color:var(--ink-500);">No bookings this day.</div>
+                    </sc-if>
+                  </sc-if>
+
+                  <sc-if value="{{ isSchedCal }}" hint-placeholder-val="{{ false }}">
+                    <div onClick="{{ onCalClick }}" data-cal="1" style="position:relative; border:1px solid var(--ink-100); border-radius:6px; height: {{ calHeight }}px; background:#fff; overflow:hidden; cursor:pointer;">
+                      <sc-for list="{{ calHours }}" as="h" hint-placeholder-count="14">
+                        <div style="position:absolute; left:32px; right:0; top: {{ h.top }}px; border-top:1px solid var(--ink-050); pointer-events:none;"></div>
+                        <div style="position:absolute; left:4px; top: {{ h.labelTop }}px; font:500 9px/1 var(--font-sans); color:var(--ink-400); pointer-events:none;">{{ h.label }}</div>
+                      </sc-for>
+                      <sc-if value="{{ calSel }}" hint-placeholder-val="{{ false }}">
+                        <div onClick="{{ calStop }}" style="position:absolute; left:34px; right:4px; top: {{ calSel.top }}px; height: {{ calSel.height }}px; border:1.5px dashed var(--blue-400); background:rgba(0,89,214,0.06); border-radius:4px;">
+                          <div onClick="{{ calStop }}" onPointerDown="{{ onCalTopDown }}" title="Drag to change start" style="position:absolute; top:-6px; left:0; right:0; height:13px; cursor:ns-resize; display:flex; justify-content:center; align-items:flex-start;"><span style="width:28px; height:5px; border-radius:999px; background:var(--blue-500); box-shadow:0 1px 2px rgba(40,54,72,0.35);"></span></div>
+                          <div onClick="{{ calStop }}" onPointerDown="{{ onCalBottomDown }}" title="Drag to change end" style="position:absolute; bottom:-6px; left:0; right:0; height:13px; cursor:ns-resize; display:flex; justify-content:center; align-items:flex-end;"><span style="width:28px; height:5px; border-radius:999px; background:var(--blue-500); box-shadow:0 1px 2px rgba(40,54,72,0.35);"></span></div>
+                        </div>
+                      </sc-if>
+                      <sc-for list="{{ calBlocks }}" as="b" hint-placeholder-count="2">
+                        <div title="{{ b.title }}" style="position:absolute; left:34px; right:4px; top: {{ b.top }}px; height: {{ b.height }}px; background: {{ b.bg }}; border-left:3px solid {{ b.bd }}; border-radius:4px; padding:2px 6px; overflow:hidden; box-sizing:border-box; pointer-events:none;">
+                          <div style="font:600 10px/1.3 var(--font-sans); color: {{ b.fg }}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ b.time }}</div>
+                          <div style="font:400 10px/1.3 var(--font-sans); color:var(--ink-600); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ b.byName }}</div>
+                        </div>
+                      </sc-for>
+                    </div>
+                    <p style="font-size:10px; color:var(--ink-400); margin-top:6px;">07:00–20:00 · click a slot to set your booking window</p>
+                  </sc-if>
+                </div>
+
+                <sc-if value="{{ sel.bookable }}" hint-placeholder-val="{{ false }}">
+                  <div style="border-top:1px solid var(--ink-100); padding-top:10px;">
+                    <button class="btn btn-primary" onClick="{{ openBookModal }}" style="width:100%; justify-content:center;">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg>
+                      New booking
+                    </button>
+                    <p style="font-size:10px; color:var(--ink-400); line-height:1.4; margin-top:8px;">Opens the full booking form. Overlap is validated server-side at write time (WorkflowV2).</p>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ sel.notBookable }}" hint-placeholder-val="{{ false }}">
+                  <div style="border-top:1px solid var(--ink-100); padding-top:10px; font-size:12px; color:var(--ink-500); line-height:1.5;">{{ sel.notBookableReason }}</div>
+                </sc-if>
+              </div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ noSelectionBook }}" hint-placeholder-val="{{ false }}">
+            <div class="card">
+              <div class="card-bd" style="padding:14px;">
+                <p style="font-size:12px; color:var(--ink-600); line-height:1.5;">Select a hot desk, room, or parking stall on the plan to see its schedule and book it.</p>
+              </div>
+            </div>
+          </sc-if>
+        </sc-if>
+
+          </div>
+        </div>
+        </sc-if>
+        <sc-if value="{{ panelDet.closed }}" hint-placeholder-val="{{ false }}">
+          <div class="fp-picon" onMouseDown="{{ panelDet.iconDown }}" onClick="{{ panelDet.iconClick }}" title="Open {{ modeLabel }}" style="position:absolute; left: {{ panelDet.x }}px; top: {{ panelDet.y }}px; z-index:41; width:46px; height:46px; border-radius:12px; background:rgba(255,255,255,0.93); backdrop-filter:blur(10px); border:1px solid rgba(216,227,241,0.9); box-shadow:0 12px 32px rgba(5,16,30,0.4); display:grid; place-items:center; cursor:grab; color:var(--ink-700); animation: fp-icon-in 160ms cubic-bezier(0.2,0,0,1);">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M15 3v18"></path></svg>
+          </div>
+        </sc-if>
+
+    <!-- reset layout -->
+    <sc-if value="{{ layoutMoved }}" hint-placeholder-val="{{ false }}">
+      <div class="fp-reset" style="position:absolute; left:12px; bottom:48px; z-index:35;">
+        <button class="btn btn-secondary" onClick="{{ resetLayout }}" style="background:#fff; box-shadow:var(--shadow-md);">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9 9 0 0 0-6.4 2.6L3 8"></path><path d="M3 3v5h5"></path></svg>
+          Reset layout
+        </button>
+      </div>
+    </sc-if>
+
+    <!-- ══════════ Mobile companion (docked right) ══════════ -->
+    <sc-if value="{{ mobileOpen }}" hint-placeholder-val="{{ false }}">
+      <div class="fp-preview" style="{{ mobOuterStyle }}">
+        <sc-if value="{{ mobShowChrome }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+          <span style="display:inline-flex; align-items:center; gap:6px; font:600 11px/1 var(--font-sans); color:var(--ink-600); background:#fff; border:1px solid var(--ink-200); border-radius:999px; padding:5px 10px; box-shadow:var(--shadow-xs);">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"></rect><path d="M11 18h2"></path></svg>
+            Mobile preview
+          </span>
+          <button onClick="{{ toggleMobile }}" class="icon-btn" title="Close mobile preview" style="width:26px; height:26px; background:#fff; border:1px solid var(--ink-200); box-shadow:var(--shadow-xs);">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"></path></svg>
+          </button>
+        </div>
+        </sc-if>
+        <!-- phone bezel -->
+        <div style="{{ mobBezelStyle }}">
+          <div style="{{ mobScreenStyle }}">
+            <!-- status bar -->
+            <div style="height:26px; display:flex; align-items:center; justify-content:space-between; padding:0 18px; font:600 11px/1 var(--font-sans); color:var(--ink-900); background:#fff; flex-shrink:0;">
+              <span>9:41</span>
+              <span style="position:absolute; left:50%; top:7px; transform:translateX(-50%); width:70px; height:16px; background:#0E1726; border-radius:999px;"></span>
+              <span style="display:flex; gap:4px; align-items:center;">
+                <svg width="15" height="11" viewBox="0 0 24 18" fill="currentColor"><rect x="0" y="4" width="4" height="10" rx="1"/><rect x="6" y="2" width="4" height="12" rx="1"/><rect x="12" y="0" width="4" height="14" rx="1"/><rect x="18" y="6" width="4" height="8" rx="1" opacity="0.4"/></svg>
+                <svg width="16" height="11" viewBox="0 0 26 18" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="20" height="10" rx="3"/><rect x="3.5" y="6.5" width="13" height="5" rx="1.5" fill="currentColor" stroke="none"/><path d="M23 8v2" stroke-linecap="round"/></svg>
+              </span>
+            </div>
+            <!-- app header -->
+            <div style="background:var(--blue-500); color:#fff; padding:10px 12px; flex-shrink:0;">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <!-- mobile floor switcher (compact, top) -->
+                <div onClick="{{ mobFloorToggle }}" style="flex:1; min-width:0; display:flex; align-items:center; gap:6px; background:rgba(255,255,255,0.16); border-radius:7px; padding:6px 9px; cursor:pointer;" style-hover="background: rgba(255,255,255,0.24);">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><rect x="4" y="2" width="16" height="20" rx="1"></rect><path d="M4 8h16M4 13h16M4 18h16"></path></svg>
+                  <span style="flex:1; min-width:0; font:600 12px/1 var(--font-sans); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ mobFloorLabel }}</span>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M6 9l6 6 6-6"></path></svg>
+                </div>
+                <sc-if value="{{ hasMySpace }}" hint-placeholder-val="{{ false }}">
+                  <button onClick="{{ mySpace.onLocate }}" title="Show my space" style="flex-shrink:0; display:inline-flex; align-items:center; gap:5px; height:30px; padding:0 10px; border:none; border-radius:8px; background:rgba(255,255,255,0.18); color:#fff; font:600 11px/1 var(--font-sans); cursor:pointer;" style-hover="background: rgba(255,255,255,0.28);">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v3M12 19v3M2 12h3M19 12h3"></path><circle cx="12" cy="12" r="4"></circle></svg>
+                    Locate
+                  </button>
+                </sc-if>
+                <sc-if value="{{ noMySpace }}" hint-placeholder-val="{{ true }}">
+                  <span style="flex-shrink:0; font:500 11px/1 var(--font-sans); color:rgba(255,255,255,0.85);">{{ datelong }}</span>
+                </sc-if>
+              </div>
+              <!-- your space (top strip) -->
+              <sc-if value="{{ hasMySpace }}" hint-placeholder-val="{{ false }}">
+                <div onClick="{{ mySpace.onLocate }}" style="display:flex; align-items:center; gap:8px; margin-top:8px; background:rgba(255,255,255,0.16); border-radius:8px; padding:7px 10px; cursor:pointer;" style-hover="background: rgba(255,255,255,0.24);">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 0 1 16 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                  <span style="flex-shrink:0; font:600 9px/1 var(--font-sans); color:rgba(255,255,255,0.75); text-transform:uppercase; letter-spacing:.05em;">Your space</span>
+                  <span style="flex:1; min-width:0; font:700 12.5px/1.2 var(--font-sans); color:#fff; text-align:right; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ mySpace.label }} · {{ mySpace.sub }}</span>
+                </div>
+              </sc-if>
+              <!-- mobile tabs -->
+              <div style="display:flex; gap:3px; background:rgba(0,0,0,0.16); border-radius:7px; padding:3px; margin-top:8px;">
+                <button onClick="{{ setMobileBook }}" style="flex:1; height:28px; border:none; border-radius:5px; background: {{ mobBtnBook.bg }}; color: {{ mobBtnBook.fg }}; font:600 12px/1 var(--font-sans); cursor:pointer;">Book</button>
+                <button onClick="{{ setMobileAssign }}" style="flex:1; height:28px; border:none; border-radius:5px; background: {{ mobBtnAssign.bg }}; color: {{ mobBtnAssign.fg }}; font:600 12px/1 var(--font-sans); cursor:pointer;">Assign</button>
+              </div>
+              <!-- mobile slot picker (book mode) -->
+              <sc-if value="{{ mobileBookTab }}" hint-placeholder-val="{{ true }}">
+                <div style="margin-top:8px; background:#fff; border-radius:10px; padding:8px; display:flex; flex-direction:column; gap:7px;">
+                  <div style="display:flex; align-items:center; gap:8px;">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--ink-500)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><rect x="3" y="4" width="18" height="17" rx="2"></rect><path d="M16 2v4M8 2v4M3 10h18"></path></svg>
+                    <input type="date" value="{{ dateVal }}" onChange="{{ onDate }}" style="flex:1; min-width:0; height:34px; border:1px solid var(--ink-200); border-radius:8px; padding:0 8px; font:600 13px/1 var(--font-sans); color:var(--ink-900); background:#fff; outline:none;" style-focus="border-color: var(--blue-500); box-shadow: var(--shadow-focus);">
+                  </div>
+                  <div style="display:flex; align-items:flex-start; gap:8px;">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--ink-500)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0; margin-top:16px;"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+                    <div style="flex:1; min-width:0;">
+                      <div style="font:600 8px/1 var(--font-sans); color:var(--ink-400); text-transform:uppercase; letter-spacing:.06em; margin-bottom:3px;">Start</div>
+                      <button onClick="{{ toggleStartPick }}" style="width:100%; height:34px; display:flex; align-items:center; justify-content:space-between; border:1px solid {{ startPickBd }}; border-radius:8px; padding:0 10px; font:700 14px/1 var(--font-sans); color:var(--ink-900); background:#fff; cursor:pointer;">
+                        <span>{{ startTime }}</span>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--ink-500)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>
+                      </button>
+                    </div>
+                    <div style="flex:1; min-width:0;">
+                      <div style="font:600 8px/1 var(--font-sans); color:var(--ink-400); text-transform:uppercase; letter-spacing:.06em; margin-bottom:3px;">End</div>
+                      <button onClick="{{ toggleEndPick }}" style="width:100%; height:34px; display:flex; align-items:center; justify-content:space-between; border:1px solid {{ endPickBd }}; border-radius:8px; padding:0 10px; font:700 14px/1 var(--font-sans); color:var(--ink-900); background:#fff; cursor:pointer;">
+                        <span>{{ endTime }}</span>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--ink-500)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </sc-if>
+            </div>
+            <!-- mini floorplan (hero) -->
+            <div style="flex:1; min-height:0; padding:12px; display:flex; flex-direction:column; overflow-y:auto;">
+              <sc-if value="{{ mobHasPlan }}" hint-placeholder-val="{{ true }}">
+                <div style="flex:1; min-height:220px; position:relative; background:#E9EFF7; border-radius:12px; overflow:hidden; border:1px solid var(--ink-200);">
+                  <img src="assets/floorplan.png" draggable="false" style="position:absolute; inset:0; width:100%; height:100%; object-fit:cover;">
+                  <sc-for list="{{ mobRooms }}" as="r" hint-placeholder-count="3">
+                    <div style="position:absolute; inset:0; clip-path: {{ r.clip }}; background: {{ r.fill }};"></div>
+                  </sc-for>
+                  <sc-for list="{{ mobMarkers }}" as="m" hint-placeholder-count="8">
+                    <div onClick="{{ m.onTap }}" style="position:absolute; left: {{ m.left }}; top: {{ m.top }}; width:12px; height:12px; transform:translate(-50%,-50%); background: {{ m.dot }}; border:2px solid #fff; border-radius:999px; box-shadow: {{ m.ring }}; cursor:pointer;"></div>
+                  </sc-for>
+                  <div style="position:absolute; left:10px; bottom:10px; font:600 11px/1 var(--font-sans); color:var(--ink-700); background:rgba(255,255,255,0.92); border:1px solid var(--ink-200); border-radius:999px; padding:5px 10px;">{{ mobUnitCount }} spaces · tap a pin</div>
+                  <!-- legend -->
+                  <div style="position:absolute; left:10px; top:10px; display:flex; gap:6px;">
+                    <sc-for list="{{ mobLegend }}" as="lg" hint-placeholder-count="2">
+                      <span style="display:inline-flex; align-items:center; gap:5px; font:600 10px/1 var(--font-sans); color:var(--ink-700); background:rgba(255,255,255,0.92); border:1px solid var(--ink-200); border-radius:999px; padding:4px 8px;">
+                        <span style="width:8px; height:8px; border-radius:999px; background: {{ lg.dot }};"></span>{{ lg.label }}
+                      </span>
+                    </sc-for>
+                  </div>
+                </div>
+              </sc-if>
+              <sc-if value="{{ mobNoPlan }}" hint-placeholder-val="{{ false }}">
+                <div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; text-align:center; background:#fff; border:1px dashed var(--ink-200); border-radius:12px; padding:24px;">
+                  <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="var(--ink-300)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3L4 5v16l5-2 6 2 5-2V3l-5 2-6-2z"></path><path d="M9 3v16M15 5v16"></path></svg>
+                  <div style="font:600 13px/1.3 var(--font-sans); color:var(--ink-700);">No floorplan for this floor</div>
+                  <div style="font:400 11px/1.4 var(--font-sans); color:var(--ink-500);">Choose another floor from the switcher above.</div>
+                </div>
+              </sc-if>
+            </div>
+            <!-- time selection popover -->
+            <sc-if value="{{ pickOpen }}" hint-placeholder-val="{{ false }}">
+              <div onClick="{{ pickClose }}" style="position:absolute; inset:0; z-index:9; background:rgba(14,23,38,0.35); display:flex; align-items:center; justify-content:center; padding:20px;">
+                <div onClick="{{ stopEvt }}" style="width:100%; background:#fff; border-radius:14px; box-shadow:0 12px 32px rgba(40,54,72,0.3); padding:16px;">
+                  <div style="font:700 13px/1 var(--font-sans); color:var(--ink-900); text-align:center; margin-bottom:14px;">{{ pickTitle }}</div>
+                  <div style="display:flex; align-items:center; justify-content:center; gap:10px;">
+                    <div style="display:flex; flex-direction:column; align-items:center; gap:6px;">
+                      <button onClick="{{ pickHourUp }}" style="width:40px; height:30px; border:1px solid var(--ink-200); border-radius:8px; background:#fff; color:var(--ink-600); cursor:pointer; display:grid; place-items:center;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 15l-6-6-6 6"></path></svg></button>
+                      <span style="font:700 30px/1 var(--font-sans); color:var(--ink-900); min-width:44px; text-align:center;">{{ pickHourLabel }}</span>
+                      <button onClick="{{ pickHourDown }}" style="width:40px; height:30px; border:1px solid var(--ink-200); border-radius:8px; background:#fff; color:var(--ink-600); cursor:pointer; display:grid; place-items:center;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg></button>
+                    </div>
+                    <span style="font:700 30px/1 var(--font-sans); color:var(--ink-400);">:</span>
+                    <div style="display:flex; flex-direction:column; align-items:center; gap:6px;">
+                      <button onClick="{{ pickMinUp }}" style="width:40px; height:30px; border:1px solid var(--ink-200); border-radius:8px; background:#fff; color:var(--ink-600); cursor:pointer; display:grid; place-items:center;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 15l-6-6-6 6"></path></svg></button>
+                      <span style="font:700 30px/1 var(--font-sans); color:var(--ink-900); min-width:44px; text-align:center;">{{ pickMinLabel }}</span>
+                      <button onClick="{{ pickMinDown }}" style="width:40px; height:30px; border:1px solid var(--ink-200); border-radius:8px; background:#fff; color:var(--ink-600); cursor:pointer; display:grid; place-items:center;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg></button>
+                    </div>
+                    <button onClick="{{ pickToggleAmpm }}" style="margin-left:4px; align-self:center; width:46px; height:38px; border:1px solid var(--blue-300); border-radius:8px; background:var(--blue-050); color:var(--blue-700); font:700 13px/1 var(--font-sans); cursor:pointer;">{{ pickAmpm }}</button>
+                  </div>
+                  <button onClick="{{ pickClose }}" style="width:100%; height:38px; margin-top:16px; border:none; border-radius:8px; background:var(--blue-500); color:#fff; font:600 13px/1 var(--font-sans); cursor:pointer;" style-hover="background: var(--blue-600);">Done</button>
+                </div>
+              </div>
+            </sc-if>
+            <!-- floor picker sheet -->
+            <sc-if value="{{ mobFloorOpen }}" hint-placeholder-val="{{ false }}">
+              <div onClick="{{ mobFloorClose }}" style="position:absolute; inset:0; z-index:7; background:rgba(14,23,38,0.35);"></div>
+              <div style="position:absolute; left:0; right:0; bottom:0; z-index:8; max-height:75%; display:flex; flex-direction:column; background:#fff; border-radius:16px 16px 0 0; box-shadow:0 -8px 24px rgba(40,54,72,0.24); padding:10px 10px 12px;">
+                <div style="width:36px; height:4px; background:var(--ink-200); border-radius:999px; margin:0 auto 8px; flex-shrink:0;"></div>
+                <div style="display:flex; align-items:center; gap:6px; padding:0 4px 6px; flex-shrink:0;">
+                  <sc-if value="{{ mobPickCanBack }}" hint-placeholder-val="{{ false }}">
+                    <button onClick="{{ mobPickBack }}" title="Back" style="flex-shrink:0; width:26px; height:26px; border:none; background:transparent; color:var(--ink-600); cursor:pointer; display:grid; place-items:center; border-radius:6px;" style-hover="background: var(--ink-050);">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+                    </button>
+                  </sc-if>
+                  <span style="flex:1; min-width:0; font:700 14px/1.2 var(--font-sans); color:var(--ink-900); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ mobPickTitle }}</span>
+                </div>
+                <div style="flex:1; min-height:0; overflow-y:auto; display:flex; flex-direction:column; gap:1px;">
+                  <sc-for list="{{ mobPickRows }}" as="f" hint-placeholder-count="4">
+                    <div onClick="{{ f.onTap }}" style="display:flex; align-items:center; gap:8px; padding:10px; border-radius:8px; background: {{ f.bg }}; cursor:pointer;" style-hover="background: var(--ink-050);">
+                      <div style="flex:1; min-width:0;">
+                        <div style="font:500 13px/1.2 var(--font-sans); color: {{ f.fg }}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ f.name }}</div>
+                        <sc-if value="{{ f.sub }}" hint-placeholder-val="{{ false }}">
+                          <div style="font:400 11px/1.2 var(--font-sans); color:var(--ink-500); margin-top:2px;">{{ f.sub }}</div>
+                        </sc-if>
+                      </div>
+                      <sc-if value="{{ f.active }}" hint-placeholder-val="{{ false }}">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--blue-600)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M20 6L9 17l-5-5"></path></svg>
+                      </sc-if>
+                      <sc-if value="{{ f.showChevron }}" hint-placeholder-val="{{ false }}">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--ink-400)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M9 18l6-6-6-6"></path></svg>
+                      </sc-if>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-if>
+            <!-- unit detail sheet -->
+            <sc-if value="{{ hasMobSheet }}" hint-placeholder-val="{{ false }}">
+              <div onClick="{{ mobSheetClose }}" style="position:absolute; inset:0; z-index:5; background:rgba(14,23,38,0.35);"></div>
+              <div style="position:absolute; left:0; right:0; bottom:0; z-index:6; background:#fff; border-radius:16px 16px 0 0; box-shadow:0 -8px 24px rgba(40,54,72,0.24); padding:10px 16px 16px;">
+                <div style="width:36px; height:4px; background:var(--ink-200); border-radius:999px; margin:0 auto 10px;"></div>
+                <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px;">
+                  <div style="flex:1; min-width:0;">
+                    <div style="font:700 15px/1.2 var(--font-sans); color:var(--ink-900);">{{ mobSheet.label }}</div>
+                    <div style="font:400 11px/1.3 var(--font-sans); color:var(--ink-500); margin-top:3px;">{{ mobSheet.kind }}<sc-if value="{{ mobSheet.room }}" hint-placeholder-val="{{ false }}"> · {{ mobSheet.room }}</sc-if></div>
+                  </div>
+                  <span style="flex-shrink:0; font:600 10px/1 var(--font-sans); color: {{ mobSheet.sFg }}; background: {{ mobSheet.sBg }}; border-radius:999px; padding:5px 9px;">{{ mobSheet.status }}</span>
+                </div>
+                <sc-if value="{{ mobSheet.canBook }}" hint-placeholder-val="{{ false }}">
+                  <button onClick="{{ mobSheet.onBook }}" style="width:100%; height:38px; margin-top:12px; border:none; border-radius:8px; background:var(--blue-500); color:#fff; font:600 13px/1 var(--font-sans); cursor:pointer;" style-hover="background: var(--blue-600);">Book · {{ rangeText }}</button>
+                </sc-if>
+                <sc-if value="{{ mobSheet.booked }}" hint-placeholder-val="{{ false }}">
+                  <div style="margin-top:12px; font:400 11px/1.4 var(--font-sans); color:var(--ink-600); background:var(--ink-050); border-radius:8px; padding:9px 11px;">{{ mobSheet.bookedInfo }}</div>
+                </sc-if>
+                <sc-if value="{{ mobSheet.assignInfo }}" hint-placeholder-val="{{ false }}">
+                  <div style="margin-top:12px; font:400 11px/1.4 var(--font-sans); color:var(--ink-600); background:var(--ink-050); border-radius:8px; padding:9px 11px;">{{ mobSheet.assignInfo }}</div>
+                </sc-if>
+                <sc-if value="{{ mobSheet.showAssigned }}" hint-placeholder-val="{{ false }}">
+                  <div style="margin-top:12px; display:flex; align-items:center; gap:8px; background:var(--blue-050); border-radius:8px; padding:9px 11px;">
+                    <span style="flex-shrink:0; width:26px; height:26px; border-radius:999px; background:var(--blue-500); color:#fff; display:grid; place-items:center; font:600 10px/1 var(--font-sans);">{{ mobSheet.assigneeInitials }}</span>
+                    <span style="flex:1; min-width:0; font:600 12.5px/1.2 var(--font-sans); color:var(--blue-700); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ mobSheet.assigneeName }}</span>
+                  </div>
+                  <div style="margin-top:8px; display:flex; gap:6px;">
+                    <button onClick="{{ mobSheet.onVacate }}" style="flex:1; height:38px; border:1px solid var(--danger-500); border-radius:8px; background:#fff; color:var(--danger-700); font:600 13px/1 var(--font-sans); cursor:pointer;" style-hover="background: var(--danger-050);">Vacate</button>
+                    <button onClick="{{ mobSheet.onReassign }}" style="flex:1; height:38px; border:none; border-radius:8px; background:var(--blue-500); color:#fff; font:600 13px/1 var(--font-sans); cursor:pointer;" style-hover="background: var(--blue-600);">Reassign</button>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ mobSheet.showAssignSelect }}" hint-placeholder-val="{{ false }}">
+                  <div style="margin-top:12px;">
+                    <div style="font:600 10px/1 var(--font-sans); color:var(--ink-500); text-transform:uppercase; letter-spacing:.05em; margin-bottom:6px;">Assign to</div>
+                    <select value="{{ mobSheet.assignee }}" onChange="{{ mobSheet.onAssignSel }}" style="width:100%; height:40px; border:1px solid var(--ink-200); border-radius:8px; padding:0 10px; font:500 13px/1 var(--font-sans); color:var(--ink-900); background:#fff; cursor:pointer; outline:none;" style-focus="border-color: var(--blue-500); box-shadow: var(--shadow-focus);">
+                      <option value="">— Choose a person —</option>
+                      <sc-for list="{{ mobSheet.empOptions }}" as="eo" hint-placeholder-count="4">
+                        <option value="{{ eo.id }}">{{ eo.name }}</option>
+                      </sc-for>
+                    </select>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-if>
+            <!-- bottom bar -->
+            <div style="flex-shrink:0; display:flex; border-top:1px solid var(--ink-200); background:#fff;">
+              <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:2px; padding:8px 0; color:var(--blue-600);">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3L4 5v16l5-2 6 2 5-2V3l-5 2-6-2z"></path><path d="M9 3v16M15 5v16"></path></svg>
+                <span style="font:600 9px/1 var(--font-sans);">Map</span>
+              </div>
+              <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:2px; padding:8px 0; color:var(--ink-400);">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"></rect><path d="M16 2v4M8 2v4M3 10h18"></path></svg>
+                <span style="font:600 9px/1 var(--font-sans);">Bookings</span>
+              </div>
+              <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:2px; padding:8px 0; color:var(--ink-400);">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"></circle><path d="M4 21c0-4 4-6 8-6s8 2 8 6"></path></svg>
+                <span style="font:600 9px/1 var(--font-sans);">Me</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- ══════════ Settings overlay ══════════ -->
+    <sc-if value="{{ isSettings }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute; inset:0; z-index:80; background:var(--bg-app); overflow-y:auto;" data-screen-label="Settings">
+        <div style="max-width:940px; margin:0 auto; padding:28px 32px 56px;">
+          <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:22px;">
+            <div>
+              <div style="font-size:12px; color:var(--ink-500); margin-bottom:4px;">Workplace administration</div>
+              <h1 style="font:700 26px/1.2 var(--font-sans); color:var(--ink-900); letter-spacing:-0.01em;">Settings</h1>
+            </div>
+            <button onClick="{{ openMap }}" style="display:inline-flex; align-items:center; gap:6px; height:38px; padding:0 14px; border-radius:8px; border:1px solid var(--ink-200); background:#fff; color:var(--ink-700); font:500 13px/1 var(--font-sans); cursor:pointer;" style-hover="background: var(--ink-050);">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"></path></svg>
+              Back to floorplan
+            </button>
+          </div>
+
+          <div style="display:flex; gap:4px; border-bottom:1px solid var(--ink-200); margin-bottom:24px;">
+            <sc-for list="{{ moduleTabs }}" as="t" hint-placeholder-count="5">
+              <button onClick="{{ t.onClick }}" style="height:38px; padding:0 14px; border:none; background:transparent; border-bottom:2px solid {{ t.bd }}; color: {{ t.fg }}; font-weight: {{ t.weight }}; font-size:13px; font-family:var(--font-sans); cursor:pointer; margin-bottom:-1px;">{{ t.name }}</button>
+            </sc-for>
+          </div>
+
+          <!-- permissions matrix -->
+          <sc-if value="{{ isPermTab }}" hint-placeholder-val="{{ true }}">
+            <div style="background:#fff; border:1px solid var(--ink-200); border-radius:12px; overflow:hidden;">
+              <div style="padding:16px 20px; border-bottom:1px solid var(--ink-100); display:flex; align-items:flex-start; justify-content:space-between; gap:12px;">
+                <div>
+                  <h3 style="font:600 15px/1.2 var(--font-sans); color:var(--ink-900);">Roles &amp; access</h3>
+                  <p style="font-size:12px; color:var(--ink-500); margin-top:4px; line-height:1.5;">Choose which roles can perform each action. Changes apply immediately and are saved for your workspace.</p>
+                </div>
+                <button onClick="{{ resetPerms }}" style="flex-shrink:0; height:32px; padding:0 12px; border-radius:6px; border:1px solid var(--ink-200); background:#fff; color:var(--ink-700); font:500 12px/1 var(--font-sans); cursor:pointer;" style-hover="background: var(--ink-050);">Reset to defaults</button>
+              </div>
+              <!-- head -->
+              <div style="display:grid; grid-template-columns:1fr repeat(3, 118px); align-items:center; padding:10px 20px; background:var(--ink-050); border-bottom:1px solid var(--ink-100);">
+                <span style="font:600 11px/1 var(--font-sans); color:var(--ink-500); text-transform:uppercase; letter-spacing:.04em;">Action</span>
+                <sc-for list="{{ roleHeads }}" as="rh" hint-placeholder-count="3">
+                  <span style="text-align:center; font:600 12px/1 var(--font-sans); color:var(--ink-700);">{{ rh.name }}</span>
+                </sc-for>
+              </div>
+              <sc-for list="{{ permRows }}" as="pr" hint-placeholder-count="3">
+                <div style="display:grid; grid-template-columns:1fr repeat(3, 118px); align-items:center; padding:14px 20px; border-bottom:1px solid var(--ink-100);">
+                  <div style="min-width:0; padding-right:12px;">
+                    <div style="font:600 13px/1.2 var(--font-sans); color:var(--ink-900);">{{ pr.name }}</div>
+                    <div style="font:400 11.5px/1.4 var(--font-sans); color:var(--ink-500); margin-top:2px;">{{ pr.desc }}</div>
+                  </div>
+                  <sc-for list="{{ pr.cells }}" as="c" hint-placeholder-count="3">
+                    <div style="display:flex; justify-content:center;">
+                      <button onClick="{{ c.onToggle }}" style="width:38px; height:22px; border-radius:999px; border:1px solid {{ c.bd }}; background: {{ c.bg }}; position:relative; cursor:pointer; transition: background 120ms, border-color 120ms; padding:0;">
+                        <span style="position:absolute; top:2px; left: {{ c.knobLeft }}; width:16px; height:16px; border-radius:999px; background:#fff; box-shadow:0 1px 2px rgba(40,54,72,0.3); transition: left 140ms cubic-bezier(0.2,0,0,1);"></span>
+                      </button>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-for>
+              <div style="padding:12px 20px; background:var(--ink-050); font-size:11px; color:var(--ink-500); line-height:1.5;">You are currently viewing the app as <b style="color:var(--ink-700);">{{ currentRoleName }}</b>. Switch roles from the left sidebar to preview what each role can do.</div>
+            </div>
+          </sc-if>
+
+          <!-- module configuration -->
+          <sc-if value="{{ isModuleTab }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex; flex-direction:column; gap:20px;">
+              <!-- states & color coding -->
+              <div style="background:#fff; border:1px solid var(--ink-200); border-radius:12px; overflow:hidden;">
+                <div style="padding:16px 20px; border-bottom:1px solid var(--ink-100);">
+                  <h3 style="font:600 15px/1.2 var(--font-sans); color:var(--ink-900);">{{ moduleTitle }} — states &amp; color coding</h3>
+                  <p style="font-size:12px; color:var(--ink-500); margin-top:4px; line-height:1.5;">Pick the color used on the floorplan and legend for each state.</p>
+                </div>
+                <sc-for list="{{ moduleStates }}" as="s" hint-placeholder-count="4">
+                  <div style="display:flex; align-items:center; gap:14px; padding:14px 20px; border-bottom:1px solid var(--ink-100);">
+                    <span style="flex-shrink:0; width:14px; height:14px; border-radius:4px; background: {{ s.color }};"></span>
+                    <div style="width:150px; flex-shrink:0;">
+                      <div style="font:600 13px/1.2 var(--font-sans); color:var(--ink-900);">{{ s.label }}</div>
+                      <div style="font:400 11.5px/1.4 var(--font-sans); color:var(--ink-500); margin-top:2px;">{{ s.desc }}</div>
+                    </div>
+                    <div style="flex:1; display:flex; align-items:center; gap:7px;">
+                      <sc-for list="{{ s.swatches }}" as="w" hint-placeholder-count="7">
+                        <button onClick="{{ w.onPick }}" title="{{ w.hex }}" style="width:22px; height:22px; border-radius:6px; border:none; background: {{ w.hex }}; box-shadow: {{ w.ring }}; cursor:pointer; padding:0;"></button>
+                      </sc-for>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+              <!-- default slot length -->
+              <sc-if value="{{ showSlotSetting }}" hint-placeholder-val="{{ false }}">
+                <div style="background:#fff; border:1px solid var(--ink-200); border-radius:12px; overflow:hidden;">
+                  <div style="padding:16px 20px; border-bottom:1px solid var(--ink-100);">
+                    <h3 style="font:600 15px/1.2 var(--font-sans); color:var(--ink-900);">Default slot length</h3>
+                    <p style="font-size:12px; color:var(--ink-500); margin-top:4px;">New bookings start at this length. Drag the calendar edges to fine-tune any booking.</p>
+                  </div>
+                  <div style="padding:16px 20px; display:flex; gap:8px;">
+                    <sc-for list="{{ slotChips }}" as="sc" hint-placeholder-count="4">
+                      <button onClick="{{ sc.onClick }}" style="height:38px; min-width:64px; padding:0 16px; border-radius:8px; border:1px solid {{ sc.bd }}; background: {{ sc.bg }}; color: {{ sc.fg }}; font:600 13px/1 var(--font-sans); cursor:pointer;">{{ sc.label }}</button>
+                    </sc-for>
+                  </div>
+                </div>
+              </sc-if>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </sc-if>
+  </div>
+
+  <!-- mobile bottom tab bar (phone widths only) -->
+  <div class="fp-tabbar" style="display:none; position:fixed; left:0; right:0; bottom:0; height:60px; background:#fff; border-top:1px solid var(--ink-200); z-index:90; box-shadow:0 -4px 16px rgba(5,16,30,0.1);">
+    <div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; color:var(--blue-600); cursor:pointer;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3L4 5v16l5-2 6 2 5-2V3l-5 2-6-2z"></path><path d="M9 3v16M15 5v16"></path></svg>
+      <span style="font:600 10px/1 var(--font-sans);">Map</span>
+    </div>
+    <div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; color:var(--ink-400); cursor:pointer;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"></rect><path d="M16 2v4M8 2v4M3 10h18"></path></svg>
+      <span style="font:600 10px/1 var(--font-sans);">Bookings</span>
+    </div>
+    <div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; color:var(--ink-400); cursor:pointer;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"></circle><path d="M4 21c0-4 4-6 8-6s8 2 8 6"></path></svg>
+      <span style="font:600 10px/1 var(--font-sans);">Me</span>
+    </div>
+  </div>
+
+  <!-- booking modal -->
+  <sc-if value="{{ bookModalOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeBookModal }}" style="position:fixed; inset:0; background:rgba(40,54,72,0.48); z-index:200; display:flex; align-items:center; justify-content:center; padding:24px;">
+      <div onClick="{{ stopEvt }}" style="width:560px; max-width:100%; max-height:88vh; overflow:auto; background:#fff; border-radius:12px; box-shadow:0 24px 56px rgba(40,54,72,0.16);">
+        <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:16px 20px; border-bottom:1px solid var(--ink-100);">
+          <div>
+            <h3 style="margin:0; font:600 16px/1.2 var(--font-sans); color:var(--ink-900);">{{ modalTitle }}</h3>
+            <div style="font-size:12px; color:var(--ink-500); margin-top:3px;">{{ dateShort }} · {{ rangeText }}</div>
+          </div>
+          <button onClick="{{ closeBookModal }}" title="Close" style="flex-shrink:0; width:28px; height:28px; border:none; background:transparent; color:var(--ink-500); cursor:pointer; display:grid; place-items:center; border-radius:4px;" style-hover="background: var(--ink-050); color: var(--ink-900);">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"></path></svg>
+          </button>
+        </div>
+
+        <div style="padding:20px; display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+          <div style="grid-column:1 / -1;">
+            <label style="display:block; font:500 11px/1 var(--font-sans); color:var(--ink-600); margin-bottom:6px;">Booked by</label>
+            <select value="{{ bookBy }}" onChange="{{ onBookBy }}" style="width:100%; height:36px; border:1px solid var(--ink-200); border-radius:4px; padding:0 8px; font:400 13px/1 var(--font-sans); color:var(--ink-900); outline:none; background:#fff;" style-focus="border-color: var(--blue-500); box-shadow: var(--shadow-focus);">
+              <sc-for list="{{ empOptions }}" as="eo" hint-placeholder-count="4">
+                <option value="{{ eo.id }}">{{ eo.name }}</option>
+              </sc-for>
+            </select>
+          </div>
+          <div style="grid-column:1 / -1;">
+            <label style="display:block; font:500 11px/1 var(--font-sans); color:var(--ink-600); margin-bottom:6px;">Date</label>
+            <input type="date" value="{{ dateVal }}" onChange="{{ onDate }}" style="width:100%; height:36px; border:1px solid var(--ink-200); border-radius:4px; padding:0 10px; font:400 13px/1 var(--font-sans); color:var(--ink-900); outline:none;" style-focus="border-color: var(--blue-500); box-shadow: var(--shadow-focus);">
+          </div>
+          <div>
+            <label style="display:block; font:500 11px/1 var(--font-sans); color:var(--ink-600); margin-bottom:6px;">Start</label>
+            <select value="{{ bookStart }}" onChange="{{ onStart }}" style="width:100%; height:36px; border:1px solid var(--ink-200); border-radius:4px; padding:0 8px; font:400 13px/1 var(--font-sans); color:var(--ink-900); outline:none; background:#fff;" style-focus="border-color: var(--blue-500); box-shadow: var(--shadow-focus);">
+              <sc-for list="{{ timeOptions }}" as="t" hint-placeholder-count="4">
+                <option value="{{ t.v }}">{{ t.label }}</option>
+              </sc-for>
+            </select>
+          </div>
+          <div>
+            <label style="display:block; font:500 11px/1 var(--font-sans); color:var(--ink-600); margin-bottom:6px;">End</label>
+            <select value="{{ bookEnd }}" onChange="{{ onEnd }}" style="width:100%; height:36px; border:1px solid var(--ink-200); border-radius:4px; padding:0 8px; font:400 13px/1 var(--font-sans); color:var(--ink-900); outline:none; background:#fff;" style-focus="border-color: var(--blue-500); box-shadow: var(--shadow-focus);">
+              <sc-for list="{{ timeOptions }}" as="t" hint-placeholder-count="4">
+                <option value="{{ t.v }}">{{ t.label }}</option>
+              </sc-for>
+            </select>
+          </div>
+          <div style="grid-column:1 / -1;">
+            <label style="display:block; font:500 11px/1 var(--font-sans); color:var(--ink-600); margin-bottom:6px;">Purpose</label>
+            <input value="{{ bookPurpose }}" onChange="{{ onPurpose }}" placeholder="e.g. Sprint planning" style="width:100%; height:36px; border:1px solid var(--ink-200); border-radius:4px; padding:0 10px; font:400 13px/1 var(--font-sans); color:var(--ink-900); outline:none;" style-focus="border-color: var(--blue-500); box-shadow: var(--shadow-focus);">
+          </div>
+          <div style="grid-column:1 / -1;">
+            <label style="display:block; font:500 11px/1 var(--font-sans); color:var(--ink-600); margin-bottom:6px;">Notes <span style="color:var(--ink-400);">· optional</span></label>
+            <textarea value="{{ bookNotes }}" onChange="{{ onNotes }}" rows="3" placeholder="Anything facilities should know…" style="width:100%; border:1px solid var(--ink-200); border-radius:4px; padding:8px 10px; font:400 13px/1.4 var(--font-sans); color:var(--ink-900); outline:none; resize:vertical; box-sizing:border-box;" style-focus="border-color: var(--blue-500); box-shadow: var(--shadow-focus);"></textarea>
+          </div>
+          <sc-if value="{{ bookError }}" hint-placeholder-val="{{ false }}">
+            <div style="grid-column:1 / -1; background:var(--danger-050); color:var(--danger-700); border-radius:4px; padding:10px 12px; font-size:12px; line-height:1.4;">{{ bookError }}</div>
+          </sc-if>
+        </div>
+
+        <div style="display:flex; align-items:center; justify-content:flex-end; gap:10px; padding:14px 20px; border-top:1px solid var(--ink-100);">
+          <button class="btn btn-secondary" onClick="{{ closeBookModal }}">Cancel</button>
+          <button class="btn btn-primary" onClick="{{ doBook }}" disabled="{{ bookDisabled }}" style="opacity: {{ bookBtnOpacity }};">Confirm booking</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- toast -->
+  <sc-if value="{{ toastMsg }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:var(--ink-900); color:#fff; border-radius:6px; padding:10px 16px; font:500 13px/1 var(--font-sans); box-shadow:var(--shadow-lg); z-index:100; animation: fp-toast 180ms cubic-bezier(0.2,0,0,1);">{{ toastMsg }}</div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;isMobile&quot;: { &quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: false, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Behavior&quot; },
+  &quot;defaultMode&quot;: { &quot;editor&quot;: &quot;enum&quot;, &quot;options&quot;: [&quot;assign&quot;, &quot;book&quot;, &quot;edit&quot;], &quot;default&quot;: &quot;assign&quot;, &quot;tsType&quot;: &quot;'assign' | 'book' | 'edit'&quot;, &quot;section&quot;: &quot;Behavior&quot; },
+  &quot;showRoomLabels&quot;: { &quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: true, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Canvas&quot; },
+  &quot;markerScale&quot;: { &quot;editor&quot;: &quot;range&quot;, &quot;default&quot;: 1, &quot;min&quot;: 0.7, &quot;max&quot;: 1.6, &quot;step&quot;: 0.1, &quot;unit&quot;: &quot;×&quot;, &quot;tsType&quot;: &quot;number&quot;, &quot;section&quot;: &quot;Canvas&quot; }
+}">
+class Component extends DCLogic {
+  IMG_W = 1492;
+  IMG_H = 1054;
+  LS_KEY = 'facilio_floorplan_proto_v2';
+  canvasRef = React.createRef();
+
+  PANEL_META = {
+    context: { w: 236, title: 'Location' },
+    portfolio: { w: 236, title: 'Portfolio' },
+    details: { w: 304, title: 'Details' },
+  };
+
+  LAYOUT_KEY = 'facilio_floorplan_layout_v3';
+  PERMS_KEY = 'facilio_floorplan_perms_v2';
+
+  ROLES = [
+    { id: 'admin', name: 'Admin' },
+    { id: 'manager', name: 'Manager' },
+    { id: 'employee', name: 'Employee' },
+  ];
+  DEFAULT_PERMS = { edit: ['admin'], assign: ['admin', 'manager'], book: ['admin', 'manager', 'employee'] };
+  ACTIONS = [
+    { id: 'edit', name: 'Edit floorplan', desc: 'Draw rooms, place units, calibrate scale' },
+    { id: 'assign', name: 'Assign desks & lockers', desc: 'Give a permanent desk or locker to a person' },
+    { id: 'book', name: 'Book spaces', desc: 'Reserve hot desks, rooms, parking' },
+  ];
+
+  TYPE_META = {
+    workstation: { name: 'Desk', prefix: 'WS' },
+    locker: { name: 'Locker', prefix: 'L' },
+    parking: { name: 'Parking stall', prefix: 'P' },
+    room: { name: 'Room', prefix: 'RM' },
+  };
+
+  /* module state → color coding definitions */
+  STATE_SWATCHES = ['#29A01E', '#0059D6', '#3C229D', '#B61919', '#F59E0B', '#2ED1FF', '#607796'];
+  STATE_DEFS = {
+    workstation: [
+      { key: 'free', label: 'Free', desc: 'Assignable, no owner yet', def: '#29A01E' },
+      { key: 'assigned', label: 'Assigned', desc: 'Has a permanent owner', def: '#0059D6' },
+      { key: 'hot', label: 'Hot desk', desc: 'Bookable by anyone, per session', def: '#3C229D' },
+      { key: 'booked', label: 'Booked', desc: 'Reserved for a time window', def: '#B61919' },
+    ],
+    locker: [
+      { key: 'free', label: 'Free', desc: 'Available to assign', def: '#29A01E' },
+      { key: 'assigned', label: 'Assigned', desc: 'Held by an employee', def: '#0059D6' },
+    ],
+    parking: [
+      { key: 'free', label: 'Free', desc: 'Open stall', def: '#29A01E' },
+      { key: 'booked', label: 'Booked', desc: 'Reserved for a time window', def: '#B61919' },
+    ],
+    room: [
+      { key: 'available', label: 'Available', desc: 'Open to book', def: '#29A01E' },
+      { key: 'booked', label: 'Booked', desc: 'Reserved for a time window', def: '#B61919' },
+    ],
+  };
+  OPT_DEFS = {
+    workstation: [
+      { key: 'hotDesking', label: 'Allow hot-desking', desc: 'Let employees book unassigned desks by the hour', def: true },
+      { key: 'autoRelease', label: 'Auto-release no-shows', desc: 'Free a booked desk 30 min after an unclaimed start', def: true },
+    ],
+    locker: [
+      { key: 'deposit', label: 'Require deposit', desc: 'Collect a refundable deposit on assignment', def: false },
+      { key: 'autoExpire', label: 'Expire idle lockers', desc: 'Release lockers unused for 90 days', def: true },
+    ],
+    parking: [
+      { key: 'evOnly', label: 'EV stalls need a permit', desc: 'Restrict charging stalls to permit holders', def: true },
+      { key: 'overnight', label: 'Allow overnight parking', desc: 'Permit bookings that span midnight', def: false },
+    ],
+    room: [
+      { key: 'approval', label: 'Require approval', desc: 'Route room requests to a facilities admin', def: false },
+      { key: 'checkin', label: 'Require check-in', desc: 'Auto-cancel if nobody checks in within 10 min', def: true },
+    ],
+  };
+  moduleColor(type, key) {
+    const o = (this.state.moduleColors || {})[type + '.' + key];
+    if (o) return o;
+    const d = (this.STATE_DEFS[type] || []).find(s => s.key === key);
+    return d ? d.def : '#607796';
+  }
+  moduleOpt(type, key) {
+    const o = (this.state.moduleOpts || {})[type + '.' + key];
+    if (o != null) return o;
+    const d = (this.OPT_DEFS[type] || []).find(s => s.key === key);
+    return d ? d.def : false;
+  }
+
+  EMPLOYEES = [
+    { id: 'e1', name: 'Priya Kumar', dept: 'Operations' },
+    { id: 'e2', name: 'Jonas Weber', dept: 'Engineering' },
+    { id: 'e3', name: 'Maria Silva', dept: 'Finance' },
+    { id: 'e4', name: 'Anna Schmidt', dept: 'HR' },
+    { id: 'e5', name: 'David Chen', dept: 'Engineering' },
+    { id: 'e6', name: 'Lena Hoffmann', dept: 'Operations' },
+    { id: 'e7', name: 'Tom Becker', dept: 'Engineering' },
+    { id: 'e8', name: 'Sofia Rossi', dept: 'Finance' },
+    { id: 'e9', name: 'Mark Janssen', dept: 'Operations' },
+    { id: 'e10', name: 'Emma Fischer', dept: 'Engineering' },
+    { id: 'e11', name: 'Lukas Braun', dept: 'HR' },
+    { id: 'e12', name: 'Nina Keller', dept: 'Operations' },
+    { id: 'e13', name: 'Omar Haddad', dept: 'Engineering' },
+    { id: 'e14', name: 'Julia Wagner', dept: 'Finance' },
+  ];
+
+  PORTFOLIO = [
+    { id: 'sBer', name: 'HQ Berlin', buildings: [
+      { id: 'bA', name: 'Building A', floors: [
+        { id: 'hqA1', name: 'Floor 1' },
+        { id: 'hqA2', name: 'Floor 2' },
+        { id: 'hqA3', name: 'Floor 3', hasPlan: true, plans: [{ id: 'workstation', name: 'Workstations' }, { id: 'locker', name: 'Lockers' }, { id: 'parking', name: 'Parking stalls' }, { id: 'custom', name: 'Custom' }] },
+        { id: 'hqA4', name: 'Floor 4' },
+      ] },
+      { id: 'bB', name: 'Building B', floors: [
+        { id: 'hqB1', name: 'Floor 1' },
+        { id: 'hqB2', name: 'Floor 2' },
+      ] },
+    ] },
+    { id: 'sMuc', name: 'Campus München', buildings: [
+      { id: 'mH1', name: 'Haus 1', floors: [
+        { id: 'mucH1EG', name: 'Erdgeschoss' },
+        { id: 'mucH1O1', name: 'Obergeschoss 1' },
+      ] },
+    ] },
+    { id: 'sAms', name: 'Amsterdam Office', buildings: [
+      { id: 'aM', name: 'Main building', floors: [
+        { id: 'amsM1', name: 'Floor 1' },
+      ] },
+    ] },
+  ];
+
+  state = this.buildState();
+
+  buildState() {
+    const today = new Date();
+    const iso = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem(this.LS_KEY) || 'null'); } catch (err) { saved = null; }
+    let layout = null;
+    try { layout = JSON.parse(localStorage.getItem(this.LAYOUT_KEY) || 'null'); } catch (err) { layout = null; }
+    const defPanels = { context: { open: true, x: null, y: null }, portfolio: { open: false, x: null, y: null }, details: { open: true, x: null, y: null } };
+    const panels = layout && layout.panels ? { context: { ...defPanels.context, ...layout.panels.context }, portfolio: { ...defPanels.portfolio, ...layout.panels.portfolio }, details: { ...defPanels.details, ...layout.panels.details } } : defPanels;
+    const bookings = (saved && saved.bookings) || this.seedBookings(iso);
+    const defaultDate = bookings.length ? bookings[0].date : iso;
+    let perms = null;
+    try { perms = JSON.parse(localStorage.getItem(this.PERMS_KEY) || 'null'); } catch (err) { perms = null; }
+    perms = perms ? { edit: perms.edit || this.DEFAULT_PERMS.edit, assign: perms.assign || this.DEFAULT_PERMS.assign, book: perms.book || this.DEFAULT_PERMS.book } : { ...this.DEFAULT_PERMS };
+    let units = ((saved && saved.units) || this.seedUnits()).map(u => ({ ...u, floor: u.floor || 'hqA3', plan: ['workstation', 'locker', 'parking', 'custom'].includes(u.plan) ? u.plan : this.planForType(u.type), deskMode: u.type === 'workstation' ? (u.deskMode || 'assigned') : undefined }));
+    if (!units.some(u => u.type === 'parking' && u.floor === 'hqA3')) {
+      units = units.concat(this.seedUnits().filter(u => u.type === 'parking').map(u => ({ ...u, floor: 'hqA3' })));
+    }
+    return {
+      mode: (this.props && this.props.defaultMode) || 'assign',
+      floorId: 'hqA3',
+      planId: 'workstation',
+      expanded: { sBer: true, bA: true },
+      panels,
+      stageW: 1200,
+      stageH: 700,
+      navOpen: false,
+      currentRole: 'admin',
+      perms,
+      activeView: 'map',
+      settingsTab: 'permissions',
+      moduleTab: 'workstation',
+      moduleColors: {},
+      moduleOpts: {},
+      slotGranularity: 30,
+      hover: null,
+      mobileOpen: !!(this.props && this.props.isMobile),
+      fullMobile: !!(this.props && this.props.isMobile),
+      mobileTab: 'book',
+      mobTimePick: null,
+      mobAssignEdit: false,
+      mobPickSite: null,
+      mobPickBuilding: null,
+      mobFloorOpen: false,
+      mobSel: null,
+      spaceSearch: '',
+      portCollapsed: false,
+      spaceFilter: 'all',
+      tool: 'select',
+      view: { tx: 0, ty: 0, z: 0.5 },
+      units,
+      assignments: (saved && saved.assignments) || this.seedAssignments(),
+      bookings,
+      pxPerMeter: (saved && saved.pxPerMeter) || null,
+      selected: null,
+      draft: [],
+      calib: [],
+      calibLen: '',
+      empSearch: '',
+      dragEmp: null,
+      dragOver: null,
+      date: defaultDate,
+      start: 600,
+      end: 660,
+      bookBy: 'e1',
+      bookPurpose: '',
+      bookNotes: '',
+      bookModalOpen: false,
+      webReassign: null,
+      schedView: 'list',
+      toast: null,
+    };
+  }
+
+  seedUnits() {
+    const U = [];
+    const ws = [
+      [0.083, 0.115, 'Büro 1'], [0.083, 0.160, 'Büro 1'], [0.083, 0.205, 'Büro 1'],
+      [0.125, 0.115, 'Büro 1'], [0.125, 0.160, 'Büro 1'], [0.125, 0.205, 'Büro 1'],
+      [0.318, 0.115, 'Büro 2'], [0.318, 0.160, 'Büro 2'], [0.318, 0.205, 'Büro 2'],
+      [0.362, 0.115, 'Büro 2'], [0.362, 0.160, 'Büro 2'], [0.362, 0.205, 'Büro 2'],
+      [0.655, 0.125, 'Büro 4'], [0.655, 0.175, 'Büro 4'], [0.702, 0.125, 'Büro 4'], [0.702, 0.175, 'Büro 4'],
+      [0.838, 0.790, 'Büro 9'], [0.838, 0.865, 'Büro 9'], [0.926, 0.790, 'Büro 9'], [0.926, 0.865, 'Büro 9'],
+      [0.700, 0.790, 'Büro 10'], [0.700, 0.865, 'Büro 10'],
+      [0.075, 0.790, 'Büro 12'], [0.075, 0.865, 'Büro 12'],
+    ];
+    const seatTypes = ['Sit-stand · dual monitor', 'Fixed · single monitor', 'Window seat · sit-stand', 'Standard · docking', 'Corner · dual monitor', 'Standard · single monitor'];
+    // first 16 desks (Büro 1/2/4) are ASSIGNED (person-owned); last 8 (Büro 9/10/12) are HOT (bookable)
+    ws.forEach((w, i) => { const hot = i >= 16; U.push({ id: 'ws' + (i + 1), type: 'workstation', deskMode: hot ? 'hot' : 'assigned', label: (hot ? 'HD-' : 'WS-') + String(i + 1).padStart(2, '0'), secondary: seatTypes[i % seatTypes.length], room: w[2], geom: { kind: 'point', x: w[0], y: w[1] } }); });
+    for (let i = 0; i < 8; i++) {
+      U.push({ id: 'lk' + (i + 1), type: 'locker', label: 'L-' + String(i + 1).padStart(2, '0'), room: 'Flur', geom: { kind: 'point', x: 0.058 + i * 0.0135, y: 0.343 } });
+    }
+    U.push({ id: 'rm1', type: 'room', label: 'Konferenzraum 1', room: null, geom: { kind: 'poly', pts: [[0.492, 0.735], [0.618, 0.735], [0.618, 0.955], [0.492, 0.955]] } });
+    U.push({ id: 'rm2', type: 'room', label: 'Konferenzraum 2', room: null, geom: { kind: 'poly', pts: [[0.148, 0.700], [0.385, 0.700], [0.385, 0.955], [0.148, 0.955]] } });
+    U.push({ id: 'rm3', type: 'room', label: 'Ruheraum', room: null, geom: { kind: 'poly', pts: [[0.033, 0.360], [0.155, 0.360], [0.155, 0.440], [0.033, 0.440]] } });
+    const pk = [[0.44, 0.60], [0.47, 0.60], [0.50, 0.60], [0.44, 0.66], [0.47, 0.66], [0.50, 0.66]];
+    pk.forEach((p, i) => U.push({ id: 'pk' + (i + 1), type: 'parking', label: 'P-' + String(i + 1).padStart(2, '0'), room: null, geom: { kind: 'point', x: p[0], y: p[1] } }));
+    return U.map(u => ({ ...u, plan: this.planForType(u.type) }));
+  }
+
+  seedAssignments() {
+    return { ws1: 'e1', ws2: 'e2', ws4: 'e3', ws7: 'e4', ws9: 'e5', ws13: 'e6', ws11: 'e7', ws15: 'e8' };
+  }
+
+  seedBookings(d) {
+    return [
+      { id: 'b1', unitId: 'rm1', date: d, start: 540, end: 630, by: 'e2', purpose: 'Sprint planning' },
+      { id: 'b2', unitId: 'rm2', date: d, start: 840, end: 900, by: 'e9', purpose: 'Client review' },
+      { id: 'b3', unitId: 'ws17', date: d, start: 540, end: 1020, by: 'e14', purpose: 'Visitor desk' },
+      { id: 'b5', unitId: 'ws19', date: d, start: 600, end: 720, by: 'e10', purpose: 'Focus block' },
+      { id: 'b6', unitId: 'pk1', date: d, start: 480, end: 1080, by: 'e3', purpose: 'EV charging' },
+      { id: 'b4', unitId: 'rm3', date: d, start: 780, end: 810, by: 'e6', purpose: '' },
+    ];
+  }
+
+  /* ---------- persistence ---------- */
+  persist() {
+    const S = this.state;
+    try {
+      localStorage.setItem(this.LS_KEY, JSON.stringify({ units: S.units, assignments: S.assignments, bookings: S.bookings, pxPerMeter: S.pxPerMeter }));
+    } catch (err) { /* ignore */ }
+  }
+
+  resetDemo = () => {
+    try { localStorage.removeItem(this.LS_KEY); } catch (err) { /* ignore */ }
+    this.setState({
+      units: this.seedUnits(),
+      assignments: this.seedAssignments(),
+      bookings: this.seedBookings(this.state.date),
+      pxPerMeter: null,
+      selected: null, draft: [], calib: [],
+    });
+    this.showToast('Demo data reset');
+  };
+
+  /* ---------- dockable panels ---------- */
+  setStageEl = (el) => {
+    if (this._stageEl === el) return;
+    if (this._stageEl && this._sro) { this._sro.disconnect(); this._sro = null; }
+    this._stageEl = el;
+    if (el) {
+      const upd = () => { const r = el.getBoundingClientRect(); if (r.width > 20) this.setState({ stageW: r.width, stageH: r.height }); };
+      this._sro = new ResizeObserver(upd); this._sro.observe(el); upd();
+    }
+  };
+
+  saveLayout() {
+    try { localStorage.setItem(this.LAYOUT_KEY, JSON.stringify({ panels: this.state.panels })); } catch (err) { /* ignore */ }
+  }
+
+  defaultPanelPos(id) {
+    const W = this.state.stageW || 1200;
+    if (id === 'context') return { x: 16, y: 124 };
+    if (id === 'portfolio') return { x: 16, y: 68 };
+    return { x: Math.max(16, W - 320), y: 68 };
+  }
+
+  panelPos(id) {
+    const p = this.state.panels[id] || {};
+    const d = this.defaultPanelPos(id);
+    return { x: p.x == null ? d.x : p.x, y: p.y == null ? d.y : p.y };
+  }
+
+  togglePanelOpen(id) {
+    const cur = this.state.panels[id];
+    const panels = { ...this.state.panels, [id]: { ...cur, open: !cur.open } };
+    this.setState({ panels }, () => this.saveLayout());
+  }
+
+  startPanelDrag(id, e) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const pos = this.panelPos(id);
+    this._pdrag = { id, sx: e.clientX, sy: e.clientY, ox: pos.x, oy: pos.y, moved: false };
+    window.addEventListener('mousemove', this.onPanelDragMove);
+    window.addEventListener('mouseup', this.onPanelDragUp);
+  }
+
+  onPanelDragMove = (e) => {
+    const d = this._pdrag;
+    if (!d) return;
+    const dx = e.clientX - d.sx, dy = e.clientY - d.sy;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) d.moved = true;
+    const W = this.state.stageW, H = this.state.stageH;
+    const open = this.state.panels[d.id].open;
+    const w = open ? this.PANEL_META[d.id].w : 46;
+    const nx = Math.max(4, Math.min(W - w - 4, d.ox + dx));
+    const ny = Math.max(4, Math.min(H - 50, d.oy + dy));
+    const panels = { ...this.state.panels, [d.id]: { ...this.state.panels[d.id], x: nx, y: ny } };
+    this.setState({ panels });
+  };
+
+  onPanelDragUp = () => {
+    window.removeEventListener('mousemove', this.onPanelDragMove);
+    window.removeEventListener('mouseup', this.onPanelDragUp);
+    if (this._pdrag) {
+      if (this._pdrag.moved) { this._suppressPanelClick = true; setTimeout(() => { this._suppressPanelClick = false; }, 0); }
+      this._pdrag = null;
+      this.saveLayout();
+    }
+  };
+
+  resetLayout = () => {
+    const panels = { context: { open: true, x: null, y: null }, portfolio: { open: false, x: null, y: null }, details: { open: true, x: null, y: null } };
+    this.setState({ panels }, () => this.saveLayout());
+    this.showToast('Panel layout reset');
+  };
+
+  panelView(id) {
+    const pos = this.panelPos(id);
+    const open = this.state.panels[id].open;
+    const H = this.state.stageH || 700;
+    return {
+      x: pos.x,
+      y: pos.y,
+      open,
+      closed: !open,
+      maxH: Math.max(180, H - pos.y - 16),
+      headerDown: (e) => this.startPanelDrag(id, e),
+      toggle: (e) => { e.stopPropagation(); this.togglePanelOpen(id); },
+      iconDown: (e) => this.startPanelDrag(id, e),
+      iconClick: () => { if (this._suppressPanelClick) return; this.togglePanelOpen(id); },
+    };
+  }
+
+  /* ---------- lifecycle ---------- */
+  setCanvasEl = (el) => {
+    if (this._canvasEl === el) return;
+    if (this._canvasEl) {
+      this._canvasEl.removeEventListener('wheel', this.onWheel);
+      if (this._ro) { this._ro.disconnect(); this._ro = null; }
+    }
+    this._canvasEl = el;
+    this.canvasRef.current = el;
+    if (el) {
+      el.addEventListener('wheel', this.onWheel, { passive: false });
+      this._ro = new ResizeObserver(() => { if (!this._userZoomed) this.fitView(); });
+      this._ro.observe(el);
+      if (!this._userZoomed) this.fitView();
+    }
+  };
+
+  componentDidMount() {
+    window.addEventListener('keydown', this.onKey);
+  }
+
+  componentWillUnmount() {
+    if (this._canvasEl) this._canvasEl.removeEventListener('wheel', this.onWheel);
+    if (this._ro) this._ro.disconnect();
+    window.removeEventListener('keydown', this.onKey);
+    window.removeEventListener('mousemove', this.onPanMove);
+    window.removeEventListener('mouseup', this.onPanUp);
+    if (this._toastTimer) clearTimeout(this._toastTimer);
+  }
+
+  /* ---------- view / zoom / pan ---------- */
+  fitView = () => {
+    const el = this.canvasRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    if (r.width < 20 || r.height < 20) return;
+    const z = Math.min(r.width / this.IMG_W, r.height / this.IMG_H) * 0.96;
+    this.setState({ view: { z, tx: (r.width - this.IMG_W * z) / 2, ty: (r.height - this.IMG_H * z) / 2 } });
+  };
+
+  zoomFit = () => { this._userZoomed = false; this.fitView(); };
+
+  zoomAt(factor, cx, cy) {
+    this._userZoomed = true;
+    const v = this.state.view;
+    const z = Math.min(6, Math.max(0.08, v.z * factor));
+    const k = z / v.z;
+    this.setState({ view: { z, tx: cx - (cx - v.tx) * k, ty: cy - (cy - v.ty) * k } });
+  }
+
+  zoomIn = () => { const el = this.canvasRef.current; if (!el) return; const r = el.getBoundingClientRect(); this.zoomAt(1.3, r.width / 2, r.height / 2); };
+  zoomOut = () => { const el = this.canvasRef.current; if (!el) return; const r = el.getBoundingClientRect(); this.zoomAt(1 / 1.3, r.width / 2, r.height / 2); };
+
+  unitCenter(u) {
+    if (u.geom.kind === 'point') return { x: u.geom.x, y: u.geom.y, span: 0.06 };
+    const xs = u.geom.pts.map(p => p[0]), ys = u.geom.pts.map(p => p[1]);
+    const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+    return { x: (minX + maxX) / 2, y: (minY + maxY) / 2, span: Math.max(maxX - minX, maxY - minY, 0.08) };
+  }
+  focusUnit = (id) => {
+    const S = this.state;
+    const u = S.units.find(x => x.id === id);
+    if (!u) { this.setState({ selected: id }); return; }
+    const patch = { selected: id };
+    if (u.geom.kind === 'point' && u.plan && u.plan !== S.planId) patch.planId = u.plan;
+    const el = this.canvasRef.current;
+    if (el) {
+      const r = el.getBoundingClientRect();
+      const c = this.unitCenter(u);
+      const z = Math.min(3, Math.max(0.5, 0.5 / c.span));
+      this._userZoomed = true;
+      patch.view = { z, tx: r.width / 2 - c.x * this.IMG_W * z, ty: r.height / 2 - c.y * this.IMG_H * z };
+    }
+    this.setState(patch);
+  };
+
+  onWheel = (e) => {
+    e.preventDefault();
+    const el = this.canvasRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    this.zoomAt(Math.exp(-e.deltaY * 0.0015), e.clientX - r.left, e.clientY - r.top);
+  };
+
+  isDrawTool() {
+    return this.state.mode === 'edit' && ['room', 'workstation', 'locker', 'parking', 'calibrate'].includes(this.state.tool);
+  }
+
+  onCanvasMouseDown = (e) => {
+    if (e.button !== 0) return;
+    if (this.isDrawTool()) return;
+    const v = this.state.view;
+    this._pan = { sx: e.clientX, sy: e.clientY, tx: v.tx, ty: v.ty, moved: false };
+    window.addEventListener('mousemove', this.onPanMove);
+    window.addEventListener('mouseup', this.onPanUp);
+  };
+
+  onPanMove = (e) => {
+    if (!this._pan) return;
+    const dx = e.clientX - this._pan.sx, dy = e.clientY - this._pan.sy;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) this._pan.moved = true;
+    if (this._pan.moved) {
+      this.setState({ view: { ...this.state.view, tx: this._pan.tx + dx, ty: this._pan.ty + dy } });
+    }
+  };
+
+  onPanUp = () => {
+    window.removeEventListener('mousemove', this.onPanMove);
+    window.removeEventListener('mouseup', this.onPanUp);
+    if (this._pan && this._pan.moved) {
+      this._suppressClick = true;
+      setTimeout(() => { this._suppressClick = false; }, 0);
+    }
+    this._pan = null;
+  };
+
+  toNorm(e) {
+    const el = this.canvasRef.current;
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    const v = this.state.view;
+    return {
+      x: (e.clientX - r.left - v.tx) / v.z / this.IMG_W,
+      y: (e.clientY - r.top - v.ty) / v.z / this.IMG_H,
+    };
+  }
+
+  /* ---------- geometry helpers ---------- */
+  pointInPoly(x, y, pts) {
+    let inside = false;
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+      if ((pts[i][1] > y) !== (pts[j][1] > y) &&
+          x < (pts[j][0] - pts[i][0]) * (y - pts[i][1]) / (pts[j][1] - pts[i][1]) + pts[i][0]) inside = !inside;
+    }
+    return inside;
+  }
+
+  roomAt(n) {
+    return this.state.units.find(u => u.floor === this.state.floorId && u.geom.kind === 'poly' && this.pointInPoly(n.x, n.y, u.geom.pts)) || null;
+  }
+
+  nextLabel(type) {
+    const meta = this.TYPE_META[type];
+    const count = this.state.units.filter(u => u.type === type && u.floor === this.state.floorId).length + 1;
+    return meta.prefix + '-' + String(count).padStart(2, '0');
+  }
+
+  polyAreaM2(pts) {
+    const ppm = this.state.pxPerMeter;
+    if (!ppm) return null;
+    let a = 0;
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+      const xi = pts[i][0] * this.IMG_W, yi = pts[i][1] * this.IMG_H;
+      const xj = pts[j][0] * this.IMG_W, yj = pts[j][1] * this.IMG_H;
+      a += (xj + xi) * (yj - yi);
+    }
+    return Math.abs(a / 2) / (ppm * ppm);
+  }
+
+  planForType(type) { return (type === 'workstation' || type === 'locker' || type === 'parking') ? type : 'custom'; }
+  isAssignable(u) { return (u.type === 'workstation' && u.deskMode !== 'hot') || u.type === 'locker'; }
+  isBookable(u) { if (u.type === 'workstation') return u.deskMode === 'hot'; return u.type === 'room' || u.type === 'parking'; }
+  deskKind(u) { return u.type === 'workstation' ? (u.deskMode === 'hot' ? 'Hot desk' : 'Assigned desk') : this.TYPE_META[u.type].name; }
+  can(action) { const p = this.state.perms || this.DEFAULT_PERMS; return (p[action] || []).includes(this.state.currentRole); }
+  fmt(m) { return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); }
+  empName(id) { const e = this.EMPLOYEES.find(x => x.id === id); return e ? e.name : '—'; }
+  initials(name) { return name.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase(); }
+
+  /* ---------- canvas clicks ---------- */
+  onCanvasClick = (e) => {
+    if (this._suppressClick) return;
+    const S = this.state;
+    const n = this.toNorm(e);
+    if (!n) return;
+    if (S.mode !== 'edit') { this.setState({ selected: null }); return; }
+    const inBounds = n.x >= 0 && n.x <= 1 && n.y >= 0 && n.y <= 1;
+    if (S.tool === 'select') { this.setState({ selected: null }); return; }
+    if (!inBounds) return;
+    if (['workstation', 'locker', 'parking'].includes(S.tool)) {
+      const room = this.roomAt(n);
+      const label = this.nextLabel(S.tool);
+      const unit = { id: 'u' + Date.now(), type: S.tool, label, secondary: S.tool === 'workstation' ? 'Standard · single monitor' : undefined, floor: S.floorId, plan: this.planForType(S.tool), room: room ? room.label : null, geom: { kind: 'point', x: n.x, y: n.y } };
+      this.setState({ units: [...S.units, unit], selected: unit.id }, () => this.persist());
+      this.showToast(label + ' added');
+      return;
+    }
+    if (S.tool === 'room') {
+      const draft = S.draft;
+      if (draft.length >= 3) {
+        const f = draft[0];
+        const distPx = Math.hypot((n.x - f[0]) * this.IMG_W, (n.y - f[1]) * this.IMG_H) * S.view.z;
+        if (distPx < 12) { this.closeDraft(); return; }
+      }
+      this.setState({ draft: [...draft, [n.x, n.y]] });
+      return;
+    }
+    if (S.tool === 'calibrate') {
+      if (S.calib.length >= 2) return;
+      this.setState({ calib: [...S.calib, [n.x, n.y]] });
+    }
+  };
+
+  onCanvasDblClick = () => {
+    if (this.state.mode === 'edit' && this.state.tool === 'room' && this.state.draft.length >= 3) this.closeDraft();
+  };
+
+  closeDraft() {
+    const S = this.state;
+    if (S.draft.length < 3) return;
+    const label = this.nextLabel('room');
+    const unit = { id: 'u' + Date.now(), type: 'room', label, floor: S.floorId, plan: 'custom', room: null, geom: { kind: 'poly', pts: S.draft } };
+    this.setState({ units: [...S.units, unit], draft: [], tool: 'select', selected: unit.id }, () => this.persist());
+    this.showToast(label + ' created — rename it in the Selection panel');
+  }
+
+  onKey = (e) => {
+    const tag = (document.activeElement && document.activeElement.tagName) || '';
+    if (['INPUT', 'SELECT', 'TEXTAREA'].includes(tag)) return;
+    const S = this.state;
+    if (e.key === 'Escape') {
+      if (S.draft.length || S.calib.length) this.setState({ draft: [], calib: [], calibLen: '' });
+      else this.setState({ selected: null, tool: 'select' });
+    }
+    if (e.key === 'Enter' && S.mode === 'edit' && S.tool === 'room' && S.draft.length >= 3) this.closeDraft();
+    if ((e.key === 'Delete' || e.key === 'Backspace') && S.mode === 'edit' && S.selected) this.deleteSelected();
+  };
+
+  /* ---------- unit ops ---------- */
+  onUnitClick(id, e) {
+    if (this.isDrawTool()) return; // let it bubble to canvas click
+    e.stopPropagation();
+    const S = this.state;
+    if (this._suppressClick) return;
+    const u = S.units.find(x => x.id === id);
+    if (!u) return;
+    if (S.mode === 'book' && u.type === 'room') this.setState({ selected: id });
+    else this.setState({ selected: id });
+  }
+
+  deleteSelected = () => {
+    const S = this.state;
+    const u = S.units.find(x => x.id === S.selected);
+    if (!u) return;
+    const assignments = { ...S.assignments };
+    delete assignments[u.id];
+    this.setState({
+      units: S.units.filter(x => x.id !== u.id),
+      assignments,
+      bookings: S.bookings.filter(b => b.unitId !== u.id),
+      selected: null,
+    }, () => this.persist());
+    this.showToast(u.label + ' deleted');
+  };
+
+  onLabelChange = (e) => {
+    const val = e.target.value;
+    const S = this.state;
+    this.setState({ units: S.units.map(u => u.id === S.selected ? { ...u, label: val } : u) }, () => this.persist());
+  };
+
+  onSecondaryChange = (e) => {
+    const val = e.target.value;
+    const S = this.state;
+    this.setState({ units: S.units.map(u => u.id === S.selected ? { ...u, secondary: val } : u) }, () => this.persist());
+  };
+
+  /* ---------- calibration ---------- */
+  applyCalib = () => {
+    const S = this.state;
+    const m = parseFloat(S.calibLen);
+    if (!(m > 0) || S.calib.length !== 2) return;
+    const [a, b] = S.calib;
+    const distPx = Math.hypot((b[0] - a[0]) * this.IMG_W, (b[1] - a[1]) * this.IMG_H);
+    const ppm = distPx / m;
+    this.setState({ pxPerMeter: ppm, calib: [], calibLen: '', tool: 'select' }, () => this.persist());
+    this.showToast('Scale set — ' + ppm.toFixed(1) + ' px/m');
+  };
+
+  /* ---------- assignment ---------- */
+  assign(empId, unitId) {
+    const S = this.state;
+    const unit = S.units.find(u => u.id === unitId);
+    const emp = this.EMPLOYEES.find(e => e.id === empId);
+    if (!unit || !emp) return;
+    if (!this.isAssignable(unit)) { this.showToast(this.deskKind(unit) + ' can\u2019t be assigned \u2014 it\u2019s bookable'); return; }
+    if (!this.can('assign')) { this.showToast('Your role can\u2019t assign desks'); return; }
+    const assignments = { ...S.assignments };
+    // one unit per type per employee
+    for (const k of Object.keys(assignments)) {
+      if (assignments[k] === empId) {
+        const other = S.units.find(u => u.id === k);
+        if (other && other.type === unit.type) delete assignments[k];
+      }
+    }
+    const prev = assignments[unitId];
+    assignments[unitId] = empId;
+    this.setState({ assignments, dragOver: null, dragEmp: null, selected: unitId }, () => this.persist());
+    this.showToast(emp.name + ' assigned to ' + unit.label + (prev ? ' — replaced ' + this.empName(prev) : ''));
+  }
+
+  vacateSel = () => {
+    const S = this.state;
+    const unit = S.units.find(u => u.id === S.selected);
+    if (!unit) return;
+    const assignments = { ...S.assignments };
+    const prev = assignments[unit.id];
+    delete assignments[unit.id];
+    this.setState({ assignments }, () => this.persist());
+    this.showToast(unit.label + ' vacated' + (prev ? ' — ' + this.empName(prev) + ' unassigned' : ''));
+  };
+
+  /* ---------- booking ---------- */
+  conflictsFor(unitId, date, start, end) {
+    return this.state.bookings.filter(b => b.unitId === unitId && b.date === date && b.start < end && b.end > start);
+  }
+
+  doBook = () => {
+    const S = this.state;
+    const unit = S.units.find(u => u.id === S.selected);
+    if (!unit) return;
+    if (!this.isBookable(unit)) { this.showToast(this.deskKind(unit) + ' can\u2019t be booked'); return; }
+    if (!this.can('book')) { this.showToast('Your role can\u2019t book spaces'); return; }
+    if (S.end <= S.start) return;
+    if (this.conflictsFor(unit.id, S.date, S.start, S.end).length) return;
+    const b = { id: 'b' + Date.now(), unitId: unit.id, date: S.date, start: S.start, end: S.end, by: S.bookBy, purpose: S.bookPurpose.trim(), notes: (S.bookNotes || '').trim() };
+    this.setState({ bookings: [...S.bookings, b], bookPurpose: '', bookNotes: '', bookModalOpen: false }, () => this.persist());
+    this.showToast(unit.label + ' booked · ' + this.fmt(S.start) + '–' + this.fmt(S.end) + ' for ' + this.empName(S.bookBy));
+  };
+
+  cancelBooking(id) {
+    const b = this.state.bookings.find(x => x.id === id);
+    this.setState({ bookings: this.state.bookings.filter(x => x.id !== id) }, () => this.persist());
+    if (b) this.showToast('Booking ' + this.fmt(b.start) + '–' + this.fmt(b.end) + ' cancelled');
+  }
+
+  /* ---------- portfolio ---------- */
+  floorMeta(fid) {
+    for (const s of this.PORTFOLIO) {
+      for (const b of s.buildings) {
+        for (const f of b.floors) {
+          if (f.id === fid) return { site: s, building: b, floor: f };
+        }
+      }
+    }
+    return null;
+  }
+
+  toggleNode(id) {
+    const expanded = { ...this.state.expanded };
+    expanded[id] = !expanded[id];
+    this.setState({ expanded });
+  }
+
+  selectFloor(fid) {
+    if (fid === this.state.floorId) return;
+    this._userZoomed = false;
+    const fm = this.floorMeta(fid);
+    const planId = fm && fm.floor.plans && fm.floor.plans.length ? fm.floor.plans[0].id : 'seating';
+    this.setState({ floorId: fid, planId, selected: null, draft: [], calib: [], calibLen: '', tool: 'select', dragOver: null });
+  }
+
+  uploadStub = () => this.showToast('Floorplan upload is stubbed in this prototype');
+
+  /* ---------- roles & permissions ---------- */
+  allowedModes() {
+    const m = [];
+    if (this.can('assign')) m.push('assign');
+    if (this.can('book')) m.push('book');
+    return m;
+  }
+
+  validModeFor(role) {
+    const perms = this.state.perms;
+    const canMode = (mode) => (mode === 'edit' ? perms.edit : mode === 'assign' ? perms.assign : perms.book).includes(role);
+    const cur = this.state.mode;
+    if (canMode(cur)) return cur;
+    if (perms.assign.includes(role)) return 'assign';
+    if (perms.book.includes(role)) return 'book';
+    if (perms.edit.includes(role)) return 'edit';
+    return 'book';
+  }
+
+  setRole = (role) => {
+    this.setState({ currentRole: role, mode: this.validModeFor(role), selected: null, tool: 'select', draft: [], calib: [] });
+    this.showToast('Viewing as ' + (this.ROLES.find(r => r.id === role) || {}).name);
+  };
+
+  savePerms() { try { localStorage.setItem(this.PERMS_KEY, JSON.stringify(this.state.perms)); } catch (err) { /* ignore */ } }
+
+  togglePerm(action, role) {
+    const cur = this.state.perms[action] || [];
+    let next;
+    if (cur.includes(role)) {
+      if (action === 'edit' && cur.length === 1) { this.showToast('At least one role must keep ' + action + ' access'); return; }
+      next = cur.filter(r => r !== role);
+    } else next = [...cur, role];
+    this.setState({ perms: { ...this.state.perms, [action]: next } }, () => this.savePerms());
+  }
+
+  resetPerms = () => { this.setState({ perms: { ...this.DEFAULT_PERMS } }, () => this.savePerms()); this.showToast('Permissions reset to defaults'); };
+
+  /* ---------- calendar edge drag ---------- */
+  calEdgeDown = (edge, e) => {
+    e.preventDefault(); e.stopPropagation();
+    const cont = e.currentTarget.closest('[data-cal]');
+    if (!cont) return;
+    const rect = cont.getBoundingClientRect();
+    const WIN_S = 420, WIN_E = 1200, PXH = 28;
+    const toMin = (cy) => { const y = cy - rect.top; let m = Math.round((y / PXH * 60 + WIN_S) / 15) * 15; return Math.max(WIN_S, Math.min(WIN_E, m)); };
+    const move = (ev) => {
+      const m = toMin(ev.clientY); const S = this.state;
+      if (edge === 'top') this.setState({ start: Math.min(m, S.end - 15) });
+      else this.setState({ end: Math.max(m, S.start + 15) });
+    };
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
+
+  setActiveView = (v) => this.setState({ activeView: v, selected: null, mode: v === 'map' ? this.validModeFor(this.state.currentRole) : this.state.mode });
+  setSettingsTab = (t) => this.setState({ settingsTab: t });
+
+  /* ---------- hover ---------- */
+  onMarkerEnter(id) { if (this._suppressClick) return; this.setState({ hover: id }); }
+  onMarkerLeave(id) { if (this.state.hover === id) this.setState({ hover: null }); }
+
+  /* ---------- mobile quick book (in-phone) ---------- */
+  adjustPick(delta) {
+    const S = this.state;
+    const pk = S.mobTimePick || 'start';
+    let cur = (pk === 'end' ? S.end : S.start) + delta;
+    cur = Math.max(0, Math.min(1439, cur));
+    if (pk === 'start') { const dur = Math.max(15, S.end - S.start); this.setState({ start: cur, end: Math.min(1439, cur + dur) }); }
+    else { this.setState({ end: Math.max(S.start + 15, cur) }); }
+  }
+
+  mobQuickBook(uid) {
+    const S = this.state;
+    const unit = S.units.find(u => u.id === uid);
+    if (!unit || !this.isBookable(unit)) return;
+    if (!this.can('book')) { this.showToast('Your role can\u2019t book spaces'); return; }
+    if (S.end <= S.start || this.conflictsFor(uid, S.date, S.start, S.end).length) return;
+    const b = { id: 'b' + Date.now(), unitId: uid, date: S.date, start: S.start, end: S.end, by: S.bookBy, purpose: 'Booked from mobile', notes: '' };
+    this.setState({ bookings: [...S.bookings, b], mobSel: null }, () => this.persist());
+    this.showToast(unit.label + ' booked \u00b7 ' + this.fmt(S.start) + '\u2013' + this.fmt(S.end));
+  }
+
+  /* ---------- toast ---------- */
+  showToast(msg) {
+    if (this._toastTimer) clearTimeout(this._toastTimer);
+    this.setState({ toast: msg });
+    this._toastTimer = setTimeout(() => this.setState({ toast: null }), 3200);
+  }
+
+  /* ---------- overlay (draft polygon / calibration / selected room outline) ---------- */
+  renderOverlay() {
+    const S = this.state;
+    const W = this.IMG_W, H = this.IMG_H;
+    const inv = 1 / S.view.z;
+    const kids = [];
+    const sel = S.units.find(u => u.id === S.selected);
+    if (sel && sel.geom.kind === 'poly') {
+      kids.push(React.createElement('polygon', {
+        key: 'sp', points: sel.geom.pts.map(p => (p[0] * W) + ',' + (p[1] * H)).join(' '),
+        fill: 'none', stroke: '#0059D6', strokeWidth: 2.5 * inv, strokeDasharray: (7 * inv) + ' ' + (5 * inv),
+      }));
+    }
+    if (S.draft.length) {
+      const px = S.draft.map(p => [p[0] * W, p[1] * H]);
+      kids.push(React.createElement('polyline', {
+        key: 'dr', points: px.map(p => p.join(',')).join(' '),
+        fill: 'rgba(60,34,157,0.10)', stroke: '#5E3ED3', strokeWidth: 2 * inv,
+      }));
+      px.forEach((p, i) => kids.push(React.createElement('circle', {
+        key: 'dv' + i, cx: p[0], cy: p[1], r: (i === 0 ? 6 : 4) * inv,
+        fill: '#fff', stroke: '#5E3ED3', strokeWidth: 2 * inv,
+      })));
+    }
+    if (S.calib.length) {
+      const c = S.calib.map(p => [p[0] * W, p[1] * H]);
+      if (c.length === 2) kids.push(React.createElement('line', {
+        key: 'cl', x1: c[0][0], y1: c[0][1], x2: c[1][0], y2: c[1][1],
+        stroke: '#B61919', strokeWidth: 2 * inv, strokeDasharray: (6 * inv) + ' ' + (4 * inv),
+      }));
+      c.forEach((p, i) => kids.push(React.createElement('circle', {
+        key: 'cv' + i, cx: p[0], cy: p[1], r: 5 * inv, fill: '#B61919', stroke: '#fff', strokeWidth: 1.5 * inv,
+      })));
+    }
+    if (!kids.length) return null;
+    return React.createElement('svg', {
+      viewBox: '0 0 ' + W + ' ' + H,
+      style: { position: 'absolute', left: 0, top: 0, width: '100%', height: '100%', pointerEvents: 'none', overflow: 'visible' },
+    }, kids);
+  }
+
+  /* ---------- render values ---------- */
+  renderVals() {
+    const S = this.state;
+    const P = this.props || {};
+    const mode = S.mode;
+    const markerScale = P.markerScale != null ? P.markerScale : 1;
+    const showRoomLabels = P.showRoomLabels != null ? P.showRoomLabels : true;
+
+    /* booked units in current window */
+    const bookedIds = new Set();
+    for (const b of S.bookings) {
+      if (b.date === S.date && b.start < S.end && b.end > S.start) bookedIds.add(b.unitId);
+    }
+
+    const isBookable = (u) => this.isBookable(u);
+    const isAssignable = (u) => this.isAssignable(u);
+    const floorUnits = S.units.filter(u => u.floor === S.floorId && (u.geom.kind === 'poly' || u.plan === S.planId));
+
+    /* ----- rooms ----- */
+    const roomUnits = floorUnits.filter(u => u.geom.kind === 'poly');
+    const rooms = roomUnits.map(u => {
+      const selQ = S.selected === u.id;
+      let fill;
+      if (mode === 'edit') fill = selQ ? 'rgba(60,34,157,0.22)' : 'rgba(60,34,157,0.10)';
+      else if (mode === 'assign') fill = 'rgba(96,119,150,0.07)';
+      else {
+        const booked = bookedIds.has(u.id);
+        const base = booked ? '182,25,25' : '41,160,30';
+        fill = 'rgba(' + base + ',' + (selQ ? 0.26 : 0.14) + ')';
+      }
+      return { id: u.id, clip: 'polygon(' + u.geom.pts.map(p => (p[0] * 100) + '% ' + (p[1] * 100) + '%').join(', ') + ')', fill, onClick: (e) => this.onUnitClick(u.id, e) };
+    });
+
+    const roomLabels = !showRoomLabels ? [] : roomUnits.map(u => {
+      const pts = u.geom.pts;
+      const cx = pts.reduce((a, p) => a + p[0], 0) / pts.length;
+      const cy = pts.reduce((a, p) => a + p[1], 0) / pts.length;
+      let sub = '', subFg = 'var(--ink-600)';
+      let bg = '#fff', fg = 'var(--brand-indigo)', bd = 'var(--ink-200)';
+      if (mode === 'book') {
+        const cf = this.conflictsFor(u.id, S.date, S.start, S.end);
+        if (cf.length) { sub = 'Booked ' + this.fmt(cf[0].start) + '–' + this.fmt(cf[0].end); subFg = 'var(--danger-700)'; fg = 'var(--danger-700)'; }
+        else { sub = 'Available'; subFg = 'var(--success-700)'; fg = 'var(--success-700)'; }
+      } else if (mode === 'edit') {
+        const area = this.polyAreaM2(pts);
+        sub = area ? area.toFixed(0) + ' m²' : '';
+      }
+      return { id: u.id, left: (cx * 100) + '%', top: (cy * 100) + '%', label: u.label, sub, subFg, bg, fg, bd };
+    });
+
+    /* ----- markers ----- */
+    const pointUnits = floorUnits.filter(u => u.geom.kind === 'point');
+    const markers = pointUnits.map(u => {
+      const selQ = S.selected === u.id;
+      const occId = S.assignments[u.id];
+      const emp = occId ? this.EMPLOYEES.find(e => e.id === occId) : null;
+      const hot = u.type === 'workstation' && u.deskMode === 'hot';
+      let bg = '#fff', bd = 'var(--blue-500)', fg = 'var(--blue-600)', op = 1, occ = '', status = '';
+      if (mode === 'edit') {
+        if (u.type === 'locker') { bd = 'var(--brand-indigo-600)'; fg = 'var(--brand-indigo-600)'; }
+        if (u.type === 'parking') { bd = 'var(--ink-500)'; fg = 'var(--ink-700)'; }
+        if (hot) { bd = 'var(--brand-indigo-600)'; fg = 'var(--brand-indigo-600)'; }
+        if (selQ) { bg = 'var(--blue-500)'; bd = 'var(--blue-600)'; fg = '#fff'; }
+        status = this.deskKind(u);
+      } else if (mode === 'assign') {
+        if (!isAssignable(u)) { op = 0.32; bd = 'var(--ink-400)'; fg = 'var(--ink-500)'; status = hot ? 'Hot desk — bookable' : 'Not assignable'; }
+        else if (emp) { bg = 'var(--blue-500)'; bd = 'var(--blue-600)'; fg = '#fff'; occ = this.initials(emp.name); status = emp.name; }
+        else { bd = 'var(--success-500)'; fg = 'var(--success-700)'; status = 'Free'; }
+        if (S.dragOver === u.id && isAssignable(u)) { bg = 'var(--blue-050)'; bd = 'var(--blue-500)'; fg = 'var(--blue-600)'; occ = ''; op = 1; }
+      } else {
+        if (!isBookable(u)) { op = 0.32; bd = 'var(--ink-400)'; fg = 'var(--ink-500)'; status = 'Assigned — not bookable'; }
+        else if (bookedIds.has(u.id)) { bg = 'var(--danger-050)'; bd = 'var(--danger-500)'; fg = 'var(--danger-500)'; status = 'Booked'; }
+        else { bg = 'var(--success-050)'; bd = 'var(--success-500)'; fg = 'var(--success-700)'; status = 'Available'; }
+      }
+      const size = Math.round((hot ? 26 : 24) * markerScale);
+      return {
+        id: u.id,
+        left: (u.geom.x * 100) + '%',
+        top: (u.geom.y * 100) + '%',
+        size: size + 'px',
+        bg, bd, fg,
+        radius: u.type === 'parking' ? '999px' : u.type === 'locker' ? '4px' : hot ? '999px' : '6px',
+        borderStyle: hot ? 'dashed' : 'solid',
+        shadow: selQ ? '0 0 0 3px rgba(0,89,214,0.28)' : 'var(--shadow-xs)',
+        opacity: op,
+        zi: selQ ? 5 : 2,
+        title: u.label + (u.room ? ' · ' + u.room : '') + ' — ' + status,
+        occ,
+        iconWs: !occ && u.type === 'workstation',
+        iconLk: !occ && u.type === 'locker',
+        iconPk: !occ && u.type === 'parking',
+        onClick: (e) => this.onUnitClick(u.id, e),
+        onMouseEnter: () => this.onMarkerEnter(u.id),
+        onMouseLeave: () => this.onMarkerLeave(u.id),
+        onDragOver: (e) => {
+          if (mode !== 'assign') return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          if (S.dragOver !== u.id) this.setState({ dragOver: u.id });
+        },
+        onDragLeave: () => { if (this.state.dragOver === u.id) this.setState({ dragOver: null }); },
+        onDrop: (e) => {
+          if (mode !== 'assign') return;
+          e.preventDefault();
+          const empId = this.state.dragEmp || e.dataTransfer.getData('text/plain');
+          if (empId) this.assign(empId, u.id);
+        },
+      };
+    });
+
+    /* ----- legend ----- */
+    let legendItems;
+    if (mode === 'edit') legendItems = [
+      { color: 'var(--blue-500)', label: 'Assigned desk' },
+      { color: 'var(--brand-indigo-600)', label: 'Hot desk / Locker' },
+      { color: 'var(--ink-500)', label: 'Parking' },
+      { color: 'rgba(60,34,157,0.35)', label: 'Room' },
+    ];
+    else if (mode === 'assign') legendItems = [
+      { color: 'var(--success-500)', label: 'Free desk' },
+      { color: 'var(--blue-500)', label: 'Assigned' },
+      { color: 'var(--ink-400)', label: 'Hot / not assignable' },
+    ];
+    else legendItems = [
+      { color: 'var(--success-500)', label: 'Available' },
+      { color: 'var(--danger-500)', label: 'Booked' },
+      { color: 'var(--ink-400)', label: 'Not bookable' },
+    ];
+
+    /* ----- selection ----- */
+    const selU = S.units.find(u => u.id === S.selected) || null;
+    let sel = null;
+    if (selU) {
+      const occId = S.assignments[selU.id];
+      const area = selU.geom.kind === 'poly' ? this.polyAreaM2(selU.geom.pts) : null;
+      const assignableSel = isAssignable(selU);
+      sel = {
+        label: selU.label,
+        typeName: this.deskKind(selU),
+        roomName: selU.room || '—',
+        areaText: area ? area.toFixed(0) + ' m²' : '',
+        geomText: selU.geom.kind === 'point'
+          ? '{"type":"Point","coordinates":[' + selU.geom.x.toFixed(4) + ',' + selU.geom.y.toFixed(4) + ']}'
+          : '{"type":"Polygon","coordinates":[[' + selU.geom.pts.map(p => '[' + p[0].toFixed(3) + ',' + p[1].toFixed(3) + ']').join(',') + ']]}',
+        assignable: assignableSel,
+        assignable: assignableSel,
+        notAssignable: !assignableSel,
+        isAssigned: assignableSel && !!occId,
+        isFree: assignableSel && !occId,
+        reassigning: S.webReassign === selU.id,
+        assignee: occId || '',
+        assigneeName: occId ? this.empName(occId) : '',
+        assigneeInitials: occId ? this.initials(this.empName(occId)) : '',
+        empOptions: this.EMPLOYEES.map(e => ({ id: e.id, name: e.name })),
+        onReassign: () => this.setState({ webReassign: this.state.webReassign === selU.id ? null : selU.id }),
+        onAssignSel: (e) => { const id = e.target.value; if (id) { this.assign(id, selU.id); } else { const a = { ...S.assignments }; delete a[selU.id]; this.setState({ assignments: a }, () => this.persist()); this.showToast(selU.label + ' vacated'); } this.setState({ webReassign: null }); },
+        assignInfo: !assignableSel ? (selU.type === 'workstation' ? 'Hot desk — bookable, not assignable' : this.TYPE_META[selU.type].name + ' is booked, not assigned')
+          : occId ? 'Assigned to ' + this.empName(occId) : 'Free — drag a person here to assign',
+        showVacate: assignableSel && !!occId,
+        bookable: isBookable(selU),
+        notBookable: !isBookable(selU),
+        notBookableReason: selU.type === 'workstation' ? 'This is an assigned desk — manage it in Assignment mode.' : selU.type === 'locker' ? 'Lockers are assigned, not booked — manage in Assignment mode.' : 'Not a bookable space.',
+        isDesk: selU.type === 'workstation',
+        secondary: selU.secondary || '',
+      };
+    }
+
+    /* ----- click tooltip (anchored to unit on canvas) ----- */
+    const fmNow = this.floorMeta(S.floorId);
+    const planExists = !!(fmNow && fmNow.floor.hasPlan);
+    let tooltip = null;
+    if (selU && planExists) {
+      let nx, ny;
+      if (selU.geom.kind === 'point') { nx = selU.geom.x; ny = selU.geom.y; }
+      else {
+        const pts = selU.geom.pts;
+        nx = pts.reduce((a, p) => a + p[0], 0) / pts.length;
+        ny = pts.reduce((a, p) => a + p[1], 0) / pts.length;
+      }
+      const sx = S.view.tx + nx * this.IMG_W * S.view.z;
+      const sy = S.view.ty + ny * this.IMG_H * S.view.z;
+      const occId = S.assignments[selU.id];
+      const cf = this.conflictsFor(selU.id, S.date, S.start, S.end);
+      let statusText, statusBg, statusFg;
+      if (mode === 'assign') {
+        if (!isAssignable(selU)) { statusText = selU.type === 'workstation' ? 'Hot desk — bookable' : 'Bookable space'; statusBg = 'var(--ink-100)'; statusFg = 'var(--ink-600)'; }
+        else if (occId) { statusText = 'Assigned · ' + this.empName(occId); statusBg = 'var(--blue-050)'; statusFg = 'var(--blue-700)'; }
+        else { statusText = 'Free'; statusBg = 'var(--success-050)'; statusFg = 'var(--success-700)'; }
+      } else if (mode === 'book') {
+        if (!isBookable(selU)) { statusText = 'Assigned — not bookable'; statusBg = 'var(--ink-100)'; statusFg = 'var(--ink-600)'; }
+        else if (cf.length) { statusText = 'Booked ' + this.fmt(cf[0].start) + '–' + this.fmt(cf[0].end); statusBg = 'var(--danger-050)'; statusFg = 'var(--danger-700)'; }
+        else { statusText = 'Available'; statusBg = 'var(--success-050)'; statusFg = 'var(--success-700)'; }
+      } else {
+        statusText = this.deskKind(selU); statusBg = 'var(--ink-100)'; statusFg = 'var(--ink-700)';
+      }
+      const isDesk = selU.type === 'workstation';
+      const below = sy < 180;
+      tooltip = {
+        left: sx + 'px',
+        top: sy + 'px',
+        transform: below ? 'translate(-50%, 20px)' : 'translate(-50%, calc(-100% - 20px))',
+        below,
+        above: !below,
+        primary: selU.label,
+        secondary: isDesk ? (selU.secondary || 'Standard') : (this.TYPE_META[selU.type].name + (selU.room ? ' · ' + selU.room : '')),
+        primaryLabel: this.deskKind(selU),
+        secondaryLabel: isDesk ? 'Seat type' : 'Location',
+        room: selU.room || '—',
+        hasRoom: isDesk && !!selU.room,
+        statusText, statusBg, statusFg,
+        onClose: () => this.setState({ selected: null }),
+      };
+    }
+
+    /* ----- hover quick-details chip ----- */
+    let hoverInfo = null;
+    const hoverU = S.hover && S.hover !== S.selected ? floorUnits.find(u => u.id === S.hover) : null;
+    if (hoverU && hoverU.geom.kind === 'point' && planExists) {
+      const sx = S.view.tx + hoverU.geom.x * this.IMG_W * S.view.z;
+      const sy = S.view.ty + hoverU.geom.y * this.IMG_H * S.view.z;
+      const occId = S.assignments[hoverU.id];
+      let st;
+      if (mode === 'assign') st = !isAssignable(hoverU) ? (hoverU.type === 'workstation' ? 'Hot desk' : 'Bookable') : occId ? this.empName(occId) : 'Free';
+      else if (mode === 'book') st = !isBookable(hoverU) ? 'Not bookable' : bookedIds.has(hoverU.id) ? 'Booked' : 'Available';
+      else st = this.deskKind(hoverU);
+      const below = sy < 90;
+      hoverInfo = {
+        left: sx + 'px', top: sy + 'px',
+        transform: below ? 'translate(-50%, 24px)' : 'translate(-50%, calc(-100% - 24px))',
+        label: hoverU.label,
+        sub: (hoverU.type === 'workstation' ? (hoverU.secondary || this.deskKind(hoverU)) : this.deskKind(hoverU)) + (hoverU.room ? ' · ' + hoverU.room : ''),
+        status: st,
+      };
+    }
+
+    /* ----- booking panel ----- */
+    const bookableUnits = floorUnits.filter(isBookable);
+    const availCount = bookableUnits.filter(u => !bookedIds.has(u.id)).length;
+    const bookedCount = bookableUnits.length - availCount;
+
+    const rawSel = selU ? S.bookings
+      .filter(b => b.unitId === selU.id && b.date === S.date)
+      .sort((a, b) => a.start - b.start) : [];
+
+    const selBookings = rawSel.map(b => ({
+      id: b.id,
+      time: this.fmt(b.start) + '–' + this.fmt(b.end),
+      byName: this.empName(b.by),
+      purpose: b.purpose,
+      onCancel: () => this.cancelBooking(b.id),
+    }));
+
+    /* ----- day-timeline calendar ----- */
+    const WIN_S = 420, WIN_E = 1200, PXH = 28;
+    const calHeight = (WIN_E - WIN_S) / 60 * PXH;
+    const yAt = (m) => (Math.max(WIN_S, Math.min(WIN_E, m)) - WIN_S) / 60 * PXH;
+    const calHours = [];
+    for (let m = WIN_S; m <= WIN_E; m += 60) { const t = yAt(m); calHours.push({ label: String(m / 60), top: t, labelTop: Math.min(t + 1, calHeight - 9) }); }
+    const calBlocks = rawSel.map(b => {
+      const top = yAt(b.start), h = Math.max(16, yAt(b.end) - top);
+      const conflictWithSel = selU && isBookable(selU) && S.end > S.start && b.start < S.end && b.end > S.start;
+      return {
+        id: b.id, top, height: h,
+        time: this.fmt(b.start) + '–' + this.fmt(b.end),
+        byName: this.empName(b.by) + (b.purpose ? ' · ' + b.purpose : ''),
+        bg: conflictWithSel ? 'var(--danger-050)' : 'var(--blue-025)',
+        bd: conflictWithSel ? 'var(--danger-500)' : 'var(--blue-500)',
+        fg: conflictWithSel ? 'var(--danger-700)' : 'var(--blue-700)',
+        title: this.fmt(b.start) + '–' + this.fmt(b.end) + ' · ' + this.empName(b.by),
+      };
+    });
+    let calSel = null;
+    if (selU && isBookable(selU) && S.end > S.start) {
+      const top = yAt(S.start);
+      calSel = { top, height: Math.max(14, yAt(S.end) - top) };
+    }
+    const schedActive = { bg: '#fff', fg: 'var(--blue-600)', sh: 'var(--shadow-xs)' };
+    const schedIdle = { bg: 'transparent', fg: 'var(--ink-600)', sh: 'none' };
+
+    let bookError = null;
+    if (selU && mode === 'book' && isBookable(selU)) {
+      if (S.end <= S.start) bookError = 'End time must be after start time';
+      else {
+        const cf = this.conflictsFor(selU.id, S.date, S.start, S.end);
+        if (cf.length) bookError = 'Conflicts with ' + this.fmt(cf[0].start) + '–' + this.fmt(cf[0].end) + ' (' + this.empName(cf[0].by) + ')';
+      }
+    }
+
+    const timeOptions = [];
+    for (let m = 420; m <= 1200; m += 30) timeOptions.push({ v: m, label: this.fmt(m) });
+
+    /* ----- edit panel ----- */
+    const tools = ['select', 'room', 'workstation', 'locker', 'parking', 'calibrate'];
+    const toolBtn = {};
+    for (const t of tools) {
+      const on = S.tool === t;
+      toolBtn[t] = {
+        onClick: () => this.setState({ tool: t, draft: [], calib: [], calibLen: '' }),
+        bg: on ? 'var(--blue-025)' : '#fff',
+        bd: on ? 'var(--blue-300)' : 'var(--ink-200)',
+        fg: on ? 'var(--blue-600)' : 'var(--ink-700)',
+      };
+    }
+
+    const calibActive = mode === 'edit' && (S.tool === 'calibrate' || S.calib.length > 0);
+    const calibStep = S.calib.length === 0 ? 'Click the first end of a distance you know (a door, a desk, a wall).'
+      : S.calib.length === 1 ? 'Click the second end of the known distance.'
+      : 'Enter the real-world distance between the two points.';
+
+    let canvasHint = '';
+    if (mode === 'edit') {
+      if (S.tool === 'room') canvasHint = S.draft.length === 0 ? 'Click to place the first vertex' : 'Click to add vertices — double-click or ⏎ to close (' + S.draft.length + ')';
+      else if (S.tool === 'calibrate' && S.calib.length < 2) canvasHint = S.calib.length === 0 ? 'Calibrate: click the first reference point' : 'Calibrate: click the second reference point';
+      else if (['workstation', 'locker', 'parking'].includes(S.tool)) canvasHint = 'Click the plan to place a ' + this.TYPE_META[S.tool].name.toLowerCase();
+    } else if (mode === 'assign' && S.dragEmp) canvasHint = 'Drop on a free unit to assign';
+
+    /* ----- employees ----- */
+    const q = S.empSearch.trim().toLowerCase();
+    const employees = this.EMPLOYEES
+      .filter(e => !q || e.name.toLowerCase().includes(q) || e.dept.toLowerCase().includes(q))
+      .map(e => {
+        const held = Object.keys(S.assignments).filter(k => S.assignments[k] === e.id)
+          .map(k => S.units.find(u => u.id === k)).filter(Boolean).map(u => u.label);
+        return {
+          id: e.id, name: e.name, dept: e.dept, initials: this.initials(e.name),
+          badge: held.join(' · '),
+          opacity: S.dragEmp === e.id ? 0.45 : 1,
+          onDragStart: (ev) => {
+            ev.dataTransfer.setData('text/plain', e.id);
+            ev.dataTransfer.effectAllowed = 'move';
+            const ghost = document.createElement('div');
+            ghost.textContent = this.initials(e.name);
+            ghost.style.cssText = 'position:absolute; top:-100px; left:-100px; width:34px; height:34px; border-radius:999px; background:#0059D6; color:#fff; font:600 12px/34px Roboto,sans-serif; text-align:center; box-shadow:0 4px 12px rgba(40,54,72,0.28); border:2px solid #fff;';
+            document.body.appendChild(ghost);
+            ev.dataTransfer.setDragImage(ghost, 17, 17);
+            this._ghost = ghost;
+            this.setState({ dragEmp: e.id });
+          },
+          onDragEnd: () => {
+            if (this._ghost) { this._ghost.remove(); this._ghost = null; }
+            this.setState({ dragEmp: null, dragOver: null });
+          },
+        };
+      });
+
+    const assignedEmpCount = new Set(Object.values(S.assignments)).size;
+
+    /* ----- counts ----- */
+    const nWs = floorUnits.filter(u => u.type === 'workstation').length;
+    const nLk = floorUnits.filter(u => u.type === 'locker').length;
+    const nPk = floorUnits.filter(u => u.type === 'parking').length;
+    const nRm = floorUnits.filter(u => u.type === 'room').length;
+    const countsText = nWs + ' desks · ' + nLk + ' lockers · ' + (nPk ? nPk + ' stalls · ' : '') + nRm + ' rooms';
+
+    /* ----- portfolio tree ----- */
+    const fm = this.floorMeta(S.floorId);
+    const hasPlan = !!(fm && fm.floor.hasPlan);
+    const treeItems = [];
+    for (const s of this.PORTFOLIO) {
+      const sOpen = !!S.expanded[s.id];
+      treeItems.push({ id: s.id, name: s.name, pad: '8px', bg: 'transparent', fg: 'var(--ink-900)', hasChildren: true, rot: sOpen ? '90deg' : '0deg', isSite: true, isBuilding: false, isFloor: false, badge: '', onClick: () => this.toggleNode(s.id) });
+      if (!sOpen) continue;
+      for (const b of s.buildings) {
+        const bOpen = !!S.expanded[b.id];
+        treeItems.push({ id: b.id, name: b.name, pad: '24px', bg: 'transparent', fg: 'var(--ink-700)', hasChildren: true, rot: bOpen ? '90deg' : '0deg', isSite: false, isBuilding: true, isFloor: false, badge: '', onClick: () => this.toggleNode(b.id) });
+        if (!bOpen) continue;
+        for (const f of b.floors) {
+          const active = S.floorId === f.id;
+          const cnt = S.units.filter(u => u.floor === f.id).length;
+          treeItems.push({ id: f.id, name: f.name, pad: '42px', bg: active ? 'var(--blue-025)' : 'transparent', fg: active ? 'var(--blue-600)' : 'var(--ink-700)', hasChildren: false, rot: '0deg', isSite: false, isBuilding: false, isFloor: true, badge: f.hasPlan ? cnt + ' units' : 'no plan', onClick: () => this.selectFloor(f.id) });
+        }
+      }
+    }
+
+    const dateShort = S.date.slice(8, 10) + '.' + S.date.slice(5, 7) + '.';
+
+    /* ----- spaces list panel ----- */
+    const typeChips = [
+      { id: 'all', name: 'All' }, { id: 'workstation', name: 'Desks' }, { id: 'room', name: 'Rooms' }, { id: 'parking', name: 'Parking' }, { id: 'locker', name: 'Lockers' },
+    ].map(t => { const on = S.spaceFilter === t.id; return { ...t, bg: on ? 'var(--blue-500)' : '#fff', fg: on ? '#fff' : 'var(--ink-600)', bd: on ? 'var(--blue-500)' : 'var(--ink-200)', onClick: () => this.setState({ spaceFilter: t.id }) }; });
+    const sq = S.spaceSearch.trim().toLowerCase();
+    const spaceRows = floorUnits
+      .filter(u => (S.spaceFilter === 'all' || u.type === S.spaceFilter) && (!sq || u.label.toLowerCase().includes(sq) || (u.room || '').toLowerCase().includes(sq)))
+      .map(u => {
+        const occId = S.assignments[u.id];
+        let st, dot;
+        if (mode === 'assign') {
+          if (!isAssignable(u)) { st = u.type === 'workstation' ? 'Hot desk' : 'Bookable'; dot = 'var(--ink-400)'; }
+          else if (occId) { st = this.empName(occId); dot = 'var(--blue-500)'; }
+          else { st = 'Free'; dot = 'var(--success-500)'; }
+        } else {
+          if (!isBookable(u)) { st = 'Not bookable'; dot = 'var(--ink-400)'; }
+          else if (bookedIds.has(u.id)) { st = 'Booked'; dot = 'var(--danger-500)'; }
+          else { st = 'Available'; dot = 'var(--success-500)'; }
+        }
+        return {
+          id: u.id, label: u.label,
+          sub: this.deskKind(u) + (u.room ? ' · ' + u.room : ''),
+          status: st, dot,
+          bg: S.selected === u.id ? 'var(--blue-025)' : 'transparent',
+          onClick: () => this.setState({ selected: u.id }),
+        };
+      });
+
+    /* ----- roles & permissions ----- */
+    const canEdit = this.can('edit');
+    const canAssign = this.can('assign');
+    const canBook = this.can('book');
+    const roleChips = this.ROLES.map(r => ({
+      id: r.id, name: r.name,
+      active: S.currentRole === r.id,
+      bg: S.currentRole === r.id ? 'var(--blue-500)' : 'transparent',
+      fg: S.currentRole === r.id ? '#fff' : 'rgba(255,255,255,0.7)',
+      onClick: () => this.setRole(r.id),
+    }));
+    const currentRoleName = (this.ROLES.find(r => r.id === S.currentRole) || {}).name;
+    const permRows = this.ACTIONS.map(a => ({
+      id: a.id, name: a.name, desc: a.desc,
+      cells: this.ROLES.map(r => {
+        const on = (S.perms[a.id] || []).includes(r.id);
+        return {
+          role: r.id, on,
+          bg: on ? 'var(--blue-500)' : '#fff',
+          bd: on ? 'var(--blue-500)' : 'var(--ink-300)',
+          knobLeft: on ? '18px' : '2px',
+          onToggle: () => this.togglePerm(a.id, r.id),
+        };
+      }),
+    }));
+
+    /* ----- settings module detail tables ----- */
+    const allFloorUnits = S.units.filter(u => u.floor === S.floorId);
+    const moduleTabs = [
+      { id: 'permissions', name: 'Roles & access' },
+      { id: 'workstation', name: 'Desks' },
+      { id: 'locker', name: 'Lockers' },
+      { id: 'parking', name: 'Parking' },
+      { id: 'room', name: 'Rooms' },
+    ].map(t => { const on = S.settingsTab === t.id; return { ...t, active: on, fg: on ? 'var(--blue-600)' : 'var(--ink-600)', bd: on ? 'var(--blue-500)' : 'transparent', weight: on ? '600' : '500', onClick: () => this.setSettingsTab(t.id) }; });
+
+    const modBookings = (uid) => S.bookings.filter(b => b.unitId === uid).length;
+    const buildModuleRows = (type) => allFloorUnits.filter(u => u.type === type).map(u => {
+      const occId = S.assignments[u.id];
+      let usage, usageFg;
+      if (this.isAssignable(u)) { usage = occId ? this.empName(occId) : 'Unassigned'; usageFg = occId ? 'var(--ink-900)' : 'var(--ink-500)'; }
+      else { const n = modBookings(u.id); usage = n ? n + ' booking' + (n > 1 ? 's' : '') : 'No bookings'; usageFg = n ? 'var(--ink-900)' : 'var(--ink-500)'; }
+      return {
+        id: u.id, label: u.label,
+        kind: this.deskKind(u),
+        meta: u.type === 'workstation' ? (u.secondary || '—') : (u.room || '—'),
+        mode: this.isAssignable(u) ? 'Assignable' : (this.isBookable(u) ? 'Bookable' : '—'),
+        usage, usageFg,
+        onOpen: () => { this.setState({ activeView: 'map', selected: u.id, mode: this.isAssignable(u) ? (canAssign ? 'assign' : 'book') : 'book' }); },
+      };
+    });
+    const settingsModuleType = ['workstation', 'locker', 'parking', 'room'].includes(S.settingsTab) ? S.settingsTab : null;
+    const moduleRows = settingsModuleType ? buildModuleRows(settingsModuleType) : [];
+    const moduleTitle = settingsModuleType ? this.TYPE_META[settingsModuleType].name + 's' : '';
+
+    /* module state → color-coding config + counts */
+    const stateCount = (type, key) => {
+      const us = allFloorUnits.filter(u => u.type === type);
+      const cnt = (fn) => us.filter(fn).length;
+      const occ = (u) => !!S.assignments[u.id];
+      const bk = (u) => bookedIds.has(u.id);
+      if (type === 'workstation') {
+        if (key === 'hot') return cnt(u => u.deskMode === 'hot');
+        if (key === 'assigned') return cnt(u => u.deskMode !== 'hot' && occ(u));
+        if (key === 'booked') return cnt(u => u.deskMode === 'hot' && bk(u));
+        return cnt(u => u.deskMode !== 'hot' && !occ(u));
+      }
+      if (type === 'locker') return key === 'assigned' ? cnt(occ) : cnt(u => !occ(u));
+      return key === 'booked' ? cnt(bk) : cnt(u => !bk(u));
+    };
+    const moduleStates = settingsModuleType ? (this.STATE_DEFS[settingsModuleType] || []).map(s => ({
+      key: s.key, label: s.label, desc: s.desc,
+      color: this.moduleColor(settingsModuleType, s.key),
+      count: String(stateCount(settingsModuleType, s.key)),
+      swatches: this.STATE_SWATCHES.map(hex => ({
+        hex, active: this.moduleColor(settingsModuleType, s.key).toLowerCase() === hex.toLowerCase(),
+        ring: this.moduleColor(settingsModuleType, s.key).toLowerCase() === hex.toLowerCase() ? '0 0 0 2px #fff, 0 0 0 4px ' + hex : 'none',
+        onPick: () => this.setState({ moduleColors: { ...(S.moduleColors || {}), [settingsModuleType + '.' + s.key]: hex } }),
+      })),
+    })) : [];
+    const moduleOptRows = settingsModuleType ? (this.OPT_DEFS[settingsModuleType] || []).map(o => ({
+      key: o.key, label: o.label, desc: o.desc,
+      on: this.moduleOpt(settingsModuleType, o.key),
+      knobLeft: this.moduleOpt(settingsModuleType, o.key) ? '18px' : '2px',
+      bg: this.moduleOpt(settingsModuleType, o.key) ? 'var(--blue-500)' : 'var(--ink-200)',
+      bd: this.moduleOpt(settingsModuleType, o.key) ? 'var(--blue-500)' : 'var(--ink-300)',
+      onToggle: () => this.setState({ moduleOpts: { ...(S.moduleOpts || {}), [settingsModuleType + '.' + o.key]: !this.moduleOpt(settingsModuleType, o.key) } }),
+    })) : [];
+    const moduleTotal = settingsModuleType ? String(allFloorUnits.filter(u => u.type === settingsModuleType).length) : '0';
+
+    /* ----- mobile companion ----- */
+    const meId = S.bookBy;
+    const myUnit = floorUnits.find(u => S.assignments[u.id] === meId) || null;
+    const mySpace = {
+      has: !!myUnit,
+      label: myUnit ? myUnit.label : '',
+      sub: myUnit ? this.deskKind(myUnit) + (myUnit.room ? ' · ' + myUnit.room : '') : '',
+      onLocate: () => { if (myUnit) this.setState({ mobFocus: myUnit.id, mobSel: null }); },
+    };
+    const mobUnits = floorUnits.filter(u => u.geom.kind === 'point').map(u => {
+      const occId = S.assignments[u.id];
+      let status, sBg, sFg;
+      if (S.mobileTab === 'assign') {
+        if (!this.isAssignable(u)) return null;
+        status = occId ? this.empName(occId) : 'Free'; sBg = occId ? 'var(--blue-050)' : 'var(--success-050)'; sFg = occId ? 'var(--blue-700)' : 'var(--success-700)';
+      } else {
+        if (!this.isBookable(u)) return null;
+        const bk = bookedIds.has(u.id);
+        status = bk ? 'Booked' : 'Available'; sBg = bk ? 'var(--danger-050)' : 'var(--success-050)'; sFg = bk ? 'var(--danger-700)' : 'var(--success-700)';
+      }
+      return {
+        id: u.id, label: u.label, kind: this.deskKind(u),
+        room: u.room || '', status, sBg, sFg,
+        onTap: () => this.setState({ mobSel: u.id, mobAssignEdit: false }),
+      };
+    }).filter(Boolean);
+
+    const datelong = new Date(S.date + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+
+    /* mini floorplan markers for the phone preview (percent-positioned, no zoom) */
+    const mobMarkers = floorUnits.filter(u => u.geom.kind === 'point').map(u => {
+      const occId = S.assignments[u.id];
+      let dot;
+      if (this.isAssignable(u)) dot = occId ? 'var(--blue-500)' : 'var(--success-500)';
+      else dot = bookedIds.has(u.id) ? 'var(--danger-500)' : 'var(--success-500)';
+      return { id: u.id, left: (u.geom.x * 100) + '%', top: (u.geom.y * 100) + '%', dot, ring: (S.mobSel === u.id || S.mobFocus === u.id) ? '0 0 0 3px rgba(0,89,214,0.35)' : '0 1px 2px rgba(40,54,72,0.3)', onTap: () => this.setState({ mobSel: u.id, mobAssignEdit: false, mobFocus: null }) };
+    });
+    const mobSelU = S.mobSel ? floorUnits.find(u => u.id === S.mobSel) : null;
+    let mobSheet = null;
+    if (mobSelU) {
+      const occId = S.assignments[mobSelU.id];
+      const bookable = this.isBookable(mobSelU);
+      const cf = bookable ? this.conflictsFor(mobSelU.id, S.date, S.start, S.end) : [];
+      const booked = bookable && cf.length > 0;
+      const showBooking = S.mobileTab === 'book' && bookable;
+      mobSheet = {
+        label: mobSelU.label,
+        kind: this.deskKind(mobSelU),
+        room: mobSelU.room || '',
+        status: showBooking ? (booked ? 'Booked' : 'Available') : (occId ? 'Assigned' : 'Free'),
+        sBg: showBooking ? (booked ? 'var(--danger-050)' : 'var(--success-050)') : (occId ? 'var(--blue-050)' : 'var(--success-050)'),
+        sFg: showBooking ? (booked ? 'var(--danger-700)' : 'var(--success-700)') : (occId ? 'var(--blue-700)' : 'var(--success-700)'),
+        canBook: showBooking && !booked,
+        booked: showBooking && booked,
+        bookedInfo: booked ? 'Booked ' + this.fmt(cf[0].start) + '\u2013' + this.fmt(cf[0].end) + ' \u00b7 ' + this.empName(cf[0].by) + (cf[0].purpose ? ' \u2014 ' + cf[0].purpose : '') : '',
+        assignInfo: (!showBooking && !this.isAssignable(mobSelU)) ? 'This space is booked, not assigned — use the Book tab.' : '',
+        canAssign: !showBooking && this.isAssignable(mobSelU),
+        showAssigned: !showBooking && this.isAssignable(mobSelU) && !!occId && !S.mobAssignEdit,
+        showAssignSelect: !showBooking && this.isAssignable(mobSelU) && (!occId || S.mobAssignEdit),
+        assignee: occId || '',
+        assigneeName: occId ? this.empName(occId) : '',
+        assigneeInitials: occId ? this.initials(this.empName(occId)) : '',
+        empOptions: this.EMPLOYEES.map(e => ({ id: e.id, name: e.name })),
+        onReassign: () => this.setState({ mobAssignEdit: true }),
+        onVacate: () => { const a = { ...S.assignments }; delete a[mobSelU.id]; this.setState({ assignments: a, mobAssignEdit: false }, () => this.persist()); this.showToast(mobSelU.label + ' vacated'); },
+        onAssignSel: (e) => {
+          const id = e.target.value;
+          if (id) { this.assign(id, mobSelU.id); }
+          else { const a = { ...S.assignments }; delete a[mobSelU.id]; this.setState({ assignments: a }, () => this.persist()); this.showToast(mobSelU.label + ' vacated'); }
+          this.setState({ mobAssignEdit: false });
+        },
+        onBook: () => this.mobQuickBook(mobSelU.id),
+      };
+    }
+
+    const mobRooms = floorUnits.filter(u => u.geom.kind === 'poly').map(u => ({
+      id: u.id,
+      clip: 'polygon(' + u.geom.pts.map(p => (p[0] * 100) + '% ' + (p[1] * 100) + '%').join(', ') + ')',
+      fill: bookedIds.has(u.id) ? 'rgba(182,25,25,0.18)' : 'rgba(41,160,30,0.16)',
+    }));
+
+    /* ----- mobile floor switcher (drill-down: site -> building -> floor) ----- */
+    const pickSite = S.mobPickSite ? this.PORTFOLIO.find(s => s.id === S.mobPickSite) : null;
+    const pickBldg = pickSite && S.mobPickBuilding ? pickSite.buildings.find(b => b.id === S.mobPickBuilding) : null;
+    let mobPickLevel, mobPickTitle, mobPickRows;
+    const chev = { id: '__c' };
+    if (pickBldg) {
+      mobPickLevel = 'floor';
+      mobPickTitle = pickBldg.name;
+      mobPickRows = pickBldg.floors.map(f => {
+        const act = S.floorId === f.id;
+        return { id: f.id, name: f.name, sub: f.hasPlan ? '' : 'No plan', active: act, showChevron: false,
+          bg: act ? 'var(--blue-025)' : 'transparent', fg: act ? 'var(--blue-600)' : 'var(--ink-800)',
+          onTap: () => { this.selectFloor(f.id); this.setState({ mobFloorOpen: false, mobSel: null }); } };
+      });
+    } else if (pickSite) {
+      mobPickLevel = 'building';
+      mobPickTitle = pickSite.name;
+      mobPickRows = pickSite.buildings.map(b => ({
+        id: b.id, name: b.name, sub: b.floors.length + (b.floors.length === 1 ? ' floor' : ' floors'), active: false, showChevron: true,
+        bg: 'transparent', fg: 'var(--ink-800)',
+        onTap: () => this.setState({ mobPickBuilding: b.id }),
+      }));
+    } else {
+      mobPickLevel = 'site';
+      mobPickTitle = 'Choose site';
+      mobPickRows = this.PORTFOLIO.map(s => ({
+        id: s.id, name: s.name, sub: s.buildings.length + (s.buildings.length === 1 ? ' building' : ' buildings'), active: false, showChevron: true,
+        bg: 'transparent', fg: 'var(--ink-800)',
+        onTap: () => this.setState({ mobPickSite: s.id }),
+      }));
+    }
+    void chev;
+
+    return {
+      /* chrome */
+      modeLabel: mode === 'edit' ? 'Edit view' : mode === 'assign' ? 'Assignment view' : 'Booking view',
+      countsText: hasPlan ? countsText : 'No floorplan uploaded',
+      planOptions: (fm && fm.floor.plans) || [],
+      hasPlans: !!(fm && fm.floor.plans && fm.floor.plans.length),
+      planId: S.planId,
+      onPlanChange: (e) => this.setState({ planId: e.target.value, selected: null, draft: [], calib: [], calibLen: '', tool: 'select', dragOver: null }),
+      treeItems,
+      breadcrumbText: fm ? 'Spaces / ' + fm.site.name + ' / ' + fm.building.name : 'Spaces',
+      pageTitle: fm ? fm.floor.name + ' — Floorplan' : 'Floorplan',
+      floorName: fm ? fm.floor.name : 'this floor',
+      hasPlan,
+      noPlan: !hasPlan,
+      uploadStub: this.uploadStub,
+      bookingCount: String(S.bookings.length),
+
+      /* roles / permissions / views */
+      canEdit, canAssign, canBook,
+      showAssignBtn: canAssign,
+      showBookBtn: canBook,
+      showEditBtn: canEdit,
+      roleChips, currentRoleName,
+      permRows, roleHeads: this.ROLES,
+      resetPerms: this.resetPerms,
+      isMap: S.activeView === 'map',
+      isSettings: S.activeView === 'settings',
+      openSettings: () => this.setActiveView('settings'),
+      openMap: () => this.setActiveView('map'),
+      navMapActive: S.activeView === 'map',
+      navSettingsActive: S.activeView === 'settings',
+      navMapBg: S.activeView === 'map' ? 'var(--blue-500)' : 'transparent',
+      navMapFg: S.activeView === 'map' ? '#fff' : 'rgba(255,255,255,0.62)',
+      navSettingsBg: S.activeView === 'settings' ? 'var(--blue-500)' : 'transparent',
+      navSettingsFg: S.activeView === 'settings' ? '#fff' : 'rgba(255,255,255,0.62)',
+      moduleTabs, moduleRows, moduleTitle,
+      moduleStates, moduleOptRows, moduleTotal,
+      showSlotSetting: settingsModuleType === 'workstation' || settingsModuleType === 'parking' || settingsModuleType === 'room',
+      slotChips: [15, 30, 60, 120].map(v => ({ v, label: v < 60 ? v + 'm' : (v / 60) + 'h', bg: S.slotGranularity === v ? 'var(--blue-500)' : '#fff', fg: S.slotGranularity === v ? '#fff' : 'var(--ink-700)', bd: S.slotGranularity === v ? 'var(--blue-500)' : 'var(--ink-200)', onClick: () => this.setState({ slotGranularity: v, end: Math.min(1200, S.start + v) }) })),
+      settingsTab: S.settingsTab,
+      isPermTab: S.settingsTab === 'permissions',
+      isModuleTab: !!settingsModuleType,
+      hasModuleRows: moduleRows.length > 0,
+      noModuleRows: !!settingsModuleType && moduleRows.length === 0,
+
+      /* hover + mobile */
+      hoverInfo,
+      mobileOpen: S.mobileOpen,
+      toggleMobile: () => this.setState({ mobileOpen: !S.mobileOpen, mobSel: null, mobFloorOpen: false }),
+      mobBtnBg: S.mobileOpen ? 'var(--blue-025)' : '#fff',
+      mobBtnFg: S.mobileOpen ? 'var(--blue-600)' : 'var(--ink-700)',
+      mobBtnBd: S.mobileOpen ? 'var(--blue-300)' : 'var(--ink-200)',
+      mobUnits, mobUnitCount: mobUnits.length,
+      mySpace, hasMySpace: mySpace.has, noMySpace: !mySpace.has,
+      hasMyDesk: !!myUnit,
+      locateMyDesk: () => { if (myUnit) this.focusUnit(myUnit.id); },
+      mobHasPlan: hasPlan,
+      mobNoPlan: !hasPlan,
+      mobShowChrome: !S.fullMobile,
+      mobOuterStyle: S.fullMobile
+        ? 'position:fixed; inset:0; z-index:120; display:flex; align-items:center; justify-content:center; background:#0E1726;'
+        : 'position:absolute; top:70px; right:16px; z-index:55; width:300px; animation: fp-panel-in 200ms cubic-bezier(0.2,0,0,1);',
+      mobBezelStyle: S.fullMobile
+        ? 'width:100%; max-width:420px; height:100%; background:#000; padding:0; display:flex;'
+        : 'background:#0E1726; border-radius:34px; padding:10px; box-shadow:0 24px 56px rgba(40,54,72,0.28), 0 0 0 1px rgba(255,255,255,0.04) inset;',
+      mobScreenStyle: S.fullMobile
+        ? 'position:relative; flex:1; min-width:0; background:var(--bg-app); overflow:hidden; height:100%; display:flex; flex-direction:column;'
+        : 'position:relative; background:var(--bg-app); border-radius:26px; overflow:hidden; height:min(560px, calc(100vh - 180px)); display:flex; flex-direction:column;',
+      mobMarkers, mobRooms,
+      mobSheet, hasMobSheet: !!mobSheet,
+      mobSheetClose: () => this.setState({ mobSel: null, mobAssignEdit: false }),
+      mobPickLevel, mobPickTitle, mobPickRows,
+      mobPickCanBack: mobPickLevel !== 'site',
+      mobPickBack: () => this.setState(S.mobPickBuilding ? { mobPickBuilding: null } : { mobPickSite: null }),
+      mobFloorOpen: S.mobFloorOpen,
+      mobFloorToggle: () => this.setState({ mobFloorOpen: !S.mobFloorOpen, mobSel: null, mobPickSite: null, mobPickBuilding: null }),
+      mobFloorClose: () => this.setState({ mobFloorOpen: false }),
+      mobFloorLabel: fm ? fm.floor.name + ' \u00b7 ' + fm.building.name : 'Choose floor',
+      typeChips, spaceRows,
+      noSpaceRows: spaceRows.length === 0,
+      portOpen: !S.portCollapsed,
+      portChevRot: S.portCollapsed ? '-90deg' : '0deg',
+      togglePort: () => this.setState({ portCollapsed: !S.portCollapsed }),
+      spaceSearch: S.spaceSearch,
+      onSpaceSearch: (e) => this.setState({ spaceSearch: e.target.value }),
+      mobileBookTab: S.mobileTab === 'book',
+      startTime: this.fmt(S.start),
+      endTime: this.fmt(S.end),
+      startPickBd: S.mobTimePick === 'start' ? 'var(--blue-500)' : 'var(--ink-200)',
+      endPickBd: S.mobTimePick === 'end' ? 'var(--blue-500)' : 'var(--ink-200)',
+      toggleStartPick: () => this.setState({ mobTimePick: S.mobTimePick === 'start' ? null : 'start' }),
+      toggleEndPick: () => this.setState({ mobTimePick: S.mobTimePick === 'end' ? null : 'end' }),
+      pickOpen: !!S.mobTimePick,
+      pickTitle: S.mobTimePick === 'end' ? 'End time' : 'Start time',
+      pickHourLabel: (() => { const c = S.mobTimePick === 'end' ? S.end : S.start; const h = Math.floor(c / 60) % 12; return String(h === 0 ? 12 : h); })(),
+      pickMinLabel: (() => { const c = S.mobTimePick === 'end' ? S.end : S.start; return String(c % 60).padStart(2, '0'); })(),
+      pickAmpm: (() => { const c = S.mobTimePick === 'end' ? S.end : S.start; return Math.floor(c / 60) < 12 ? 'AM' : 'PM'; })(),
+      pickHourUp: () => this.adjustPick(60),
+      pickHourDown: () => this.adjustPick(-60),
+      pickMinUp: () => this.adjustPick(5),
+      pickMinDown: () => this.adjustPick(-5),
+      pickToggleAmpm: () => { const c = S.mobTimePick === 'end' ? S.end : S.start; this.adjustPick(Math.floor(c / 60) < 12 ? 720 : -720); },
+      pickClose: () => this.setState({ mobTimePick: null }),
+      stopEvt: (e) => e.stopPropagation(),
+      mobLegend: S.mobileTab === 'assign'
+        ? [{ id: 'free', dot: 'var(--success-500)', label: 'Free' }, { id: 'assigned', dot: 'var(--blue-500)', label: 'Assigned' }]
+        : [{ id: 'avail', dot: 'var(--success-500)', label: 'Available' }, { id: 'booked', dot: 'var(--danger-500)', label: 'Booked' }],
+      mobileAssignTab: S.mobileTab === 'assign',
+      setMobileBook: () => this.setState({ mobileTab: 'book', mobSel: null }),
+      setMobileAssign: () => this.setState({ mobileTab: 'assign', mobSel: null }),
+      mobBtnBook: { bg: S.mobileTab === 'book' ? '#fff' : 'transparent', fg: S.mobileTab === 'book' ? 'var(--blue-600)' : 'rgba(255,255,255,0.8)' },
+      mobBtnAssign: { bg: S.mobileTab === 'assign' ? '#fff' : 'transparent', fg: S.mobileTab === 'assign' ? 'var(--blue-600)' : 'rgba(255,255,255,0.8)' },
+      datelong,
+
+      modeBtn: {
+        assign: { bg: mode === 'assign' ? '#fff' : 'transparent', fg: mode === 'assign' ? 'var(--blue-600)' : 'var(--ink-600)', sh: mode === 'assign' ? 'var(--shadow-xs)' : 'none' },
+        book: { bg: mode === 'book' ? '#fff' : 'transparent', fg: mode === 'book' ? 'var(--blue-600)' : 'var(--ink-600)', sh: mode === 'book' ? 'var(--shadow-xs)' : 'none' },
+      },
+      editBtn: {
+        bg: mode === 'edit' ? 'var(--blue-500)' : '#fff',
+        fg: mode === 'edit' ? '#fff' : 'var(--ink-700)',
+        bd: mode === 'edit' ? 'var(--blue-500)' : 'var(--ink-200)',
+      },
+      toggleEdit: () => this.setState(mode === 'edit'
+        ? { mode: 'assign', tool: 'select', selected: null, draft: [], calib: [], dragOver: null }
+        : { mode: 'edit', tool: 'select', selected: null, draft: [], calib: [], dragOver: null }),
+      editTitle: mode === 'edit' ? 'Exit edit mode' : 'Edit floorplan (admin)',
+      panelCtx: this.panelView('context'),
+      panelPort: this.panelView('portfolio'),
+      panelDet: this.panelView('details'),
+      setStageEl: this.setStageEl,
+      resetLayout: this.resetLayout,
+      layoutMoved: Object.keys(S.panels).some(k => S.panels[k].x != null) || !S.panels.context.open || !S.panels.details.open || S.panels.portfolio.open,
+      togglePanel: () => this.togglePanelOpen('details'),
+      panelToggleLabel: S.panels.details.open ? 'Hide details' : 'Show details',
+      navOpen: S.navOpen,
+      navClosed: !S.navOpen,
+      navW: S.navOpen ? '236px' : '68px',
+      toggleNav: () => { this._userZoomed = false; this.setState({ navOpen: !S.navOpen }); },
+      navItem: {
+        floorplans: { bg: 'var(--blue-500)', fg: '#fff' },
+        idle: { bg: 'transparent', fg: 'var(--ink-600)' },
+      },
+      toolbarLeftPad: '268px',
+      toolbarRightPad: '268px',
+      panelToggleBg: S.panels.details.open ? 'var(--blue-025)' : '#fff',
+      panelToggleFg: S.panels.details.open ? 'var(--blue-600)' : 'var(--ink-700)',
+      panelToggleBd: S.panels.details.open ? 'var(--blue-300)' : 'var(--ink-200)',
+      setEdit: () => this.setState({ mode: 'edit', tool: 'select', selected: null, draft: [], calib: [], dragOver: null }),
+      setAssign: () => this.setState({ mode: 'assign', tool: 'select', selected: null, draft: [], calib: [], dragOver: null }),
+      setBook: () => this.setState({ mode: 'book', tool: 'select', selected: null, draft: [], calib: [], dragOver: null }),
+
+      /* canvas */
+      setCanvasEl: this.setCanvasEl,
+      onCanvasMouseDown: this.onCanvasMouseDown,
+      onCanvasClick: this.onCanvasClick,
+      onCanvasDblClick: this.onCanvasDblClick,
+      canvasCursor: this.isDrawTool() ? 'crosshair' : 'grab',
+      view: S.view,
+      invZ: (1 / S.view.z).toFixed(4),
+      rooms, roomLabels, markers,
+      draftOverlay: this.renderOverlay(),
+      legendItems,
+      canvasHint,
+      zoomIn: this.zoomIn, zoomOut: this.zoomOut, zoomFit: this.zoomFit,
+      zoomPct: Math.round(S.view.z * 100) + '%',
+      scaleText: S.pxPerMeter ? 'Scale: ' + S.pxPerMeter.toFixed(1) + ' px/m' : 'Not calibrated',
+
+      /* mode flags */
+      isEdit: mode === 'edit', isAssign: mode === 'assign', isBook: mode === 'book',
+
+      /* edit panel */
+      toolBtn,
+      calibActive,
+      calibStep,
+      calibReady: S.calib.length === 2,
+      calibLen: S.calibLen,
+      onCalibLen: (e) => this.setState({ calibLen: e.target.value }),
+      applyCalib: this.applyCalib,
+      hasSelection: !!sel,
+      sel,
+      tooltip,
+      onLabelChange: this.onLabelChange,
+      onSecondaryChange: this.onSecondaryChange,
+      deleteSelected: this.deleteSelected,
+      resetDemo: this.resetDemo,
+
+      /* assignment panel */
+      empSearch: S.empSearch,
+      onEmpSearch: (e) => this.setState({ empSearch: e.target.value }),
+      employees,
+      assignedCountText: assignedEmpCount + ' of ' + this.EMPLOYEES.length + ' assigned',
+      vacateSel: this.vacateSel,
+
+      /* booking panel */
+      dateVal: S.date,
+      onDate: (e) => this.setState({ date: e.target.value || S.date, selected: S.selected }),
+      bookStart: S.start,
+      bookEnd: S.end,
+      onStart: (e) => this.setState({ start: parseInt(e.target.value, 10) }),
+      onEnd: (e) => this.setState({ end: parseInt(e.target.value, 10) }),
+      timeOptions,
+      availText: availCount + ' available',
+      bookedText: bookedCount + ' booked',
+      dateShort,
+      rangeText: this.fmt(S.start) + '–' + this.fmt(S.end),
+      selBookings,
+      hasSelBookings: selBookings.length > 0,
+      noSelBookings: !!selU && selBookings.length === 0,
+      schedView: S.schedView,
+      isSchedList: S.schedView === 'list',
+      isSchedCal: S.schedView === 'calendar',
+      setSchedList: () => this.setState({ schedView: 'list' }),
+      setSchedCal: () => this.setState({ schedView: 'calendar' }),
+      schedBtn: {
+        list: S.schedView === 'list' ? schedActive : schedIdle,
+        cal: S.schedView === 'calendar' ? schedActive : schedIdle,
+      },
+      calHeight, calHours, calBlocks, calSel,
+      onCalTopDown: (e) => this.calEdgeDown('top', e),
+      onCalBottomDown: (e) => this.calEdgeDown('bottom', e),
+      calStop: (e) => e.stopPropagation(),
+      onCalClick: (e) => {
+        const rect = e.currentTarget.getBoundingClientRect();
+        const y = e.clientY - rect.top;
+        const WIN_S = 420, WIN_E = 1200, PXH = 28;
+        let m = Math.round((y / PXH * 60 + WIN_S) / 30) * 30;
+        m = Math.max(WIN_S, Math.min(WIN_E - 60, m));
+        this.setState({ start: m, end: m + (S.slotGranularity || 30) });
+      },
+      noSelectionBook: !sel,
+      empOptions: this.EMPLOYEES.map(e => ({ id: e.id, name: e.name })),
+      bookBy: S.bookBy,
+      onBookBy: (e) => this.setState({ bookBy: e.target.value }),
+      bookPurpose: S.bookPurpose,
+      onPurpose: (e) => this.setState({ bookPurpose: e.target.value }),
+      bookError,
+      bookDisabled: !!bookError,
+      bookBtnOpacity: bookError ? 0.5 : 1,
+      doBook: this.doBook,
+      bookModalOpen: S.bookModalOpen && !!sel && !!(sel && sel.bookable),
+      bookNotes: S.bookNotes,
+      onNotes: (e) => this.setState({ bookNotes: e.target.value }),
+      openBookModal: () => this.setState({ bookModalOpen: true }),
+      closeBookModal: () => this.setState({ bookModalOpen: false }),
+      stopEvt: (e) => e.stopPropagation(),
+      modalTitle: sel ? 'New booking · ' + sel.label : 'New booking',
+
+      /* toast */
+      toastMsg: S.toast,
+    };
+  }
+}
+</script>
+</body>
+</html>

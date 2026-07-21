@@ -1,0 +1,27 @@
+/** Demo asset catalog — draggable onto the plan in Edit mode to place a marker. */
+export interface Asset {
+  id: string;
+  name: string;
+  category: string;
+  /** Short status/spec line shown as the marker's secondary label. */
+  detail: string;
+}
+
+export const DEMO_ASSETS: Asset[] = [
+  { id: 'a-hvac-1', name: 'AHU-01', category: 'HVAC', detail: 'Air handling unit · Level 0' },
+  { id: 'a-hvac-2', name: 'AHU-02', category: 'HVAC', detail: 'Air handling unit · Level 0' },
+  { id: 'a-vav-1', name: 'VAV-11', category: 'HVAC', detail: 'VAV box · Zone A' },
+  { id: 'a-chiller-1', name: 'CH-01', category: 'HVAC', detail: 'Chiller · 250 TR' },
+  { id: 'a-elec-1', name: 'DB-Main', category: 'Electrical', detail: 'Main distribution board' },
+  { id: 'a-elec-2', name: 'UPS-01', category: 'Electrical', detail: 'UPS · 40 kVA' },
+  { id: 'a-elec-3', name: 'GEN-01', category: 'Electrical', detail: 'Diesel generator · 500 kVA' },
+  { id: 'a-fire-1', name: 'FACP-01', category: 'Fire safety', detail: 'Fire alarm control panel' },
+  { id: 'a-fire-2', name: 'Pump-Fire', category: 'Fire safety', detail: 'Fire pump · jockey set' },
+  { id: 'a-plumb-1', name: 'WH-01', category: 'Plumbing', detail: 'Water heater · 500 L' },
+  { id: 'a-plumb-2', name: 'Booster-01', category: 'Plumbing', detail: 'Booster pump set' },
+  { id: 'a-net-1', name: 'IDF-1', category: 'IT / Network', detail: 'Network rack · 42U' },
+  { id: 'a-net-2', name: 'MDF', category: 'IT / Network', detail: 'Main distribution frame' },
+  { id: 'a-lift-1', name: 'LIFT-01', category: 'Vertical transport', detail: 'Passenger elevator · 1000 kg' },
+  { id: 'a-bms-1', name: 'BMS-Ctrl', category: 'Controls', detail: 'BMS controller · Level 0' },
+  { id: 'a-cctv-1', name: 'NVR-01', category: 'Security', detail: 'CCTV recorder · 32ch' },
+];

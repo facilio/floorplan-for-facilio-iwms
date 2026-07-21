@@ -1,0 +1,74 @@
+.bar {
+  position: fixed;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
+  background: rgba(255, 255, 255, 0.98);
+  border: 1px solid var(--ink-200);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-lg);
+}
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 16px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--ink-600);
+  font: 600 13px/1 var(--font-sans);
+  cursor: pointer;
+  transition: background 140ms var(--ease-standard), color 140ms var(--ease-standard);
+}
+.btn:hover {
+  background: var(--ink-050);
+  color: var(--ink-900);
+}
+.btnActive {
+  background: var(--blue-500);
+  color: #fff;
+}
+.btnActive:hover {
+  background: var(--blue-600);
+  color: #fff;
+}
+.iconWrap {
+  position: relative;
+  display: inline-flex;
+}
+.badge {
+  position: absolute;
+  top: -7px;
+  right: -9px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--danger-500);
+  color: #fff;
+  font: 700 10px/16px var(--font-sans);
+  text-align: center;
+}
+.btnActive .badge {
+  background: #fff;
+  color: var(--blue-600);
+}
+.label {
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .label {
+    display: none;
+  }
+  .btn {
+    padding: 0 12px;
+  }
+}

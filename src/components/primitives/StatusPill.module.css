@@ -1,0 +1,13 @@
+.pill {
+  /* inline-block, not inline-flex: text-overflow ellipsis doesn't apply to
+     text inside a flex container, so long labels hard-clipped instead. */
+  display: inline-block;
+  font: 600 11px/1 var(--font-sans);
+  border-radius: var(--radius-pill);
+  padding: 4px 9px;
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}

@@ -1,0 +1,631 @@
+[
+  {
+    "id": "ws1",
+    "type": "workstation",
+    "label": "WS-01",
+    "secondary": "Sit-stand · dual monitor",
+    "room": "Büro 1",
+    "geom": {
+      "kind": "point",
+      "x": 0.083,
+      "y": 0.115
+    },
+    "floor": "hqA3",
+    "deskType": "ASSIGNED",
+    "plan": "workstation"
+  },
+  {
+    "id": "ws2",
+    "type": "workstation",
+    "label": "WS-02",
+    "secondary": "Fixed · single monitor",
+    "room": "Büro 1",
+    "geom": {
+      "kind": "point",
+      "x": 0.083,
+      "y": 0.16
+    },
+    "floor": "hqA3",
+    "deskType": "ASSIGNED",
+    "plan": "workstation"
+  },
+  {
+    "id": "ws3",
+    "type": "workstation",
+    "label": "WS-03",
+    "secondary": "Window seat · sit-stand",
+    "room": "Büro 1",
+    "geom": {
+      "kind": "point",
+      "x": 0.083,
+      "y": 0.205
+    },
+    "floor": "hqA3",
+    "deskType": "ASSIGNED",
+    "plan": "workstation"
+  },
+  {
+    "id": "ws4",
+    "type": "workstation",
+    "label": "WS-04",
+    "secondary": "Standard · docking",
+    "room": "Büro 1",
+    "geom": {
+      "kind": "point",
+      "x": 0.125,
+      "y": 0.115
+    },
+    "floor": "hqA3",
+    "deskType": "HOT",
+    "plan": "workstation"
+  },
+  {
+    "id": "ws5",
+    "type": "workstation",
+    "label": "WS-05",
+    "secondary": "Corner · dual monitor",
+    "room": "Büro 1",
+    "geom": {
+      "kind": "point",
+      "x": 0.125,
+      "y": 0.16
+    },
+    "floor": "hqA3",
+    "deskType": "ASSIGNED",
+    "plan": "workstation"
+  },
+  {
+    "id": "ws6",
+    "type": "workstation",
+    "label": "WS-06",
+    "secondary": "Standard · single monitor",
+    "room": "Büro 1",
+    "geom": {
+      "kind": "point",
+      "x": 0.125,
+      "y": 0.205
+    },
+    "floor": "hqA3",
+    "deskType": "ASSIGNED",
+    "plan": "workstation"
+  },
+  {
+    "id": "ws7",
+    "type": "workstation",
+    "label": "WS-07",
+    "secondary": "Sit-stand · dual monitor",
+    "room": "Büro 2",
+    "geom": {
+      "kind": "point",
+      "x": 0.318,
+      "y": 0.115
+    },
+    "floor": "hqA3",
+    "deskType": "ASSIGNED",
+    "plan": "workstation"
+  },
+  {
+    "id": "ws8",
+    "type": "workstation",
+    "label": "WS-08",
+    "secondary": "Fixed · single monitor",
+    "room": "Büro 2",
+    "geom": {
+      "kind": "point",
+      "x": 0.318,
+      "y": 0.16
+    },
+    "floor": "hqA3",
+    "deskType": "HOTEL",
+    "plan": "workstation"
+  },
+  {
+    "id": "ws9",
+    "type": "workstation",
+    "label": "WS-09",
+    "secondary": "Window seat · sit-stand",
+    "room": "Büro 2",
+    "geom": {
+      "kind": "point",
+      "x": 0.318,
+      "y": 0.205
+    },
+    "floor": "hqA3",
+    "deskType": "ASSIGNED",
+    "plan": "workstation"
+  },
+  {
+    "id": "ws10",
+    "type": "workstation",
+    "label": "WS-10",
+    "secondary": "Standard · docking",
+    "room": "Büro 2",
+    "geom": {
+      "kind": "point",
+      "x": 0.362,
+      "y": 0.115
+    },
+    "floor": "hqA3",
+    "deskType": "ASSIGNED",
+    "plan": "workstation"
+  },
+  {
+    "id": "ws11",
+    "type": "workstation",
+    "label": "WS-11",
+    "secondary": "Corner · dual monitor",
+    "room": "Büro 2",
+    "geom": {
+      "kind": "point",
+      "x": 0.362,
+      "y": 0.16
+    },
+    "floor": "hqA3",
+    "deskType": "ASSIGNED",
+    "plan": "workstation"
+  },
+  {
+    "id": "ws12",
+    "type": "workstation",
+    "label": "WS-12",
+    "secondary": "Standard · single monitor",
+    "room": "Büro 2",
+    "geom": {
+      "kind": "point",
+      "x": 0.362,
+      "y": 0.205
+    },
+    "floor": "hqA3",
+    "deskType": "HOT",
+    "plan": "workstation"
+  },
+  {
+    "id": "ws13",
+    "type": "workstation",
+    "label": "WS-13",
+    "secondary": "Sit-stand · dual monitor",
+    "room": "Büro 4",
+    "geom": {
+      "kind": "point",
+      "x": 0.655,
+      "y": 0.125
+    },
+    "floor": "hqA3",
+    "deskType": "ASSIGNED",
+    "plan": "workstation"
+  },
+  {
+    "id": "ws14",
+    "type": "workstation",
+    "label": "WS-14",
+    "secondary": "Fixed · single monitor",
+    "room": "Büro 4",
+    "geom": {
+      "kind": "point",
+      "x": 0.655,
+      "y": 0.175
+    },
+    "floor": "hqA3",
+    "deskType": "ASSIGNED",
+    "plan": "workstation"
+  },
+  {
+    "id": "ws15",
+    "type": "workstation",
+    "label": "WS-15",
+    "secondary": "Window seat · sit-stand",
+    "room": "Büro 4",
+    "geom": {
+      "kind": "point",
+      "x": 0.702,
+      "y": 0.125
+    },
+    "floor": "hqA3",
+    "deskType": "ASSIGNED",
+    "plan": "workstation"
+  },
+  {
+    "id": "ws16",
+    "type": "workstation",
+    "label": "WS-16",
+    "secondary": "Standard · docking",
+    "room": "Büro 4",
+    "geom": {
+      "kind": "point",
+      "x": 0.702,
+      "y": 0.175
+    },
+    "floor": "hqA3",
+    "deskType": "HOTEL",
+    "plan": "workstation"
+  },
+  {
+    "id": "ws17",
+    "type": "workstation",
+    "label": "WS-17",
+    "secondary": "Corner · dual monitor",
+    "room": "Büro 9",
+    "geom": {
+      "kind": "point",
+      "x": 0.838,
+      "y": 0.79
+    },
+    "floor": "hqA3",
+    "deskType": "ASSIGNED",
+    "plan": "workstation"
+  },
+  {
+    "id": "ws18",
+    "type": "workstation",
+    "label": "WS-18",
+    "secondary": "Standard · single monitor",
+    "room": "Büro 9",
+    "geom": {
+      "kind": "point",
+      "x": 0.838,
+      "y": 0.865
+    },
+    "floor": "hqA3",
+    "deskType": "ASSIGNED",
+    "plan": "workstation"
+  },
+  {
+    "id": "ws19",
+    "type": "workstation",
+    "label": "WS-19",
+    "secondary": "Sit-stand · dual monitor",
+    "room": "Büro 9",
+    "geom": {
+      "kind": "point",
+      "x": 0.926,
+      "y": 0.79
+    },
+    "floor": "hqA3",
+    "deskType": "ASSIGNED",
+    "plan": "workstation"
+  },
+  {
+    "id": "ws20",
+    "type": "workstation",
+    "label": "WS-20",
+    "secondary": "Fixed · single monitor",
+    "room": "Büro 9",
+    "geom": {
+      "kind": "point",
+      "x": 0.926,
+      "y": 0.865
+    },
+    "floor": "hqA3",
+    "deskType": "HOT",
+    "plan": "workstation"
+  },
+  {
+    "id": "ws21",
+    "type": "workstation",
+    "label": "WS-21",
+    "secondary": "Window seat · sit-stand",
+    "room": "Büro 10",
+    "geom": {
+      "kind": "point",
+      "x": 0.7,
+      "y": 0.79
+    },
+    "floor": "hqA3",
+    "deskType": "ASSIGNED",
+    "plan": "workstation"
+  },
+  {
+    "id": "ws22",
+    "type": "workstation",
+    "label": "WS-22",
+    "secondary": "Standard · docking",
+    "room": "Büro 10",
+    "geom": {
+      "kind": "point",
+      "x": 0.7,
+      "y": 0.865
+    },
+    "floor": "hqA3",
+    "deskType": "ASSIGNED",
+    "plan": "workstation"
+  },
+  {
+    "id": "ws23",
+    "type": "workstation",
+    "label": "WS-23",
+    "secondary": "Corner · dual monitor",
+    "room": "Büro 12",
+    "geom": {
+      "kind": "point",
+      "x": 0.075,
+      "y": 0.79
+    },
+    "floor": "hqA3",
+    "deskType": "ASSIGNED",
+    "plan": "workstation"
+  },
+  {
+    "id": "ws24",
+    "type": "workstation",
+    "label": "WS-24",
+    "secondary": "Standard · single monitor",
+    "room": "Büro 12",
+    "geom": {
+      "kind": "point",
+      "x": 0.075,
+      "y": 0.865
+    },
+    "floor": "hqA3",
+    "deskType": "HOTEL",
+    "plan": "workstation"
+  },
+  {
+    "id": "lk1",
+    "type": "locker",
+    "label": "L-01",
+    "room": "Flur",
+    "geom": {
+      "kind": "point",
+      "x": 0.058,
+      "y": 0.343
+    },
+    "floor": "hqA3",
+    "plan": "locker"
+  },
+  {
+    "id": "lk2",
+    "type": "locker",
+    "label": "L-02",
+    "room": "Flur",
+    "geom": {
+      "kind": "point",
+      "x": 0.07150000000000001,
+      "y": 0.343
+    },
+    "floor": "hqA3",
+    "plan": "locker"
+  },
+  {
+    "id": "lk3",
+    "type": "locker",
+    "label": "L-03",
+    "room": "Flur",
+    "geom": {
+      "kind": "point",
+      "x": 0.085,
+      "y": 0.343
+    },
+    "floor": "hqA3",
+    "plan": "locker"
+  },
+  {
+    "id": "lk4",
+    "type": "locker",
+    "label": "L-04",
+    "room": "Flur",
+    "geom": {
+      "kind": "point",
+      "x": 0.0985,
+      "y": 0.343
+    },
+    "floor": "hqA3",
+    "plan": "locker"
+  },
+  {
+    "id": "lk5",
+    "type": "locker",
+    "label": "L-05",
+    "room": "Flur",
+    "geom": {
+      "kind": "point",
+      "x": 0.112,
+      "y": 0.343
+    },
+    "floor": "hqA3",
+    "plan": "locker"
+  },
+  {
+    "id": "lk6",
+    "type": "locker",
+    "label": "L-06",
+    "room": "Flur",
+    "geom": {
+      "kind": "point",
+      "x": 0.1255,
+      "y": 0.343
+    },
+    "floor": "hqA3",
+    "plan": "locker"
+  },
+  {
+    "id": "lk7",
+    "type": "locker",
+    "label": "L-07",
+    "room": "Flur",
+    "geom": {
+      "kind": "point",
+      "x": 0.139,
+      "y": 0.343
+    },
+    "floor": "hqA3",
+    "plan": "locker"
+  },
+  {
+    "id": "lk8",
+    "type": "locker",
+    "label": "L-08",
+    "room": "Flur",
+    "geom": {
+      "kind": "point",
+      "x": 0.1525,
+      "y": 0.343
+    },
+    "floor": "hqA3",
+    "plan": "locker"
+  },
+  {
+    "id": "rm1",
+    "type": "room",
+    "label": "Konferenzraum 1",
+    "room": null,
+    "geom": {
+      "kind": "poly",
+      "pts": [
+        [
+          0.492,
+          0.735
+        ],
+        [
+          0.618,
+          0.735
+        ],
+        [
+          0.618,
+          0.955
+        ],
+        [
+          0.492,
+          0.955
+        ]
+      ]
+    },
+    "floor": "hqA3",
+    "plan": "custom"
+  },
+  {
+    "id": "rm2",
+    "type": "room",
+    "label": "Konferenzraum 2",
+    "room": null,
+    "geom": {
+      "kind": "poly",
+      "pts": [
+        [
+          0.148,
+          0.7
+        ],
+        [
+          0.385,
+          0.7
+        ],
+        [
+          0.385,
+          0.955
+        ],
+        [
+          0.148,
+          0.955
+        ]
+      ]
+    },
+    "floor": "hqA3",
+    "plan": "custom"
+  },
+  {
+    "id": "rm3",
+    "type": "room",
+    "label": "Ruheraum",
+    "room": null,
+    "geom": {
+      "kind": "poly",
+      "pts": [
+        [
+          0.033,
+          0.36
+        ],
+        [
+          0.155,
+          0.36
+        ],
+        [
+          0.155,
+          0.44
+        ],
+        [
+          0.033,
+          0.44
+        ]
+      ]
+    },
+    "floor": "hqA3",
+    "plan": "custom"
+  },
+  {
+    "id": "pk1",
+    "type": "parking",
+    "label": "P-01",
+    "room": null,
+    "geom": {
+      "kind": "point",
+      "x": 0.44,
+      "y": 0.6
+    },
+    "floor": "hqA3",
+    "plan": "parking"
+  },
+  {
+    "id": "pk2",
+    "type": "parking",
+    "label": "P-02",
+    "room": null,
+    "geom": {
+      "kind": "point",
+      "x": 0.47,
+      "y": 0.6
+    },
+    "floor": "hqA3",
+    "plan": "parking"
+  },
+  {
+    "id": "pk3",
+    "type": "parking",
+    "label": "P-03",
+    "room": null,
+    "geom": {
+      "kind": "point",
+      "x": 0.5,
+      "y": 0.6
+    },
+    "floor": "hqA3",
+    "plan": "parking"
+  },
+  {
+    "id": "pk4",
+    "type": "parking",
+    "label": "P-04",
+    "room": null,
+    "geom": {
+      "kind": "point",
+      "x": 0.44,
+      "y": 0.66
+    },
+    "floor": "hqA3",
+    "plan": "parking"
+  },
+  {
+    "id": "pk5",
+    "type": "parking",
+    "label": "P-05",
+    "room": null,
+    "geom": {
+      "kind": "point",
+      "x": 0.47,
+      "y": 0.66
+    },
+    "floor": "hqA3",
+    "plan": "parking"
+  },
+  {
+    "id": "pk6",
+    "type": "parking",
+    "label": "P-06",
+    "room": null,
+    "geom": {
+      "kind": "point",
+      "x": 0.5,
+      "y": 0.66
+    },
+    "floor": "hqA3",
+    "plan": "parking"
+  }
+]

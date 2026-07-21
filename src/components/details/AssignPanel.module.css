@@ -1,0 +1,118 @@
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+}
+/* Fixed cards keep their natural height — only .peopleCard (below, flex:1) gives way,
+   and inside it only the list scrolls. */
+.stack > * {
+  flex-shrink: 0;
+}
+.typeTag {
+  font-weight: 400;
+  color: var(--ink-500);
+  font-size: 11px;
+}
+.peopleCard {
+  flex: 1;
+  /* Floor for the list viewport when a selection card sits above; the list itself
+     scrolls under the fixed search, so this only bounds how small it can get. */
+  min-height: 160px;
+  display: flex;
+  flex-direction: column;
+}
+.peopleSearchWrap {
+  padding: 10px 14px 6px;
+  flex-shrink: 0;
+}
+.dragHint {
+  font-size: 10.5px;
+  color: var(--ink-400);
+  margin: 6px 0 0;
+  line-height: 1.4;
+}
+.peopleList {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.personRow {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 8px;
+  border-radius: var(--radius-md);
+  cursor: grab;
+}
+.personRow:hover {
+  background: var(--ink-050);
+}
+.openIcon {
+  flex-shrink: 0;
+  color: var(--ink-400);
+}
+.personRow:hover .openIcon {
+  color: var(--blue-500);
+}
+.avatar {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: var(--blue-050);
+  color: var(--blue-600);
+  display: grid;
+  place-items: center;
+  font: 600 10px/1 var(--font-sans);
+}
+.personText {
+  flex: 1;
+  min-width: 0;
+}
+.personName {
+  font: 500 12.5px/1.2 var(--font-sans);
+  color: var(--ink-900);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.personDept {
+  font: 400 11px/1.2 var(--font-sans);
+  color: var(--ink-500);
+  margin-top: 1px;
+}
+.heldBadge {
+  flex-shrink: 0;
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 600 10px/1 var(--font-sans);
+  color: var(--blue-700);
+  background: var(--blue-025);
+  border-radius: 999px;
+  padding: 3px 7px;
+}
+.assignedRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--blue-050);
+  border-radius: var(--radius-md);
+  padding: 9px 11px;
+}
+.assignedName {
+  font: 600 12.5px/1.2 var(--font-sans);
+  color: var(--blue-700);
+}
+.actionsRow {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}

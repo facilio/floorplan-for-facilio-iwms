@@ -1,0 +1,40 @@
+.root {
+  position: relative;
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  background: var(--bg-app);
+  overflow: hidden;
+  font-family: var(--font-sans);
+}
+.mobileRoot {
+  /* fixed lock (not just overflow:hidden): iOS Safari can still rubber-band
+     a plain block container, which dragged the whole page with sheet pulls */
+  position: fixed;
+  inset: 0;
+  height: 100dvh;
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: manipulation;
+  font-family: var(--font-sans);
+}
+.loading {
+  height: 100vh;
+  height: 100dvh;
+  display: grid;
+  place-items: center;
+  background: var(--bg-app);
+}
+.spinner {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 3px solid var(--ink-200);
+  border-top-color: var(--blue-500);
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

@@ -1,0 +1,77 @@
+.wrap {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: transparent;
+  user-select: none;
+}
+.plane {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+}
+.hint {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--ink-900);
+  color: #fff;
+  border-radius: var(--radius-sm);
+  padding: 7px 12px;
+  font: 500 12px/1 var(--font-sans);
+  box-shadow: var(--shadow-md);
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 30;
+}
+
+/* ---- multi-select action bar ---- */
+.multiBar {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--ink-900);
+  color: #fff;
+  border-radius: 999px;
+  padding: 6px 8px 6px 14px;
+  box-shadow: var(--shadow-lg);
+  z-index: 31;
+}
+.multiCount {
+  font: 600 12px/1 var(--font-sans);
+}
+.multiDelete {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 999px;
+  background: var(--danger-500);
+  color: #fff;
+  font: 600 12px/1 var(--font-sans);
+  cursor: pointer;
+}
+.multiDelete:hover {
+  background: var(--danger-600);
+}
+.multiClear {
+  height: 30px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  font: 600 12px/1 var(--font-sans);
+  cursor: pointer;
+}
+.multiClear:hover {
+  background: rgba(255, 255, 255, 0.26);
+}

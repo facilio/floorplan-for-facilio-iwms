@@ -1,0 +1,140 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  /* flex:1 (not height:100%): the switcher row above is a sibling in the panel body's
+     column — 100% of the body height overflowed by exactly that row, which made the
+     whole panel scroll instead of just .list below. */
+  flex: 1;
+  min-height: 0;
+}
+.head {
+  padding: 9px 12px 8px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-bottom: 1px solid var(--ink-100);
+}
+.headRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.title {
+  font: 600 12.5px/1 var(--font-sans);
+  color: var(--ink-900);
+}
+.total {
+  font: 600 10px/1 var(--font-sans);
+  color: var(--ink-600);
+  background: var(--ink-100);
+  border-radius: 999px;
+  padding: 3px 7px;
+}
+.searchBox {
+  position: relative;
+}
+.searchIcon {
+  position: absolute;
+  left: 9px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+.searchInput {
+  width: 100%;
+  height: 32px;
+  border: 1px solid var(--ink-200);
+  border-radius: var(--radius-md);
+  padding: 0 28px;
+  font: 400 12px/1 var(--font-sans);
+  color: var(--ink-900);
+  background: #fff;
+  outline: none;
+  box-sizing: border-box;
+}
+.searchInput:focus {
+  border-color: var(--blue-500);
+  box-shadow: var(--shadow-focus);
+}
+.clearBtn {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: transparent;
+  color: var(--ink-400);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+}
+.clearBtn:hover {
+  background: var(--ink-100);
+  color: var(--ink-700);
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 0;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 9px;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+.row:hover {
+  background: var(--ink-050);
+}
+.dot {
+  flex-shrink: 0;
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+}
+.rowText {
+  /* flex-basis auto + a floor of 42% keeps the unit label readable — with
+     `flex: 1` (basis 0) a long "Assigned · <name>" pill claimed its full
+     intrinsic width first and squeezed the label down to nothing. */
+  flex: 1 1 auto;
+  min-width: 42%;
+}
+.rowLabel {
+  font: 600 12.5px/1.2 var(--font-sans);
+  color: var(--ink-900);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rowSub {
+  font: 400 11px/1.2 var(--font-sans);
+  color: var(--ink-500);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 2px;
+}
+.empty {
+  padding: 22px 12px;
+  text-align: center;
+  font: 400 12px/1.4 var(--font-sans);
+  color: var(--ink-500);
+}

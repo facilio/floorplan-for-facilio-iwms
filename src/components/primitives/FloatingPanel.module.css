@@ -1,0 +1,89 @@
+.panel {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border: 1px solid var(--ink-200);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  animation: fp-panel-in var(--dur-base) var(--ease-standard);
+}
+.translucent {
+  background: rgba(255, 255, 255, 0.93);
+  backdrop-filter: blur(14px);
+  border-color: rgba(216, 227, 241, 0.9);
+  /* Soft, tight shadow — the previous 50px/42% throw darkened the legend and
+     Reset-layout controls sitting below the panel into unreadability. */
+  box-shadow: 0 10px 28px rgba(5, 16, 30, 0.14);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 8px 8px 12px;
+  border-bottom: 1px solid var(--ink-100);
+  cursor: grab;
+  flex-shrink: 0;
+}
+.header:active {
+  cursor: grabbing;
+}
+.title {
+  flex: 1;
+  font: 600 12px/1 var(--font-sans);
+  color: var(--ink-600);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.collapse {
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--ink-600);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.collapse:hover {
+  background: var(--ink-050);
+  color: var(--ink-900);
+}
+
+/* The body itself never scrolls — each panel's content owns its scrolling region
+   (e.g. the spaces/people LIST scrolls under a fixed search bar). The child rule
+   hands the constrained height down so those inner `overflow-y: auto` areas engage. */
+.body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.body > * {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.iconDock {
+  position: absolute;
+  width: 46px;
+  height: 46px;
+  border-radius: var(--radius-xl);
+  background: #fff;
+  border: 1px solid var(--ink-200);
+  box-shadow: var(--shadow-md);
+  display: grid;
+  place-items: center;
+  cursor: grab;
+  color: var(--ink-700);
+  animation: fp-icon-in var(--dur-fast) var(--ease-standard);
+}
+.iconDock:active {
+  cursor: grabbing;
+}

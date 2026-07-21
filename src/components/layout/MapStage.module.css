@@ -1,0 +1,97 @@
+.stage {
+  flex: 1;
+  position: relative;
+  min-width: 0;
+  /* Soft neutral-grey canvas (was a saturated blue) so the app blends with the
+     host's white chrome when embedded as a connected app, while staying just
+     dark enough that the white panels + floorplan sheet still read as floating.
+     The dot grid is recolored to a faint neutral so it whispers, not shouts. */
+  background: radial-gradient(circle, rgba(100, 116, 139, 0.09) 1px, transparent 1.4px) 0 0 / 24px 24px, var(--bg-app);
+  overflow: hidden;
+}
+.resetLayout {
+  position: absolute;
+  left: 12px;
+  bottom: 48px;
+  z-index: 35;
+}
+.topBar {
+  position: absolute;
+  /* Below the main Toolbar pill (also top-centered, ~16px + ~44px tall) so the two never
+     overlap — an earlier version at the same top offset visually cleared it but still
+     intercepted clicks on the toolbar underneath since both are pointer-events:auto here. */
+  top: 68px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 25;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+.topBar > * {
+  pointer-events: auto;
+}
+/* Dark "you have unsaved changes" pill (Floorplan Editor design). */
+.unsavedBar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px 8px 16px;
+  border-radius: 10px;
+  background: var(--ink-900, #0f1c2e);
+  box-shadow: 0 12px 30px rgba(5, 16, 30, 0.3);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: #fff;
+  white-space: nowrap;
+  animation: unsaved-slidedown 160ms cubic-bezier(0.2, 0, 0, 1);
+}
+@keyframes unsaved-slidedown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Discard edits in place (stay in edit mode). */
+.unsavedDiscard {
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 7px;
+  background: transparent;
+  color: #fff;
+  font: 600 12px/1 var(--font-sans);
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.unsavedDiscard:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+.unsavedSave {
+  height: 32px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 7px;
+  background: var(--blue-500);
+  color: #fff;
+  font: 600 12px/1 var(--font-sans);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: background 0.12s ease;
+}
+.unsavedSave:hover {
+  background: var(--blue-600, #0047ab);
+}
+.unsavedSave:disabled {
+  opacity: 0.7;
+  cursor: default;
+}

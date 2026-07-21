@@ -1,0 +1,382 @@
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+}
+.stack > * {
+  flex-shrink: 0;
+}
+/* Everything below the pinned Tools|Markers tab bar scrolls as one region
+   (the asset list still nests its own scroller inside). */
+.scrollArea {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.scrollArea > * {
+  flex-shrink: 0;
+}
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.toolBtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--ink-200);
+  background: #fff;
+  color: var(--ink-700);
+  font: 500 12px/1 var(--font-sans);
+  cursor: pointer;
+}
+.toolBtn:hover {
+  background: var(--ink-050);
+}
+.toolBtnActive {
+  background: var(--blue-025);
+  border-color: var(--blue-200);
+  color: var(--blue-600);
+}
+.calibRow {
+  display: flex;
+  gap: 8px;
+}
+.geomPreview {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  background: var(--ink-050);
+  border-radius: var(--radius-sm);
+  font: 400 10.5px/1.4 var(--font-mono);
+  color: var(--ink-600);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 96px;
+  overflow-y: auto;
+}
+
+/* ---- asset drag list ---- */
+.assetList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 260px;
+  overflow-y: auto;
+  margin-top: 4px;
+}
+.assetRow {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 6px;
+  border-radius: var(--radius-md);
+  cursor: grab;
+}
+.assetRow:hover {
+  background: var(--ink-050);
+}
+.assetRow:active {
+  cursor: grabbing;
+}
+.assetIcon {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: rgba(109, 91, 208, 0.12);
+  color: #6d5bd0;
+}
+.assetText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.assetName {
+  font: 600 12.5px/1.2 var(--font-sans);
+  color: var(--ink-900);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.assetDetail {
+  font: 400 10.5px/1.2 var(--font-sans);
+  color: var(--ink-500);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.assetPlaced {
+  flex-shrink: 0;
+  color: var(--success-600);
+}
+
+/* ---- Tools | Markers tab switch ---- */
+.tabs {
+  display: flex;
+  gap: 4px;
+  background: var(--ink-050);
+  border-radius: 8px;
+  padding: 3px;
+}
+.tab {
+  flex: 1;
+  height: 30px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-600);
+  font: 600 12px/1 var(--font-sans);
+  cursor: pointer;
+}
+.tabActive {
+  background: #fff;
+  color: var(--blue-600);
+  box-shadow: var(--shadow-xs);
+}
+
+/* ---- live active-tool banner ---- */
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--blue-025);
+  border: 1px solid var(--blue-100);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.bannerIcon {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--blue-500);
+  color: #fff;
+  display: grid;
+  place-items: center;
+}
+.bannerName {
+  font: 700 13px/1.2 var(--font-sans);
+  color: var(--ink-900);
+}
+.bannerHint {
+  font: 400 11px/1.35 var(--font-sans);
+  color: var(--ink-500);
+  margin-top: 1px;
+}
+
+.sectionLabel {
+  font: 600 10px/1 var(--font-sans);
+  color: var(--ink-500);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 14px 0 8px;
+}
+
+/* ---- work-with-units 3-up grid ---- */
+.workGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 6px;
+}
+.workBtn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 54px;
+  border: 1px solid var(--ink-200);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--ink-700);
+  font: 600 10.5px/1 var(--font-sans);
+  cursor: pointer;
+}
+.workBtn:hover {
+  background: var(--ink-050);
+}
+.workBtnActive,
+.workBtnActive:hover {
+  background: var(--blue-500);
+  border-color: var(--blue-500);
+  color: #fff;
+}
+
+/* ---- add-to-plan 2-up grid ---- */
+.addGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.addBtn {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--ink-200);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--ink-700);
+  font: 600 12px/1 var(--font-sans);
+  cursor: grab;
+}
+.addBtn:hover {
+  border-color: var(--blue-300);
+}
+.addBtnActive,
+.addBtnActive:hover {
+  background: var(--blue-500);
+  border-color: var(--blue-500);
+  color: #fff;
+}
+.addChip {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  color: #fff;
+  display: grid;
+  place-items: center;
+}
+
+/* ---- marker library ---- */
+.markerHint {
+  font: 400 11.5px/1.5 var(--font-sans);
+  color: var(--ink-500);
+  margin: 0 0 10px;
+}
+.markerBtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 8px;
+  border: 1px solid var(--ink-200);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--ink-700);
+  font: 600 11.5px/1 var(--font-sans);
+  cursor: grab;
+}
+.markerBtn:hover {
+  border-color: var(--blue-300);
+}
+.markerBtnActive,
+.markerBtnActive:hover {
+  background: var(--blue-025);
+  border-color: var(--blue-300);
+  color: var(--blue-600);
+}
+.markerChip {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  color: #fff;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+.markerChip img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.markerName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.newMarkerBtn {
+  width: 100%;
+  margin-top: 12px;
+  height: 40px;
+  border: 1px dashed var(--ink-300);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--ink-700);
+  font: 600 12.5px/1 var(--font-sans);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.newMarkerBtn:hover {
+  background: var(--ink-050);
+  border-color: var(--blue-300);
+}
+.newMarkerForm {
+  margin-top: 12px;
+  border: 1px solid var(--ink-200);
+  border-radius: 10px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.newMarkerTitle {
+  font: 600 12px/1 var(--font-sans);
+  color: var(--ink-900);
+}
+.swatches {
+  display: flex;
+  gap: 6px;
+}
+.swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+.formRow {
+  display: flex;
+  gap: 8px;
+}
+
+/* ---- inspector ---- */
+.inspectorHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.inspectorCount {
+  font: 600 13px/1 var(--font-sans);
+  color: var(--ink-700);
+}
+.inspectorClose {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--ink-400);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  border-radius: 5px;
+}
+.inspectorClose:hover {
+  background: var(--ink-050);
+}
+.inspectorNote {
+  margin: 10px 0 0;
+  font: 400 11px/1.5 var(--font-sans);
+  color: var(--ink-400);
+}
