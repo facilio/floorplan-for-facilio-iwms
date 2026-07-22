@@ -10,7 +10,6 @@
     "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {
-    "@facilio/api": "^2.9.1",
     "@mlightcad/cad-simple-viewer": "1.5.7",
     "axios": "^0.21.4",
     "jsqr": "^1.4.0",

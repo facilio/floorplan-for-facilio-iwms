@@ -2,7 +2,7 @@ import { IMG_H, IMG_W } from '../../lib/mockData';
 import { isFacilioApiConfigured } from '../../lib/facilioApi';
 
 // The made-up architectural schematic below is a LOCAL-PROTOTYPE-ONLY fallback. In the deployed
-// app (VITE_DEV_MODE=false) there's no real @facilio/api, so `isFacilioApiConfigured` is false —
+// app (VITE_DEV_MODE=false) there's no real backend tier, so `isFacilioApiConfigured` is false —
 // which used to fall straight through to the schematic and paint a fake floorplan under real
 // markers on every refresh/switch. Gate on dev mode too so the deployed app shows a blank sheet
 // (and the shimmer covers loading), never the dummy.

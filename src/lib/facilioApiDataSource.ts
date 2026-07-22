@@ -1,5 +1,4 @@
-import { apiOrigin, facilioApi, isFacilioApiConfigured } from './facilioApi';
-import { getInstance } from '@facilio/api';
+import { apiOrigin, customGet, customPost, facilioApi, fetchFilePreview, isFacilioApiConfigured } from './facilioApi';
 import { renderCadToDataUrl } from './cadPreview';
 import { renderPdfToDataUrl } from './pdfPreview';
 import { computeSyntheticGeometry, geometryStringToQuad, quadToGeometryString, quadToLngLat } from './geoReference';
@@ -44,7 +43,8 @@ const PLAN_ID_BY_TYPE: Record<number, PlanId> = { 1: 'workstation', 2: 'locker',
 const PLAN_NAME_BY_TYPE: Record<number, string> = { 1: 'Workstations', 2: 'Lockers', 3: 'Parking stalls' };
 
 /**
- * Real Facilio backend tier via @facilio/api (generic V3 module CRUD: `v3/modules/{moduleName}`).
+ * Real Facilio backend tier (generic V3 module CRUD: `v3/modules/{moduleName}`) — see
+ * `facilioApi.ts` for the connected-app-SDK vs. dev-mode-axios transport split.
  *
  * Scope, deliberately: portfolio (site/building/floor) and the client contact directory map cleanly
  * onto plain module records, so those are wired for real. Units/assignments/bookings are NOT
@@ -115,9 +115,9 @@ export class FacilioApiDataSource implements FloorplanDataSource {
   }
 
   async getAssets(): Promise<Asset[]> {
-    // Sourced from the CMMS connector (list-assets); not fetched over @facilio/api. Throw so the
+    // Sourced from the CMMS connector (list-assets); not fetched by this tier. Throw so the
     // composite falls through to the connector tier.
-    throw new Error('facilio-api: assets come from the CMMS connector, not @facilio/api');
+    throw new Error('facilio-api: assets come from the CMMS connector, not this tier');
   }
 
   async getUnits(_floorId: string): Promise<Unit[]> {
@@ -126,7 +126,7 @@ export class FacilioApiDataSource implements FloorplanDataSource {
   async saveUnits(): Promise<void> {
     throw new Error('facilio-api: unit placement not wired');
   }
-  // Space creation is wired on the CMMS connector tier (create-space), not the raw @facilio/api
+  // Space creation is wired on the CMMS connector tier (create-space), not this raw module-CRUD
   // layer — throw so the composite falls through to it.
   async createUnit(): Promise<Unit> {
     throw new Error('facilio-api: space creation goes through the CMMS connector — not wired here');
@@ -169,9 +169,9 @@ function lookupId(record: any, key: string): unknown {
  * `fetchRecord('indoorfloorplan', {id})` if the fileId is needed.
  */
 async function getFloorplanDetailsByType(floorId: string): Promise<Record<string, any>> {
-  const res = await facilioApi.get('v3/floorplan/getFloorplanDetailsByType', { floorId });
-  if (res.error) throw new Error(res.error.message || `code ${res.error.code}`);
-  return (res.data as any)?.indoorFloorPlans ?? {};
+  const body = await customGet('v3/floorplan/getFloorplanDetailsByType', { floorId });
+  if (body?.code !== 0) throw new Error(body?.message || `code ${body?.code ?? '?'}`);
+  return body?.data?.indoorFloorPlans ?? {};
 }
 
 export interface FloorPlanTypeSummary {
@@ -200,14 +200,11 @@ export async function getFloorPlanSummary(floorId: string): Promise<FloorPlanTyp
  * (confirmed against a live org — returns `{indoorfloorplan: {fileId, ...}, marker, spaceZone,
  * floorplanlayers, floorplanMappedmodules}`; only `fileId` is used here).
  *
- * Called via the raw axios instance (not `@facilio/api`'s `API.post`) because the full path
- * (`maintenance/api/v3/floorplan/viewerData`, confirmed against the live org) doesn't start
- * with `v3/`, so `@facilio/api`'s response-envelope unwrapping wouldn't recognize it as a v3
- * call and would misparse the `{code,data}` body. It's also requested as an ABSOLUTE URL off
- * `apiOrigin` rather than a path relative to the configured axios baseURL — that baseURL
- * already carries a `/api` suffix (for the generic `v3/modules/...` calls), and this route
- * lives directly off the bare origin, not nested under `/api` — a relative path here doubles
- * into `/api/maintenance/api/...` and 404s.
+ * Requested as an ABSOLUTE URL off `apiOrigin` (in dev mode) rather than a path relative to the
+ * configured axios baseURL — that baseURL already carries a `/api` suffix (for the generic
+ * `v3/modules/...` calls), and this route lives directly off the bare origin, not nested under
+ * `/api` — a relative path here doubles into `/api/maintenance/api/...` and 404s. Connected-app
+ * mode doesn't need this: `customPost` resolves the path itself via the SDK bridge.
  *
  * `marker`/`spaceZone` in the same response are the real per-unit geometry this app's
  * `getUnits` still declines to render (see the class doc comment) — worth revisiting now that
@@ -219,19 +216,18 @@ export async function fetchFloorplanImage(floorId: string, planId: PlanId): Prom
   const summary = byType[String(FLOOR_PLAN_TYPE[planId])];
   if (!summary?.id) return null;
 
-  const axiosInstance = getInstance();
-  const viewerRes = await axiosInstance.post(
-    `${apiOrigin}/maintenance/api/v3/floorplan/viewerData`,
-    { floorplanId: summary.id, viewMode: 'ASSIGNMENT' }
+  const viewerBody = await customPost(
+    'v3/floorplan/viewerData',
+    { floorplanId: summary.id, viewMode: 'ASSIGNMENT' },
+    { devAbsoluteUrl: `${apiOrigin}/maintenance/api/v3/floorplan/viewerData` }
   );
-  const fileId = viewerRes.data?.data?.indoorfloorplan?.fileId;
+  const fileId = viewerBody?.data?.indoorfloorplan?.fileId;
   if (!fileId) return null;
 
-  const previewRes = await axiosInstance.get(`v2/files/preview/${fileId}`, {
-    params: { fetchOriginal: true },
-    responseType: 'blob',
-  });
-  return blobToRenderableDataUrl(previewRes.data, previewRes.headers?.['content-type']);
+  const preview = await fetchFilePreview(fileId, { original: true });
+  if (preview.dataUrl) return preview.dataUrl;
+  if (!preview.blob) return null;
+  return blobToRenderableDataUrl(preview.blob, preview.contentType);
 }
 
 export interface FloorplanFileUploadResult {
@@ -260,10 +256,11 @@ export interface FloorplanFileUploadResult {
 export async function fetchRenderedFileImage(fileId: number): Promise<string | null> {
   if (!isFacilioApiConfigured) return null;
   try {
-    const res = await getInstance().get(`v2/files/preview/${fileId}`, { responseType: 'blob' });
-    const blob = res.data as Blob;
-    const type = (res.headers?.['content-type'] || blob.type || '').toLowerCase();
-    if (type.startsWith('image/')) return URL.createObjectURL(blob);
+    const preview = await fetchFilePreview(fileId);
+    if (preview.dataUrl) return preview.dataUrl;
+    if (!preview.blob) return null;
+    const type = (preview.contentType || preview.blob.type || '').toLowerCase();
+    if (type.startsWith('image/')) return URL.createObjectURL(preview.blob);
     return null;
   } catch {
     return null;
@@ -272,19 +269,18 @@ export async function fetchRenderedFileImage(fileId: number): Promise<string | n
 
 /**
  * Uploads a floorplan source file (image/PDF/DXF/whatever) to Facilio's real file storage
- * (`POST v3/modules/data/files`, multipart, returns `{attachments: {filename: fileId}}`),
- * then attaches that `fileId` to the floor's `indoorfloorplan` record for this `planId`
- * (creating one if it doesn't exist yet). Also fetches the uploaded bytes back via
- * `GET v2/files/preview/{fileId}?fetchOriginal=true` and returns an object URL — that endpoint
- * returns raw bytes rather than @facilio/api's `{code,data}` JSON envelope, so it's fetched via
- * the raw axios instance (`getInstance()`) rather than `API.get`, which would misparse it.
+ * (`POST v3/modules/data/files` in dev mode, `api.uploadFile` in connected-app mode — see
+ * `facilioApi.ts`), then attaches that `fileId` to the floor's `indoorfloorplan` record for
+ * this `planId` (creating one if it doesn't exist yet). Also fetches the uploaded bytes back
+ * for a preview via `fetchFilePreview` (dev: raw blob off `GET v2/files/preview/{fileId}
+ * ?fetchOriginal=true`; connected: `common.toBase64`).
  *
  * `indoorfloorplan` requires `floor`/`building`/`site` as `{id}` lookups (not raw ids) plus a
  * `floorPlanType` int (confirmed against a live org: 1=workstation, 2=locker, 3=parking — no
  * generic/custom type). `building`/`site` aren't tracked per-floor in this app's own state, so
  * they're read off the `floor` record itself, which carries both as `{id}` lookups already.
  *
- * The attach step is best-effort and non-fatal: `@facilio/api` returns `{error}` rather than
+ * The attach step is best-effort and non-fatal: `facilioApi` returns `{error}` rather than
  * throwing on a failed request, so it's checked explicitly rather than trusted to reject —
  * a bad `floorId` (e.g. one that doesn't correspond to a real floor record) fails the attach
  * without discarding the (real, working) uploaded file/preview.
@@ -309,12 +305,8 @@ export async function uploadFloorplanFile(
   }
   const fileId = Number(uploadRes.ids[0]);
 
-  const axiosInstance = getInstance();
-  const previewRes = await axiosInstance.get(`v2/files/preview/${fileId}`, {
-    params: { fetchOriginal: true },
-    responseType: 'blob',
-  });
-  const previewUrl = URL.createObjectURL(previewRes.data);
+  const preview = await fetchFilePreview(fileId, { original: true });
+  const previewUrl = preview.dataUrl ?? URL.createObjectURL(preview.blob!);
   // Also grab the server-RENDERED image (no fetchOriginal) — the display source for files the
   // browser can't draw (PDF, DWG/DXF). Null when the server didn't rasterize it.
   const serverImageUrl = await fetchRenderedFileImage(fileId);
@@ -430,7 +422,7 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: (
     const match = existingByGeoId.get(unit.id);
     if (match) {
       if (match.geometry !== geometry || match.label !== unit.label) {
-        // `@facilio/api` resolves (doesn't reject) on a failed request — the failure shows up
+        // `facilioApi` resolves (doesn't reject) on a failed request — the failure shows up
         // as `res.error`, not a rejected promise, so a bare `.catch()` here would never catch
         // a real validation error; check `.error` explicitly and log it instead.
         const res = await facilioApi.updateRecord('floorplanmarker', { id: match.id, data: { geometry, properties, label: unit.label, type: 'Point' } });
@@ -581,11 +573,12 @@ export interface MyDeskInfo {
  */
 export async function fetchMyDesk(employeeId?: number): Promise<MyDeskInfo | null> {
   if (!isFacilioApiConfigured || !apiOrigin) return null;
-  const axiosInstance = getInstance();
-  const res = await axiosInstance.get(`${apiOrigin}/maintenance/api/v2/servicePortalHome`, {
-    params: { fetchOnlyDesk: true, count: 1, ...(employeeId ? { recordId: employeeId } : {}) },
-  });
-  const result = res.data?.result;
+  const body = await customGet(
+    'v2/servicePortalHome',
+    { fetchOnlyDesk: true, count: 1, ...(employeeId ? { recordId: employeeId } : {}) },
+    { devAbsoluteUrl: `${apiOrigin}/maintenance/api/v2/servicePortalHome` }
+  );
+  const result = body?.result;
   const assigned = result?.desks?.[0];
   const bookedDesk = result?.bookedDesks?.[0];
   const desk = assigned ?? bookedDesk;
@@ -837,10 +830,9 @@ export function fetchBookingFormList(module: 'space' | 'facility'): Promise<Book
   const moduleName = module === 'space' ? 'spacebooking' : 'facilitybooking';
   let pending = bookingFormListCache.get(moduleName);
   if (!pending) {
-    // Raw axios (not API.get): v2/forms answers the plain {responseCode, result} envelope.
-    pending = getInstance()
-      .get('v2/forms', { params: { moduleName } })
-      .then((res: { data?: { result?: { forms?: BookingFormSummary[] } } }) => (res.data?.result?.forms ?? []).filter((f) => !f.hideInList))
+    // v2/forms answers the plain {responseCode, result} envelope — customGet returns the body verbatim.
+    pending = customGet('v2/forms', { moduleName })
+      .then((body: { result?: { forms?: BookingFormSummary[] } }) => (body?.result?.forms ?? []).filter((f) => !f.hideInList))
       .catch((err: unknown) => {
         // eslint-disable-next-line no-console
         console.warn('[facilio-api] booking form list fetch failed', err);
@@ -878,8 +870,8 @@ export async function fetchBookingForm(module: 'space' | 'facility', unitType: U
 }
 
 async function loadBookingFormDetail(module: 'space' | 'facility', moduleName: 'spacebooking' | 'facilitybooking', formId: number): Promise<BookingFormMeta | null> {
-  const detailRes = await getInstance().get('v2/forms/getForm', { params: { formId, moduleName } });
-  const form = detailRes.data?.result?.form;
+  const detailBody = await customGet('v2/forms/getForm', { formId, moduleName });
+  const form = detailBody?.result?.form;
   if (!form) {
     // Detail endpoint came back empty — keep the id usable with the list's naming.
     const summary = (await fetchBookingFormList(module)).find((f) => f.id === formId);

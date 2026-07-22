@@ -193,7 +193,7 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
     // per-call round-trips (units/assignments/bookings/floorplan file) dominated
     // the loader time — getFloorData bundles them into ONE. Real numeric org
     // floors keep the per-call path so the connector tier's spaces still win,
-    // and dev keeps @facilio/api precedence.
+    // and dev keeps the real backend tier's precedence.
     if (!isFacilioApiConfigured && !/^\d+$/.test(floorId)) {
       try {
         const bundle = await dataSource.getFloorData!(floorId, state.date, state.planId);
@@ -970,7 +970,7 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
     setFloorImage: (floorId: string, planId: PlanId, dataUrl: string) => {
       dispatch({ type: 'SET_FLOOR_IMAGE', floorId, planId, dataUrl });
       // Persist the uploaded floorplan so a deployed app reloads it after a refresh. Best-effort
-      // and a no-op in dev (where the real @facilio/api indoorfloorplan record already holds it).
+      // and a no-op in dev (where the real backend's indoorfloorplan record already holds it).
       void persistFloorplanFile(floorId, planId, { dataUrl });
     },
 

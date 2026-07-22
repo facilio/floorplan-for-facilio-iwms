@@ -107,7 +107,7 @@ export function AssignPanel() {
           {contacts.map((contact) => {
             const held = unitsHeldBy(contact.id);
             // Mock demo ids look like "c1".."c14" and have no real record to open — only
-            // real (numeric) client-contact ids from @facilio/api get a working summary-page link.
+            // real (numeric) client-contact ids from the real backend get a working summary-page link.
             const recordUrl = /^\d+$/.test(contact.id) ? facilioRecordUrl('clientcontact', contact.id) : null;
             return (
               <div

@@ -3,7 +3,7 @@
  * PDF/CAD file), so the app can reload it after a refresh.
  *
  * This build stores the renderable bytes (a data URL) in localStorage, keyed by floor+plan.
- * In connected-app mode the real `@facilio/api` `indoorfloorplan` record is still the source of
+ * In connected-app mode the real `indoorfloorplan` record is still the source of
  * truth when configured (facilioApiDataSource.uploadFloorplanFile attaches the fileId and
  * fetchFloorplanImage reads it back); this local store is the guaranteed fallback so an uploaded
  * preview survives a refresh even with no backend.
