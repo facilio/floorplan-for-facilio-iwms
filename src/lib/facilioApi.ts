@@ -323,5 +323,6 @@ export async function fetchFilePreview(fileId: number, opts?: { original?: boole
     params: opts?.original ? { fetchOriginal: true } : undefined,
     responseType: 'blob',
   });
-  return { dataUrl: null, blob: res.data, contentType: res.headers?.['content-type'] };
+  const contentType = res.headers?.['content-type'];
+  return { dataUrl: null, blob: res.data, contentType: typeof contentType === 'string' ? contentType : undefined };
 }
