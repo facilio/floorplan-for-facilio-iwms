@@ -6,7 +6,7 @@ import { fmtTime } from '../../lib/geometry';
 import { isFacilioApiConfigured } from '../../lib/facilioApi';
 import { fetchBookingFormById, fetchBookingFormList, pickDefaultBookingForm } from '../../lib/facilioApiDataSource';
 import type { BookingFormFieldMeta, BookingFormMeta, BookingFormSummary } from '../../lib/facilioApiDataSource';
-import type { Employee, UnitType } from '../../lib/types';
+import type { ClientContact, UnitType } from '../../lib/types';
 import { Modal, ModalFooter, ModalHeader } from '../primitives/Modal';
 import { Select } from '../primitives/Select';
 import { Button } from '../primitives/Button';
@@ -35,7 +35,7 @@ const FACILITY_FORM_NAME: Record<UnitType, string> = {
 const KNOWN_FIELDS = new Set(['name', 'description', 'host', 'reservedBy', 'noOfAttendees', 'bookingStartTime', 'bookingEndTime', 'internalAttendees', 'externalAttendees']);
 /** Lookup targets that mean "the booked resource" — pre-filled by the map selection, shown read-only. */
 const RESOURCE_LOOKUPS = new Set(['desks', 'space', 'basespace', 'parkingstall', 'facility', 'parkinglot']);
-const PEOPLE_LOOKUPS = new Set(['people', 'employee', 'users']);
+const PEOPLE_LOOKUPS = new Set(['people', 'employee', 'clientcontact', 'users']);
 
 function toLocalInput(dateISO: string, minutes: number): string {
   return `${dateISO}T${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
@@ -59,14 +59,14 @@ function BookingFormInner() {
   const target = state.bookForm!;
   const unit = unitById(state, target.unitId);
   const module = state.bookingModule;
-  const employees = state.employees;
+  const contacts = state.clientContacts;
 
-  const defaultEmp = employees.some((e) => e.id === state.bookBy) ? state.bookBy : employees[0]?.id ?? '';
+  const defaultContact = contacts.some((c) => c.id === state.bookBy) ? state.bookBy : contacts[0]?.id ?? '';
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [host, setHost] = useState(defaultEmp);
-  const [reservedBy, setReservedBy] = useState(defaultEmp);
+  const [host, setHost] = useState(defaultContact);
+  const [reservedBy, setReservedBy] = useState(defaultContact);
   const [noOfAttendees, setNoOfAttendees] = useState('1');
   const [startInput, setStartInput] = useState(toLocalInput(target.date, target.start));
   const [endInput, setEndInput] = useState(toLocalInput(target.date, target.end));
@@ -134,7 +134,7 @@ function BookingFormInner() {
   const slotLen = state.slotGranularity;
   const slots = Array.from({ length: (18 * 60 - 8 * 60) / slotLen }, (_, i) => 8 * 60 + i * slotLen);
 
-  const empOptions = employees.map((e) => ({ value: e.id, label: e.name, sublabel: e.dept }));
+  const contactOptions = contacts.map((c) => ({ value: c.id, label: c.name, sublabel: c.client }));
 
   function isResourceField(f: BookingFormFieldMeta): boolean {
     return (f.lookupModule && RESOURCE_LOOKUPS.has(f.lookupModule.toLowerCase())) || ['desk', 'space', 'parking', 'facility', 'location'].includes(f.name.toLowerCase());
@@ -152,7 +152,7 @@ function BookingFormInner() {
         continue;
       }
       if (f.lookupModule && PEOPLE_LOOKUPS.has(f.lookupModule.toLowerCase())) {
-        // Lookup fields travel as {id} — mock ids ("e1") have no backend record and are dropped.
+        // Lookup fields travel as {id} — mock ids ("c1") have no backend record and are dropped.
         const id = Number(raw);
         if (Number.isFinite(id)) values[f.name] = { id };
         else if (f.required) return { values, missing: f.label || f.name };
@@ -280,13 +280,13 @@ function BookingFormInner() {
       case 'host':
         return (
           <Field key={f.name} label={f.label || 'Host'} required={f.required}>
-            <Select value={host || null} options={empOptions} onChange={setHost} placeholder="Select an option" fullWidth aria-label={f.label || 'Host'} />
+            <Select value={host || null} options={contactOptions} onChange={setHost} placeholder="Select an option" fullWidth aria-label={f.label || 'Host'} />
           </Field>
         );
       case 'reservedBy':
         return (
           <Field key={f.name} label={f.label || reserverLabel} required={f.required}>
-            <Select value={reservedBy || null} options={empOptions} onChange={setReservedBy} placeholder="Select an option" fullWidth aria-label={f.label || reserverLabel} />
+            <Select value={reservedBy || null} options={contactOptions} onChange={setReservedBy} placeholder="Select an option" fullWidth aria-label={f.label || reserverLabel} />
           </Field>
         );
       case 'noOfAttendees':
@@ -303,13 +303,13 @@ function BookingFormInner() {
       case 'internalAttendees':
         return (
           <Field key={f.name} label={f.label || 'Internal Attendees'} required={f.required}>
-            <AttendeePicker employees={employees} selected={internalAttendees} onChange={setInternalAttendees} placeholder="Select one or more options" />
+            <AttendeePicker contacts={contacts} selected={internalAttendees} onChange={setInternalAttendees} placeholder="Select one or more options" />
           </Field>
         );
       case 'externalAttendees':
         return (
           <Field key={f.name} label={f.label || 'External Attendees'} required={f.required}>
-            <AttendeePicker employees={employees} selected={externalAttendees} onChange={setExternalAttendees} placeholder="Select one or more options" />
+            <AttendeePicker contacts={contacts} selected={externalAttendees} onChange={setExternalAttendees} placeholder="Select one or more options" />
           </Field>
         );
       default:
@@ -332,7 +332,7 @@ function BookingFormInner() {
         <Field key={f.name} label={f.label || f.name} required={f.required}>
           <Select
             value={extras[f.name] || null}
-            options={empOptions}
+            options={contactOptions}
             onChange={(v) => setExtras((x) => ({ ...x, [f.name]: v }))}
             placeholder="Select an option"
             fullWidth
@@ -447,13 +447,13 @@ function BookingFormInner() {
                   />
                 </Field>
                 <Field label="Host" required>
-                  <Select value={host || null} options={empOptions} onChange={setHost} placeholder="Select an option" fullWidth aria-label="Host" />
+                  <Select value={host || null} options={contactOptions} onChange={setHost} placeholder="Select an option" fullWidth aria-label="Host" />
                 </Field>
               </>
             )}
 
             <Field label={reserverLabel} required>
-              <Select value={reservedBy || null} options={empOptions} onChange={setReservedBy} placeholder="Select an option" fullWidth aria-label={reserverLabel} />
+              <Select value={reservedBy || null} options={contactOptions} onChange={setReservedBy} placeholder="Select an option" fullWidth aria-label={reserverLabel} />
             </Field>
 
             {resourceRow}
@@ -468,13 +468,13 @@ function BookingFormInner() {
               <div style={{ borderTop: '1px solid var(--ink-100)', paddingTop: 12 }}>
                 <div style={{ font: '700 12px/1 var(--font-sans)', color: 'var(--ink-700)', letterSpacing: '0.03em', marginBottom: 10 }}>ATTENDEES</div>
                 <Field label="Internal Attendees">
-                  <AttendeePicker employees={employees} selected={internalAttendees} onChange={setInternalAttendees} placeholder="Select one or more options" />
+                  <AttendeePicker contacts={contacts} selected={internalAttendees} onChange={setInternalAttendees} placeholder="Select one or more options" />
                 </Field>
               </div>
             )}
             {!isFacility && isRoom && (
               <Field label="External Attendees">
-                <AttendeePicker employees={employees} selected={externalAttendees} onChange={setExternalAttendees} placeholder="Select one or more options" />
+                <AttendeePicker contacts={contacts} selected={externalAttendees} onChange={setExternalAttendees} placeholder="Select one or more options" />
               </Field>
             )}
           </>
@@ -504,22 +504,22 @@ function Field({ label, required, children }: { label: string; required?: boolea
 }
 
 function AttendeePicker({
-  employees,
+  contacts,
   selected,
   onChange,
   placeholder,
 }: {
-  employees: Employee[];
+  contacts: ClientContact[];
   selected: string[];
   onChange: (next: string[]) => void;
   placeholder: string;
 }) {
-  const available = employees.filter((e) => !selected.includes(e.id));
+  const available = contacts.filter((c) => !selected.includes(c.id));
   return (
     <div>
       <Select
         value={null}
-        options={available.map((e) => ({ value: e.id, label: e.name, sublabel: e.dept }))}
+        options={available.map((c) => ({ value: c.id, label: c.name, sublabel: c.client }))}
         onChange={(v) => onChange([...selected, v])}
         placeholder={placeholder}
         fullWidth
@@ -528,7 +528,7 @@ function AttendeePicker({
       {selected.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
           {selected.map((id) => {
-            const e = employees.find((x) => x.id === id);
+            const e = contacts.find((x) => x.id === id);
             return (
               <span key={id} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 6px 4px 10px', borderRadius: 999, background: 'var(--blue-025)', border: '1px solid var(--blue-200)', font: '500 12px/1 var(--font-sans)', color: 'var(--blue-700)' }}>
                 {e?.name ?? id}

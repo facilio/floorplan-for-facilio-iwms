@@ -73,7 +73,7 @@ export function buildInitialState(): AppState {
     pendingModeSwitch: null,
     assignments: {},
     bookings: [],
-    employees: [],
+    clientContacts: [],
     assets: [],
     portfolio: [],
     pxPerMeter: null,
@@ -87,14 +87,14 @@ export function buildInitialState(): AppState {
     draft: [],
     calib: [],
     calibLen: '',
-    empSearch: '',
-    dragEmpId: null,
+    contactSearch: '',
+    dragContactId: null,
     dragOverId: null,
 
     date: iso,
     start: 600,
     end: 660,
-    bookBy: 'e1',
+    bookBy: 'c1',
     bookPurpose: '',
     bookNotes: '',
     bookModalOpen: false,
@@ -157,7 +157,7 @@ export type Action =
   | { type: 'MARK_USER_ZOOMED'; value: boolean }
   | { type: 'SET_SPACE_FILTER'; filter: AppState['spaceFilter'] }
   | { type: 'SET_SPACE_SEARCH'; value: string }
-  | { type: 'PORTFOLIO_LOADED'; portfolio: Site[]; employees: AppState['employees']; assets: AppState['assets'] }
+  | { type: 'PORTFOLIO_LOADED'; portfolio: Site[]; clientContacts: AppState['clientContacts']; assets: AppState['assets'] }
   | { type: 'SELECT_UNIT'; id: string | null }
   | { type: 'HIGHLIGHT_UNIT'; id: string | null }
   | { type: 'ADD_UNIT'; unit: Unit }
@@ -173,10 +173,10 @@ export type Action =
   | { type: 'SET_CALIB_LEN'; value: string }
   | { type: 'APPLY_CALIB'; pxPerMeter: number }
   | { type: 'CLEAR_CALIB' }
-  | { type: 'SET_EMP_SEARCH'; value: string }
-  | { type: 'DRAG_START_EMP'; id: string | null }
+  | { type: 'SET_CONTACT_SEARCH'; value: string }
+  | { type: 'DRAG_START_CONTACT'; id: string | null }
   | { type: 'DRAG_OVER_UNIT'; id: string | null }
-  | { type: 'ASSIGN'; unitId: string; employeeId: string; assignments: AppState['assignments'] }
+  | { type: 'ASSIGN'; unitId: string; contactId: string; assignments: AppState['assignments'] }
   | { type: 'VACATE'; unitId: string; assignments: AppState['assignments'] }
   | { type: 'SET_WEB_REASSIGN'; id: string | null }
   | { type: 'SET_DATE'; value: string; bookings: Booking[] }
@@ -303,7 +303,7 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'SET_SPACE_SEARCH':
       return { ...state, spaceSearch: action.value };
     case 'PORTFOLIO_LOADED':
-      return { ...state, portfolio: action.portfolio, employees: action.employees, assets: action.assets };
+      return { ...state, portfolio: action.portfolio, clientContacts: action.clientContacts, assets: action.assets };
 
     case 'SELECT_UNIT':
       return { ...state, selected: action.id, webReassign: null, ...(action.id ? { multiSelected: [] } : {}) };
@@ -398,14 +398,14 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'CLEAR_CALIB':
       return { ...state, calib: [], calibLen: '' };
 
-    case 'SET_EMP_SEARCH':
-      return { ...state, empSearch: action.value };
-    case 'DRAG_START_EMP':
-      return { ...state, dragEmpId: action.id };
+    case 'SET_CONTACT_SEARCH':
+      return { ...state, contactSearch: action.value };
+    case 'DRAG_START_CONTACT':
+      return { ...state, dragContactId: action.id };
     case 'DRAG_OVER_UNIT':
       return { ...state, dragOverId: action.id };
     case 'ASSIGN':
-      return { ...state, assignments: action.assignments, dragOverId: null, dragEmpId: null, selected: action.unitId, webReassign: null };
+      return { ...state, assignments: action.assignments, dragOverId: null, dragContactId: null, selected: action.unitId, webReassign: null };
     case 'VACATE':
       return { ...state, assignments: action.assignments };
     case 'SET_WEB_REASSIGN':

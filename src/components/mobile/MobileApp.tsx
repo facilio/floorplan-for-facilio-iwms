@@ -15,7 +15,7 @@ import { MobileDatePicker } from './MobileDatePicker';
 import { FloorplanSkeleton } from '../canvas/FloorplanSkeleton';
 import { markerStyle } from '../../lib/unitStatus';
 import { MARKER_ICONS } from '../canvas/markerIcons';
-import { employeeName, myAssignedUnit } from '../../state/selectors';
+import { contactName, myAssignedUnit } from '../../state/selectors';
 import { floorImageKey } from '../../lib/types';
 import type { Unit } from '../../lib/types';
 import styles from './MobileApp.module.css';
@@ -383,8 +383,8 @@ function MobileMap({
         {markers.map((m) => {
           if (m.geom.kind !== 'point') return null;
           const selected = state.mobSel === m.id;
-          const empId = state.assignments[m.id];
-          const emp = empId ? employeeName(state, empId) : null;
+          const contactId = state.assignments[m.id];
+          const contact = contactId ? contactName(state, contactId) : null;
           // Same palette as the web: markerStyle keyed on a mode synced to the
           // mobile tab, so bg / border / fill are identical across views.
           const ms = markerStyle({ ...state, mode: state.mobileTab } as typeof state, m);
@@ -420,7 +420,7 @@ function MobileMap({
               {showLabel && (
                 <span className={styles.markerLabel}>
                   <span className={styles.markerLabelName}>{m.label}</span>
-                  {emp && <span className={styles.markerLabelSub}>{emp}</span>}
+                  {contact && <span className={styles.markerLabelSub}>{contact}</span>}
                 </span>
               )}
             </button>

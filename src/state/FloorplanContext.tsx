@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useReducer, useRef } fro
 import type { Dispatch, MutableRefObject, ReactNode } from 'react';
 import { dataSource, clearLocalData } from '../lib/dataSource';
 import type { CreateSpaceLoc } from '../lib/dataSource';
-import { PORTFOLIO as MOCK_PORTFOLIO, EMPLOYEES as MOCK_EMPLOYEES, seedBookings, seedUnits, seedAssignments } from '../lib/mockData';
+import { PORTFOLIO as MOCK_PORTFOLIO, CONTACTS as MOCK_CONTACTS, seedBookings, seedUnits, seedAssignments } from '../lib/mockData';
 import { floorImageKey, resolveMarkerDef, TYPE_META } from '../lib/types';
 import type { AmenityIcon, Booking, MarkerDef, PlanId, Role, Site, Unit, UnitType } from '../lib/types';
 import type { CadGroup } from '../lib/cadAnalyze';
@@ -662,52 +662,52 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       showToast(`${ids.length} unit${ids.length === 1 ? '' : 's'} deleted`);
     },
 
-    setEmpSearch: (value: string) => dispatch({ type: 'SET_EMP_SEARCH', value }),
-    dragStartEmp: (id: string | null) => dispatch({ type: 'DRAG_START_EMP', id }),
+    setContactSearch: (value: string) => dispatch({ type: 'SET_CONTACT_SEARCH', value }),
+    dragStartContact: (id: string | null) => dispatch({ type: 'DRAG_START_CONTACT', id }),
     dragOverUnit: (id: string | null) => dispatch({ type: 'DRAG_OVER_UNIT', id }),
 
-    assign: async (employeeId: string, unitId: string) => {
+    assign: async (contactId: string, unitId: string) => {
       const target = unitById(state, unitId);
       if (!target) return;
       const next = { ...state.assignments };
-      // one unit per type per employee
-      for (const [uid, empId] of Object.entries(next)) {
-        if (empId === employeeId && uid !== unitId) {
+      // one unit per type per contact
+      for (const [uid, cId] of Object.entries(next)) {
+        if (cId === contactId && uid !== unitId) {
           const other = unitById(state, uid);
           if (other && other.type === target.type) delete next[uid];
         }
       }
-      const prevEmpId = next[unitId];
-      next[unitId] = employeeId;
-      dispatch({ type: 'ASSIGN', unitId, employeeId, assignments: next });
-      await dataSource.assignUnit(unitId, employeeId);
+      const prevContactId = next[unitId];
+      next[unitId] = contactId;
+      dispatch({ type: 'ASSIGN', unitId, contactId, assignments: next });
+      await dataSource.assignUnit(unitId, contactId);
       // Best-effort real assignment (Moves for desks, a plain field update for lockers/parking)
       // — never blocks or throws into the local assignment flow above, which is already the
       // source of truth for this app's own read-path.
       if (isFacilioApiConfigured) {
-        assignUnitReal(target, employeeId).catch((err) => {
+        assignUnitReal(target, contactId).catch((err) => {
           // eslint-disable-next-line no-console
           console.warn('[facilio-api] real assignment failed', err);
         });
       }
-      const empName = MOCK_EMPLOYEES.find((e) => e.id === employeeId)?.name ?? employeeId;
-      const prevName = prevEmpId ? MOCK_EMPLOYEES.find((e) => e.id === prevEmpId)?.name : null;
-      showToast(`${empName} assigned to ${target.label}` + (prevName ? ` — replaced ${prevName}` : ''));
+      const contactName = MOCK_CONTACTS.find((c) => c.id === contactId)?.name ?? contactId;
+      const prevName = prevContactId ? MOCK_CONTACTS.find((c) => c.id === prevContactId)?.name : null;
+      showToast(`${contactName} assigned to ${target.label}` + (prevName ? ` — replaced ${prevName}` : ''));
     },
     vacate: async (unitId: string) => {
       const target = unitById(state, unitId);
-      const prevEmpId = state.assignments[unitId];
+      const prevContactId = state.assignments[unitId];
       const next = { ...state.assignments };
       delete next[unitId];
       dispatch({ type: 'VACATE', unitId, assignments: next });
       await dataSource.vacateUnit(unitId);
-      if (isFacilioApiConfigured && target && prevEmpId) {
-        vacateUnitReal(target, prevEmpId).catch((err) => {
+      if (isFacilioApiConfigured && target && prevContactId) {
+        vacateUnitReal(target, prevContactId).catch((err) => {
           // eslint-disable-next-line no-console
           console.warn('[facilio-api] real vacate failed', err);
         });
       }
-      const prevName = prevEmpId ? MOCK_EMPLOYEES.find((e) => e.id === prevEmpId)?.name : null;
+      const prevName = prevContactId ? MOCK_CONTACTS.find((c) => c.id === prevContactId)?.name : null;
       if (target) showToast(`${target.label} vacated` + (prevName ? ` — ${prevName} unassigned` : ''));
     },
     setWebReassign: (id: string | null) => {
@@ -1064,12 +1064,12 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
     if (loadedRef.current) return;
     loadedRef.current = true;
     (async () => {
-      const [portfolio, employees, assets] = await Promise.all([
+      const [portfolio, clientContacts, assets] = await Promise.all([
         dataSource.getPortfolio().catch(() => MOCK_PORTFOLIO),
-        dataSource.getEmployees().catch(() => MOCK_EMPLOYEES),
+        dataSource.getClientContacts().catch(() => MOCK_CONTACTS),
         dataSource.getAssets().catch(() => DEMO_ASSETS),
       ]);
-      dispatch({ type: 'PORTFOLIO_LOADED', portfolio, employees, assets });
+      dispatch({ type: 'PORTFOLIO_LOADED', portfolio, clientContacts, assets });
 
       // The mock default floorId ('hqA3') isn't a real floor against the live backend —
       // sending it to per-floor endpoints (getFloorplanDetailsByType) just 500s. Start on the

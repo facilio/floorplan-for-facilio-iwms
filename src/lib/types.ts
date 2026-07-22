@@ -140,12 +140,14 @@ export interface Unit {
   markerKind?: string;
   /** Asset-associated markers — id of the linked asset (see lib/assets). */
   assetId?: string;
+  /** Rooms only — from the IWMS rooms module. true (or undefined) = bookable; false = assignable. */
+  isReservable?: boolean;
 }
 
-export interface Employee {
+export interface ClientContact {
   id: string;
   name: string;
-  dept: string;
+  client: string;
 }
 
 export interface Booking {
@@ -165,18 +167,18 @@ export interface Booking {
   /** Booking name/title (the form's required "Name"). */
   name?: string;
   description?: string;
-  /** Employee id hosting the booking (space mode). */
+  /** Client contact id hosting the booking (space mode). */
   host?: string;
-  /** Employee id the booking is reserved by/for. */
+  /** Client contact id the booking is reserved by/for. */
   reservedBy?: string;
   noOfAttendees?: number;
-  /** Employee ids. */
+  /** Client contact ids. */
   internalAttendees?: string[];
-  /** Employee ids (or free-text) for external attendees. */
+  /** Client contact ids (or free-text) for external attendees. */
   externalAttendees?: string[];
 }
 
-/** unitId -> employeeId */
+/** unitId -> clientContactId */
 export type Assignments = Record<string, string>;
 
 export interface Floor {
@@ -263,7 +265,7 @@ export const STATE_DEFS: Record<UnitType, StateDef[]> = {
   ],
   locker: [
     { key: 'free', label: 'Free', desc: 'Available to assign', def: '#29A01E' },
-    { key: 'assigned', label: 'Assigned', desc: 'Held by an employee', def: '#0059D6' },
+    { key: 'assigned', label: 'Assigned', desc: 'Held by a client contact', def: '#0059D6' },
   ],
   parking: [
     { key: 'free', label: 'Free', desc: 'Open stall', def: '#29A01E' },
@@ -272,6 +274,8 @@ export const STATE_DEFS: Record<UnitType, StateDef[]> = {
   room: [
     { key: 'available', label: 'Available', desc: 'Open to book', def: '#29A01E' },
     { key: 'booked', label: 'Booked', desc: 'Reserved for a time window', def: '#B61919' },
+    { key: 'free', label: 'Free', desc: 'Not reservable — open to assign', def: '#29A01E' },
+    { key: 'assigned', label: 'Assigned', desc: 'Not reservable — has a permanent owner', def: '#0059D6' },
   ],
   amenity: [{ key: 'free', label: 'Marker', desc: 'Informational marker (stairs, restrooms, extinguishers, …)', def: '#607796' }],
 };
@@ -285,7 +289,7 @@ export interface OptDef {
 
 export const OPT_DEFS: Record<UnitType, OptDef[]> = {
   workstation: [
-    { key: 'hotDesking', label: 'Allow hot-desking', desc: 'Let employees book unassigned desks by the hour', def: true },
+    { key: 'hotDesking', label: 'Allow hot-desking', desc: 'Let client contacts book unassigned desks by the hour', def: true },
     { key: 'autoRelease', label: 'Auto-release no-shows', desc: 'Free a booked desk 30 min after an unclaimed start', def: true },
   ],
   locker: [

@@ -24,7 +24,7 @@ const absoluteBaseURL = isConnectedApp ? envBaseURL || `${window.location.origin
 /**
  * What the axios instance actually talks to. In dev the org API is cross-origin and allows no
  * CORS from localhost, so requests route through the vite dev-server proxy ('/fapi' →
- * VITE_FACILIO_API_BASE_URL — see vite.config.ts); the bearer header still authenticates.
+ * VITE_FACILIO_API_BASE_URL — see vite.config.ts); the x-api-key header still authenticates.
  */
 const baseURL = isConnectedApp ? absoluteBaseURL : devMode && envBaseURL ? '/fapi' : envBaseURL;
 
@@ -32,14 +32,14 @@ const baseURL = isConnectedApp ? absoluteBaseURL : devMode && envBaseURL ? '/fap
 export const isFacilioApiConfigured = isConnectedApp || (devMode && !!envBaseURL && !!token);
 
 if (isFacilioApiConfigured) {
-  // Same-origin session cookies do the authenticating in connected mode; the bearer header is
+  // Same-origin session cookies do the authenticating in connected mode; the x-api-key header is
   // dev-only. `withCredentials` is set for the connected case so an explicitly-configured
   // same-site absolute base URL still carries the session.
   const instance = axios.create({ baseURL, withCredentials: isConnectedApp });
   if (!isConnectedApp) {
     instance.interceptors.request.use((config) => {
       config.headers = config.headers ?? {};
-      (config.headers as Record<string, string>).Authorization = `Bearer ${token}`;
+      (config.headers as Record<string, string>)['x-api-key'] = token!;
       return config;
     });
   }
@@ -55,17 +55,23 @@ if (isFacilioApiConfigured) {
 export { API as facilioApi };
 
 /**
- * The bare web-app origin (e.g. `https://pre-app-stage2.facilio.in`), with the `/api` suffix
- * that the base URL carries stripped off. Some endpoints (the `maintenance/api/...`
- * FloorplanAction routes, the web app's own `goto/summary` pages) hang directly off this origin
- * rather than under the configured API baseURL, so callers building an absolute URL for those
- * need this instead of `baseURL`. In connected mode that's simply the app's own origin.
+ * The bare web-app origin (e.g. `https://pre-app-stage2.facilio.in` — scheme + host only, no
+ * path). Some endpoints (the `maintenance/api/...` FloorplanAction routes, the web app's own
+ * `goto/summary` pages) hang directly off this bare origin rather than under the configured API
+ * baseURL, so callers building an absolute URL for those need this instead of `baseURL`. In
+ * connected mode that's simply the app's own origin.
+ *
+ * Computed via `new URL(...).origin` rather than stripping a trailing `/api` — some orgs'
+ * VITE_FACILIO_API_BASE_URL already bakes a product prefix into the path (e.g.
+ * `https://app.facilio.com/maintenance/api`), and a regex strip of just `/api` would leave
+ * `/maintenance` behind, doubling into `.../maintenance/maintenance/api/...` once a caller
+ * appends its own `/maintenance/api/...` suffix (confirmed live).
  */
-export const apiOrigin: string | null = absoluteBaseURL ? absoluteBaseURL.replace(/\/api\/?$/, '') : null;
+export const apiOrigin: string | null = absoluteBaseURL ? new URL(absoluteBaseURL).origin : null;
 
 /**
  * Builds a link to a record's summary page in the real Facilio web app (e.g.
- * `https://pre-app-stage2.facilio.in/maintenance/goto/summary/employee/123`), matching the
+ * `https://pre-app-stage2.facilio.in/maintenance/goto/summary/clientcontact/123`), matching the
  * `RECORD URL` convention documented on the CMMS actions.
  */
 export function facilioRecordUrl(moduleName: string, id: string | number): string | null {

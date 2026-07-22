@@ -1,5 +1,5 @@
 import { useFloorplan } from '../../state/FloorplanContext';
-import { employeeName, isAssignable, isBookable, unitById } from '../../state/selectors';
+import { contactName, isAssignable, isBookable, unitById } from '../../state/selectors';
 import { tooltipPlacement, unitCenter } from '../../lib/geometry';
 import { unitStatus } from '../../lib/unitStatus';
 import { StatusPill } from '../primitives/StatusPill';
@@ -14,8 +14,8 @@ export function Tooltip() {
 
   const { cx, cy } = unitCenter(unit);
   const place = tooltipPlacement(cx, cy, state.view);
-  const status = unitStatus(state, unit, (id) => employeeName(state, id));
-  const empId = state.assignments[unit.id];
+  const status = unitStatus(state, unit, (id) => contactName(state, id));
+  const contactId = state.assignments[unit.id];
 
   // Amenity/asset markers are informational — no booking/assignment concept,
   // so they skip the status pill, action buttons, and any mode notes.
@@ -86,12 +86,12 @@ export function Tooltip() {
           Manage bookings
         </Button>
       )}
-      {state.mode === 'assign' && assignable && !empId && (
+      {state.mode === 'assign' && assignable && !contactId && (
         <Button variant="primary" fullWidth style={{ marginTop: 10 }} onClick={() => actions.togglePanelOpen('details')}>
           Assign
         </Button>
       )}
-      {state.mode === 'assign' && assignable && !!empId && (
+      {state.mode === 'assign' && assignable && !!contactId && (
         <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
           <Button variant="danger" style={{ flex: 1, justifyContent: 'center' }} onClick={() => actions.vacate(unit.id)}>
             Vacate

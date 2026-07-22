@@ -1,4 +1,4 @@
-import type { Booking, Employee, Unit } from '../lib/types';
+import type { Booking, ClientContact, Unit } from '../lib/types';
 import type { AppState } from './types';
 
 export function unitById(state: AppState, id: string | null | undefined): Unit | null {
@@ -6,13 +6,13 @@ export function unitById(state: AppState, id: string | null | undefined): Unit |
   return state.units.find((u) => u.id === id) ?? null;
 }
 
-export function employeeById(state: AppState, id: string | null | undefined): Employee | null {
+export function contactById(state: AppState, id: string | null | undefined): ClientContact | null {
   if (!id) return null;
-  return state.employees.find((e) => e.id === id) ?? null;
+  return state.clientContacts.find((c) => c.id === id) ?? null;
 }
 
-export function employeeName(state: AppState, id: string | null | undefined): string {
-  return employeeById(state, id)?.name ?? '';
+export function contactName(state: AppState, id: string | null | undefined): string {
+  return contactById(state, id)?.name ?? '';
 }
 
 export function initials(name: string): string {
@@ -40,22 +40,26 @@ export function bookedUnitIds(state: AppState): Set<string> {
 
 /**
  * Desk bookability/assignability follows the real deskType semantics (see lib/types DeskType):
- * ASSIGNED (or untyped) desks are assignment-only; HOT/HOTEL desks are booking-only. Rooms and
- * parking stay bookable; lockers stay assignment-only.
+ * ASSIGNED (or untyped) desks are assignment-only; HOT/HOTEL desks are booking-only. Parking
+ * stays bookable; lockers stay assignment-only. Rooms follow their own `isReservable` flag (from
+ * the IWMS rooms module): bookable unless explicitly marked not-reservable, in which case they're
+ * assignable instead — mutually exclusive, same as desks.
  */
 export function isBookable(u: Unit): boolean {
   if (u.type === 'locker' || u.type === 'amenity') return false;
   if (u.type === 'workstation') return u.deskType === 'HOT' || u.deskType === 'HOTEL';
+  if (u.type === 'room') return u.isReservable !== false;
   return true;
 }
 
 export function isAssignable(u: Unit): boolean {
   if (u.type === 'workstation') return (u.deskType ?? 'ASSIGNED') === 'ASSIGNED';
+  if (u.type === 'room') return u.isReservable === false;
   return u.type === 'locker' || u.type === 'parking';
 }
 
 export function myAssignedUnit(state: AppState): Unit | null {
-  const mine = Object.entries(state.assignments).find(([, empId]) => empId === state.bookBy);
+  const mine = Object.entries(state.assignments).find(([, contactId]) => contactId === state.bookBy);
   if (!mine) return null;
   return unitById(state, mine[0]);
 }

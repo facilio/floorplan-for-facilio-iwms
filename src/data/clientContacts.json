@@ -1,0 +1,72 @@
+[
+  {
+    "id": "c1",
+    "name": "Amrithya",
+    "client": "Operations"
+  },
+  {
+    "id": "c2",
+    "name": "Jonas Weber",
+    "client": "Engineering"
+  },
+  {
+    "id": "c3",
+    "name": "Maria Silva",
+    "client": "Finance"
+  },
+  {
+    "id": "c4",
+    "name": "Anna Schmidt",
+    "client": "HR"
+  },
+  {
+    "id": "c5",
+    "name": "David Chen",
+    "client": "Engineering"
+  },
+  {
+    "id": "c6",
+    "name": "Lena Hoffmann",
+    "client": "Operations"
+  },
+  {
+    "id": "c7",
+    "name": "Tom Becker",
+    "client": "Engineering"
+  },
+  {
+    "id": "c8",
+    "name": "Sofia Rossi",
+    "client": "Finance"
+  },
+  {
+    "id": "c9",
+    "name": "Mark Janssen",
+    "client": "Operations"
+  },
+  {
+    "id": "c10",
+    "name": "Emma Fischer",
+    "client": "Engineering"
+  },
+  {
+    "id": "c11",
+    "name": "Lukas Braun",
+    "client": "HR"
+  },
+  {
+    "id": "c12",
+    "name": "Nina Keller",
+    "client": "Operations"
+  },
+  {
+    "id": "c13",
+    "name": "Omar Haddad",
+    "client": "Engineering"
+  },
+  {
+    "id": "c14",
+    "name": "Julia Wagner",
+    "client": "Finance"
+  }
+]

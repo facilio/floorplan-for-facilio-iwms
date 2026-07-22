@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
-import { employeeName, isAssignable, isBookable } from '../../state/selectors';
+import { contactName, isAssignable, isBookable } from '../../state/selectors';
 import { unitStatus } from '../../lib/unitStatus';
 import { unitSortCompare, fmtTime } from '../../lib/geometry';
 import { TYPE_META } from '../../lib/types';
@@ -95,12 +95,12 @@ export function MobileSpacesSheet({ open, onClose }: { open: boolean; onClose: (
 
 function SpaceRow({ unit, onShow, onClose }: { unit: Unit; onShow: () => void; onClose: () => void }) {
   const { state, actions } = useFloorplan();
-  const status = unitStatus(state, unit, (id) => employeeName(state, id));
-  const empId = state.assignments[unit.id];
+  const status = unitStatus(state, unit, (id) => contactName(state, id));
+  const contactId = state.assignments[unit.id];
   const bookTab = state.mobileTab === 'book';
 
   const canBook = bookTab && isBookable(unit) && status.key !== 'booked';
-  const canAssign = !bookTab && isAssignable(unit) && !empId;
+  const canAssign = !bookTab && isAssignable(unit) && !contactId;
 
   return (
     <div className={styles.row}>
@@ -110,7 +110,7 @@ function SpaceRow({ unit, onShow, onClose }: { unit: Unit; onShow: () => void; o
           <span className={styles.rowLabel}>{unit.label}</span>
           <span className={styles.rowSub}>
             {[TYPE_META[unit.type].name, unit.room].filter(Boolean).join(' · ')}
-            {empId ? ` · ${employeeName(state, empId)}` : ''}
+            {contactId ? ` · ${contactName(state, contactId)}` : ''}
           </span>
         </span>
         <span className={styles.statusPill} style={{ background: status.bg, color: status.fg }}>

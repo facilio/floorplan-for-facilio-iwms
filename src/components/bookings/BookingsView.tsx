@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
-import { conflictsFor, employeeName, floorMeta, isBookable } from '../../state/selectors';
+import { conflictsFor, contactName, floorMeta, isBookable } from '../../state/selectors';
 import { fmtTime } from '../../lib/geometry';
 import { dataSource } from '../../lib/dataSource';
 import type { Booking, Unit, UnitType } from '../../lib/types';
@@ -382,7 +382,7 @@ export function BookingsView() {
                 snap={state.slotGranularity}
                 onCreate={openForm}
                 onCancel={cancelBooking}
-                employeeNameOf={(id) => employeeName(state, id)}
+                contactNameOf={(id) => contactName(state, id)}
               />
             )}
             </div>
@@ -424,10 +424,10 @@ interface CalendarGridProps {
   snap: number;
   onCreate: (date: string, start: number, end: number) => void;
   onCancel: (b: Booking) => void;
-  employeeNameOf: (id: string) => string;
+  contactNameOf: (id: string) => string;
 }
 
-function CalendarGrid({ dates, bookingsFor, myId, snap, onCreate, onCancel, employeeNameOf }: CalendarGridProps) {
+function CalendarGrid({ dates, bookingsFor, myId, snap, onCreate, onCancel, contactNameOf }: CalendarGridProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<{ date: string; from: number; to: number } | null>(null);
   const dragRef = useRef<{ date: string; colTop: number; from: number; to: number } | null>(null);
@@ -535,7 +535,7 @@ function CalendarGrid({ dates, bookingsFor, myId, snap, onCreate, onCancel, empl
                       className={[styles.block, mine ? styles.blockMine : styles.blockOther].join(' ')}
                       style={{ top, height }}
                       onMouseDown={(e) => e.stopPropagation()}
-                      title={mine ? 'Your booking' : `Booked by ${employeeNameOf(b.by) || 'someone'}`}
+                      title={mine ? 'Your booking' : `Booked by ${contactNameOf(b.by) || 'someone'}`}
                     >
                       {/* Cancelling is an explicit button, never a bare click on the block —
                           clicking a booking to inspect it used to silently cancel it. */}
@@ -555,7 +555,7 @@ function CalendarGrid({ dates, bookingsFor, myId, snap, onCreate, onCancel, empl
                         </button>
                       )}
                       <div className={styles.blockTime}>{fmtTime(b.start)} - {fmtTime(b.end)}</div>
-                      <div className={styles.blockName}>{mine ? 'Your booking' : employeeNameOf(b.by) || 'Booked'}</div>
+                      <div className={styles.blockName}>{mine ? 'Your booking' : contactNameOf(b.by) || 'Booked'}</div>
                     </div>
                   );
                 })}

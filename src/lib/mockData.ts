@@ -1,15 +1,15 @@
-import type { Assignments, Booking, Employee, Site, Unit } from './types';
+import type { Assignments, Booking, ClientContact, Site, Unit } from './types';
 
 // Single source of truth for the local/dev dataset is the editable JSON in src/data — edit a file
 // there and both the data-source tier and these seed exports pick it up. This module just adapts
 // that JSON for the callers that want it synchronously (reducer initial state, geometry constants).
 import portfolioJson from '../data/portfolio.json';
-import employeesJson from '../data/employees.json';
+import clientContactsJson from '../data/clientContacts.json';
 import unitsJson from '../data/units.json';
 import assignmentsJson from '../data/assignments.json';
 import bookingsJson from '../data/bookings.json';
 
-export const EMPLOYEES = employeesJson as unknown as Employee[];
+export const CONTACTS = clientContactsJson as unknown as ClientContact[];
 
 export const PORTFOLIO = portfolioJson as unknown as Site[];
 

@@ -1,6 +1,6 @@
 import type { DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
-import { employeeName, myAssignedUnit } from '../../state/selectors';
+import { contactName, myAssignedUnit } from '../../state/selectors';
 import { markerStyle, unitStatus } from '../../lib/unitStatus';
 import type { PointGeom, Unit } from '../../lib/types';
 import { MARKER_ICONS as ICONS } from './markerIcons';
@@ -10,7 +10,7 @@ export function Marker({ unit, invZ, onDragStart }: { unit: Unit; invZ: number; 
   const { state, actions } = useFloorplan();
   const geom = unit.geom as PointGeom;
   const style = markerStyle(state, unit);
-  const status = unitStatus(state, unit, (id) => employeeName(state, id));
+  const status = unitStatus(state, unit, (id) => contactName(state, id));
   const draggable = state.mode === 'edit' && state.tool === 'select';
   const isMine = myAssignedUnit(state)?.id === unit.id;
   const isHighlighted = state.highlightUnitId === unit.id;
@@ -62,16 +62,16 @@ export function Marker({ unit, invZ, onDragStart }: { unit: Unit; invZ: number; 
     }
     if (state.mode !== 'assign') return;
     e.preventDefault();
-    const empId = state.dragEmpId || e.dataTransfer.getData('text/plain');
-    if (empId) actions.assign(empId, unit.id);
+    const contactId = state.dragContactId || e.dataTransfer.getData('text/plain');
+    if (contactId) actions.assign(contactId, unit.id);
   }
 
   const title = `${unit.label}${unit.room ? ' · ' + unit.room : ''} — ${status.text}`;
 
   // Under-marker label. Assign view: desk name on top, assignee (if any)
   // underneath. Book view: the space name. Amenities: their name, always.
-  const empId = state.assignments[unit.id];
-  const assignedName = state.mode === 'assign' && empId ? employeeName(state, empId) : null;
+  const contactId = state.assignments[unit.id];
+  const assignedName = state.mode === 'assign' && contactId ? contactName(state, contactId) : null;
   const showLabel = (state.mode === 'assign' || state.mode === 'book' || unit.type === 'amenity') && invZ <= 1.9;
 
   return (

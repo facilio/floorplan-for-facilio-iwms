@@ -1,5 +1,6 @@
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
+import type { ProxyOptions } from 'vite';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
@@ -20,7 +21,18 @@ export default defineConfig(({ mode }) => {
                 target: apiTarget,
                 changeOrigin: true,
                 rewrite: (p: string) => p.replace(/^\/fapi/, ''),
-              },
+                // `changeOrigin` only rewrites the outgoing Host header — the browser's real
+                // `Origin: http://localhost:9090` still rides along, and the org's edge (WAF/ALB)
+                // 403s any request whose Origin doesn't match its own domain, even with a valid
+                // token. Overwrite it to the target's origin so the proxied request looks
+                // same-origin to the backend (confirmed live: matching Origin -> 200, foreign -> 403).
+                configure: (proxy) => {
+                  const targetOrigin = new URL(apiTarget).origin;
+                  proxy.on('proxyReq', (proxyReq, req) => {
+                    if (req.headers.origin) proxyReq.setHeader('origin', targetOrigin);
+                  });
+                },
+              } satisfies ProxyOptions,
             },
           }
         : {}),

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
-import { employeeName, initials, isAssignable, isBookable, unitById } from '../../state/selectors';
+import { contactName, initials, isAssignable, isBookable, unitById } from '../../state/selectors';
 import { unitStatus } from '../../lib/unitStatus';
 import { fmtTime } from '../../lib/geometry';
 import { resolveMarkerDef, TYPE_META } from '../../lib/types';
@@ -13,37 +13,37 @@ const MAX_ROWS = 60;
 export function MobileUnitSheet() {
   const { state, actions } = useFloorplan();
   const unit = unitById(state, state.mobSel);
-  const [empQuery, setEmpQuery] = useState('');
+  const [contactQuery, setContactQuery] = useState('');
   const sheetRef = useSheetDrag(() => {
     actions.setMobSel(null);
     actions.setMobAssignEdit(false);
-    setEmpQuery('');
+    setContactQuery('');
   }, !!unit);
 
-  const empId = unit ? state.assignments[unit.id] : undefined;
+  const contactId = unit ? state.assignments[unit.id] : undefined;
   const showBookTab = state.mobileTab === 'book';
   const isAmenity = unit?.type === 'amenity';
   const isAsset = isAmenity && !!unit?.assetId;
   const assignable = unit && !isAmenity ? isAssignable(unit) : false;
-  // Employee picking expands the sheet to near-full height with its own
+  // Contact picking expands the sheet to near-full height with its own
   // search — a plain dropdown was unusable against the full directory.
-  const picking = !!unit && !showBookTab && assignable && (!empId || state.mobAssignEdit);
+  const picking = !!unit && !showBookTab && assignable && (!contactId || state.mobAssignEdit);
 
   const filtered = useMemo(() => {
-    const q = empQuery.trim().toLowerCase();
-    if (!q) return state.employees;
-    return state.employees.filter((e) => e.name.toLowerCase().includes(q) || e.dept.toLowerCase().includes(q));
-  }, [state.employees, empQuery]);
+    const q = contactQuery.trim().toLowerCase();
+    if (!q) return state.clientContacts;
+    return state.clientContacts.filter((c) => c.name.toLowerCase().includes(q) || c.client.toLowerCase().includes(q));
+  }, [state.clientContacts, contactQuery]);
 
   if (!unit) return null;
 
-  const status = unitStatus(state, unit, (id) => employeeName(state, id));
+  const status = unitStatus(state, unit, (id) => contactName(state, id));
   const bookable = isBookable(unit);
 
   function close() {
     actions.setMobSel(null);
     actions.setMobAssignEdit(false);
-    setEmpQuery('');
+    setContactQuery('');
   }
 
   const shown = filtered.slice(0, MAX_ROWS);
@@ -92,11 +92,11 @@ export function MobileUnitSheet() {
         {!isAmenity && showBookTab && !bookable && <div className={styles.infoBox}>Lockers are assigned via the Assign tab, not booked.</div>}
 
         {!isAmenity && !showBookTab && !assignable && <div className={styles.infoBox}>This space is booked in Booking mode, not assigned.</div>}
-        {!showBookTab && assignable && empId && !state.mobAssignEdit && (
+        {!showBookTab && assignable && contactId && !state.mobAssignEdit && (
           <>
             <div className={styles.assignedRow}>
-              <span className={styles.avatar}>{initials(employeeName(state, empId))}</span>
-              <span className={styles.assignedName}>{employeeName(state, empId)}</span>
+              <span className={styles.avatar}>{initials(contactName(state, contactId))}</span>
+              <span className={styles.assignedName}>{contactName(state, contactId)}</span>
             </div>
             <div className={styles.actionsRow}>
               <button className={styles.vacateBtn} onClick={() => actions.vacate(unit.id)}>
@@ -115,26 +115,26 @@ export function MobileUnitSheet() {
             <input
               className={styles.empSearch}
               placeholder="Search people or departments"
-              value={empQuery}
-              onChange={(e) => setEmpQuery(e.target.value)}
+              value={contactQuery}
+              onChange={(e) => setContactQuery(e.target.value)}
             />
             <div className={styles.empList}>
-              {shown.map((e) => (
+              {shown.map((c) => (
                 <button
-                  key={e.id}
+                  key={c.id}
                   className={styles.empRow}
                   onClick={() => {
-                    actions.assign(e.id, unit.id);
+                    actions.assign(c.id, unit.id);
                     actions.setMobAssignEdit(false);
-                    setEmpQuery('');
+                    setContactQuery('');
                   }}
                 >
-                  <span className={styles.avatar}>{initials(e.name)}</span>
+                  <span className={styles.avatar}>{initials(c.name)}</span>
                   <span className={styles.empText}>
-                    <span className={styles.empName}>{e.name}</span>
-                    <span className={styles.empDept}>{e.dept}</span>
+                    <span className={styles.empName}>{c.name}</span>
+                    <span className={styles.empDept}>{c.client}</span>
                   </span>
-                  {empId === e.id && (
+                  {contactId === c.id && (
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--blue-600)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M20 6L9 17l-5-5" />
                     </svg>
@@ -146,14 +146,14 @@ export function MobileUnitSheet() {
                   Showing {MAX_ROWS} of {filtered.length} — keep typing to narrow down.
                 </div>
               )}
-              {filtered.length === 0 && <div className={styles.listNote}>No people match “{empQuery}”.</div>}
+              {filtered.length === 0 && <div className={styles.listNote}>No people match “{contactQuery}”.</div>}
             </div>
             {state.mobAssignEdit && (
               <button
                 className={styles.cancelPick}
                 onClick={() => {
                   actions.setMobAssignEdit(false);
-                  setEmpQuery('');
+                  setContactQuery('');
                 }}
               >
                 Cancel

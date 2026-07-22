@@ -468,6 +468,7 @@
     "type": "room",
     "label": "Konferenzraum 1",
     "room": null,
+    "isReservable": true,
     "geom": {
       "kind": "poly",
       "pts": [
@@ -526,6 +527,7 @@
     "type": "room",
     "label": "Ruheraum",
     "room": null,
+    "isReservable": false,
     "geom": {
       "kind": "poly",
       "pts": [

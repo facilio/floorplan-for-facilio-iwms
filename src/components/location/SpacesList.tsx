@@ -1,6 +1,6 @@
 import type { DragEvent as ReactDragEvent } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
-import { employeeName } from '../../state/selectors';
+import { contactName } from '../../state/selectors';
 import { unitSortCompare } from '../../lib/geometry';
 import { unitStatus } from '../../lib/unitStatus';
 import { Chip } from '../primitives/Chip';
@@ -117,7 +117,7 @@ export function SpacesList() {
 
 function SpaceRow({ unit, unplaced }: { unit: Unit; unplaced?: boolean }) {
   const { state, actions } = useFloorplan();
-  const status = unitStatus(state, unit, (id) => employeeName(state, id));
+  const status = unitStatus(state, unit, (id) => contactName(state, id));
   // The row dot reflects the unit's current-state color from the module color settings
   // (status.dot is moduleColor-driven), so a Settings color change shows here too.
   // Only the unplaced records drag onto the canvas (edit mode); placed markers are moved on the

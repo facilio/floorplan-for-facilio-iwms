@@ -5,7 +5,7 @@ import { renderPdfToDataUrl } from './pdfPreview';
 import { computeSyntheticGeometry, geometryStringToQuad, quadToGeometryString, quadToLngLat } from './geoReference';
 import type { FloorplanDataSource } from './dataSource';
 import type { Asset } from './assets';
-import type { Assignments, Booking, Employee, PlanId, PointGeom, Site, Unit, UnitType } from './types';
+import type { Assignments, Booking, ClientContact, PlanId, PointGeom, Site, Unit, UnitType } from './types';
 
 /**
  * `fetchOriginal=true` on `v2/files/preview` returns the ORIGINAL uploaded bytes — for a plain
@@ -46,7 +46,7 @@ const PLAN_NAME_BY_TYPE: Record<number, string> = { 1: 'Workstations', 2: 'Locke
 /**
  * Real Facilio backend tier via @facilio/api (generic V3 module CRUD: `v3/modules/{moduleName}`).
  *
- * Scope, deliberately: portfolio (site/building/floor) and the employee directory map cleanly
+ * Scope, deliberately: portfolio (site/building/floor) and the client contact directory map cleanly
  * onto plain module records, so those are wired for real. Units/assignments/bookings are NOT
  * wired here — a desk/room/locker/parkingstall record has no on-plan position of its own; that
  * lives in separate `floorplanmarker` (Point) / `floorplanmarkedzone` (Polygon) records, joined
@@ -103,14 +103,14 @@ export class FacilioApiDataSource implements FloorplanDataSource {
     }));
   }
 
-  async getEmployees(): Promise<Employee[]> {
+  async getClientContacts(): Promise<ClientContact[]> {
     this.assertConfigured();
-    const res = await facilioApi.fetchAll('employee');
-    if (res.error) throw new Error(`facilio-api: employee fetch failed (${res.error.code ?? '?'} ${res.error.message ?? ''})`.trim());
-    return (res.list ?? []).map((e: any) => ({
-      id: String(e.id),
-      name: e.name,
-      dept: e.department?.name ?? e.departmentName ?? '',
+    const res = await facilioApi.fetchAll('clientcontact');
+    if (res.error) throw new Error(`facilio-api: client contact fetch failed (${res.error.code ?? '?'} ${res.error.message ?? ''})`.trim());
+    return (res.list ?? []).map((c: any) => ({
+      id: String(c.id),
+      name: c.name,
+      client: c.client?.name ?? c.clientName ?? '',
     }));
   }
 
@@ -617,21 +617,26 @@ export async function findUnitIdForDeskRecord(floorId: string, deskRecordId: num
 }
 
 /**
- * Assigns an employee to a placed workstation/locker/parking-stall for real, confirmed against
- * a live org: for desks, creates a `moves` record (`to` + `employee`, `timeOfMove` at-or-before
- * now so the reassignment executes immediately — the backend auto-unassigns whatever desk that
- * employee previously held, per the org's documented Moves flow); for lockers/parking stalls, a
- * plain `employee` field update (no Moves involvement there).
+ * Assigns a client contact to a placed workstation/locker/parking-stall for real, confirmed
+ * against a live org: for desks, creates a `moves` record (`to` + `employee`, `timeOfMove`
+ * at-or-before now so the reassignment executes immediately — the backend auto-unassigns
+ * whatever desk that employee previously held, per the org's documented Moves flow); for
+ * lockers/parking stalls, a plain `employee` field update (no Moves involvement there).
  *
  * The moves payload mirrors the real web app's, captured from a live session:
  * `{to, timeOfMove, employee, scheduledTime: null, moveType: 1, siteId}`.
+ *
+ * NOTE: `to`/lockers/parkingstall's assignee lookup is still the real `employee` field — this app
+ * now assigns CLIENT CONTACTS to these records, and whether that lookup accepts a client-contact
+ * id (vs. requiring an actual employee record) is an open backend question (see plan follow-ups),
+ * not something this app controls. Left as `employee` here since that's the real field name.
  */
-export async function assignUnitReal(unit: Unit, employeeId: string): Promise<void> {
+export async function assignUnitReal(unit: Unit, contactId: string): Promise<void> {
   if (!isFacilioApiConfigured) return;
   const moduleName = REAL_SPACE_MODULE[unit.type];
   if (!moduleName) return;
-  const empId = Number(employeeId);
-  if (!Number.isFinite(empId)) return; // mock employee ids (e.g. "e1") aren't real backend ids.
+  const id = Number(contactId);
+  if (!Number.isFinite(id)) return; // mock client-contact ids (e.g. "c1") aren't real backend ids.
 
   const ref = await ensureRealSpaceRecord(unit);
   if (!ref) return;
@@ -641,7 +646,7 @@ export async function assignUnitReal(unit: Unit, employeeId: string): Promise<vo
       data: {
         to: { id: ref.recordId },
         timeOfMove: Date.now(),
-        employee: { id: empId },
+        employee: { id },
         scheduledTime: null,
         moveType: 1,
         ...(ref.siteId ? { siteId: ref.siteId } : {}),
@@ -652,7 +657,7 @@ export async function assignUnitReal(unit: Unit, employeeId: string): Promise<vo
       console.warn(`[facilio-api] assign move failed for unit ${unit.id}`, res.error);
     }
   } else {
-    const res = await facilioApi.updateRecord(moduleName, { id: ref.recordId, data: { employee: { id: empId } } });
+    const res = await facilioApi.updateRecord(moduleName, { id: ref.recordId, data: { employee: { id } } });
     if (res.error) {
       // eslint-disable-next-line no-console
       console.warn(`[facilio-api] assign update failed for unit ${unit.id}`, res.error);
@@ -665,12 +670,12 @@ export async function assignUnitReal(unit: Unit, employeeId: string): Promise<vo
  * only `from` set (confirmed live: clears the desk's `employee` field); for lockers/parking
  * stalls, clears the `employee` field directly.
  */
-export async function vacateUnitReal(unit: Unit, employeeId: string): Promise<void> {
+export async function vacateUnitReal(unit: Unit, contactId: string): Promise<void> {
   if (!isFacilioApiConfigured) return;
   const moduleName = REAL_SPACE_MODULE[unit.type];
   if (!moduleName) return;
-  const empId = Number(employeeId);
-  if (!Number.isFinite(empId)) return;
+  const id = Number(contactId);
+  if (!Number.isFinite(id)) return;
 
   const ref = await ensureRealSpaceRecord(unit);
   if (!ref) return;
@@ -680,7 +685,7 @@ export async function vacateUnitReal(unit: Unit, employeeId: string): Promise<vo
       data: {
         from: { id: ref.recordId },
         timeOfMove: Date.now(),
-        employee: { id: empId },
+        employee: { id },
         scheduledTime: null,
         moveType: 1,
         ...(ref.siteId ? { siteId: ref.siteId } : {}),
@@ -905,7 +910,7 @@ async function loadBookingFormDetail(module: 'space' | 'facility', moduleName: '
   return { id: form.id, name: form.name, displayName: form.displayName, moduleName, fields };
 }
 
-/** Numeric backend ids only — mock ids like "e1" aren't real employees and are dropped. */
+/** Numeric backend ids only — mock ids like "c1" aren't real client contacts and are dropped. */
 function realIds(ids?: string[]): { id: number }[] {
   return (ids ?? []).map(Number).filter(Number.isFinite).map((id) => ({ id }));
 }

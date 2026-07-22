@@ -2,8 +2,8 @@ import type {
   AppMode,
   Assignments,
   Booking,
+  ClientContact,
   EditTool,
-  Employee,
   MarkerDef,
   PanelsState,
   Perms,
@@ -63,7 +63,7 @@ export interface AppState {
   pendingModeSwitch: AppMode | null;
   assignments: Assignments;
   bookings: Booking[];
-  employees: Employee[];
+  clientContacts: ClientContact[];
   /** Org asset catalog (CMMS connector) — the Edit-mode asset picker's source. */
   assets: Asset[];
   portfolio: Site[];
@@ -88,8 +88,8 @@ export interface AppState {
   draft: [number, number][];
   calib: [number, number][];
   calibLen: string;
-  empSearch: string;
-  dragEmpId: string | null;
+  contactSearch: string;
+  dragContactId: string | null;
   dragOverId: string | null;
 
   date: string;

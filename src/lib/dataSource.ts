@@ -1,12 +1,12 @@
 import { FacilioApiDataSource } from './facilioApiDataSource';
 import type { Asset } from './assets';
-import type { Assignments, Booking, Employee, Site, Unit } from './types';
+import type { Assignments, Booking, ClientContact, Site, Unit } from './types';
 
 // Local dev data lives as editable JSON in src/data/*.json — change a file and the app uses it
 // (Vite picks the JSON up on save). This is the seed the LocalJsonDataSource serves; session edits
 // are layered on top in localStorage so a dev session survives reloads.
 import portfolioJson from '../data/portfolio.json';
-import employeesJson from '../data/employees.json';
+import clientContactsJson from '../data/clientContacts.json';
 import assetsJson from '../data/assets.json';
 import unitsJson from '../data/units.json';
 import assignmentsJson from '../data/assignments.json';
@@ -23,13 +23,13 @@ import bookingsJson from '../data/bookings.json';
 export interface FloorplanDataSource {
   readonly name: string;
   getPortfolio(): Promise<Site[]>;
-  getEmployees(): Promise<Employee[]>;
+  getClientContacts(): Promise<ClientContact[]>;
   /** Catalog of assets that can be dropped onto a plan (Edit mode asset picker). */
   getAssets(): Promise<Asset[]>;
   getUnits(floorId: string): Promise<Unit[]>;
   saveUnits(floorId: string, units: Unit[]): Promise<void>;
   getAssignments(floorId: string): Promise<Assignments>;
-  assignUnit(unitId: string, employeeId: string): Promise<void>;
+  assignUnit(unitId: string, contactId: string): Promise<void>;
   vacateUnit(unitId: string): Promise<void>;
   getBookings(floorId: string, date: string): Promise<Booking[]>;
   createBooking(input: Omit<Booking, 'id'>): Promise<Booking>;
@@ -66,7 +66,7 @@ export interface CreateSpaceLoc {
 
 // ---- seed data (editable JSON in src/data) ----
 const SEED_PORTFOLIO = portfolioJson as unknown as Site[];
-const SEED_EMPLOYEES = employeesJson as unknown as Employee[];
+const SEED_CLIENT_CONTACTS = clientContactsJson as unknown as ClientContact[];
 const SEED_ASSETS = assetsJson as unknown as Asset[];
 const SEED_UNITS = unitsJson as unknown as Unit[];
 const SEED_ASSIGNMENTS = assignmentsJson as unknown as Assignments;
@@ -113,8 +113,8 @@ export class LocalJsonDataSource implements FloorplanDataSource {
     return SEED_PORTFOLIO;
   }
 
-  async getEmployees(): Promise<Employee[]> {
-    return SEED_EMPLOYEES;
+  async getClientContacts(): Promise<ClientContact[]> {
+    return SEED_CLIENT_CONTACTS;
   }
 
   async getAssets(): Promise<Asset[]> {
@@ -147,9 +147,9 @@ export class LocalJsonDataSource implements FloorplanDataSource {
     return Object.fromEntries(Object.entries(all).filter(([unitId]) => ids.has(unitId)));
   }
 
-  async assignUnit(unitId: string, employeeId: string): Promise<void> {
+  async assignUnit(unitId: string, contactId: string): Promise<void> {
     const saved = loadPersisted();
-    const assignments = { ...(saved?.assignments ?? SEED_ASSIGNMENTS), [unitId]: employeeId };
+    const assignments = { ...(saved?.assignments ?? SEED_ASSIGNMENTS), [unitId]: contactId };
     savePersisted({ assignments });
   }
 
@@ -227,13 +227,13 @@ export class CompositeDataSource implements FloorplanDataSource {
       try {
         // @ts-expect-error - dynamic dispatch across the shared interface
         const result = await tier[method](...args);
-        // Empty portfolio/employees counts as a MISS, not an answer: the whole app is built on
-        // those two datasets, and an empty-but-successful response from the API tier (e.g. the
-        // real employee fetch coming back [] for a permission-limited user) would otherwise mask
-        // the local seed. NOT applied to per-floor data (units/bookings/assignments), where empty
-        // is a legitimate answer — falling through there would paint seed markers over a genuinely
-        // empty real floor.
-        if ((method === 'getPortfolio' || method === 'getEmployees') && Array.isArray(result) && result.length === 0) {
+        // Empty portfolio/client-contacts counts as a MISS, not an answer: the whole app is built
+        // on those two datasets, and an empty-but-successful response from the API tier (e.g. the
+        // real client-contact fetch coming back [] for a permission-limited user) would otherwise
+        // mask the local seed. NOT applied to per-floor data (units/bookings/assignments), where
+        // empty is a legitimate answer — falling through there would paint seed markers over a
+        // genuinely empty real floor.
+        if ((method === 'getPortfolio' || method === 'getClientContacts') && Array.isArray(result) && result.length === 0) {
           throw new Error(`${tier.name}: ${String(method)} returned no records`);
         }
         return result;
@@ -255,8 +255,8 @@ export class CompositeDataSource implements FloorplanDataSource {
   getPortfolio(): Promise<Site[]> {
     return this.run('getPortfolio');
   }
-  getEmployees() {
-    return this.run('getEmployees');
+  getClientContacts() {
+    return this.run('getClientContacts');
   }
   getAssets() {
     return this.run('getAssets');
@@ -293,8 +293,8 @@ export class CompositeDataSource implements FloorplanDataSource {
   getAssignments(floorId: string) {
     return this.run('getAssignments', floorId);
   }
-  assignUnit(unitId: string, employeeId: string) {
-    return this.run('assignUnit', unitId, employeeId);
+  assignUnit(unitId: string, contactId: string) {
+    return this.run('assignUnit', unitId, contactId);
   }
   vacateUnit(unitId: string) {
     return this.run('vacateUnit', unitId);

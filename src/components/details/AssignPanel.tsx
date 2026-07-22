@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import type { DragEvent as ReactDragEvent } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
-import { employeeName, initials, isAssignable, unitById } from '../../state/selectors';
+import { contactName, initials, isAssignable, unitById } from '../../state/selectors';
 import { TYPE_META } from '../../lib/types';
 import { facilioRecordUrl } from '../../lib/facilioApi';
 import { Select } from '../primitives/Select';
@@ -16,15 +16,15 @@ export function AssignPanel() {
   const [dragId, setDragId] = useState<string | null>(null);
   const dragGhostRef = useRef<HTMLDivElement | null>(null);
 
-  const q = state.empSearch.trim().toLowerCase();
-  const employees = state.employees.filter((e) => !q || e.name.toLowerCase().includes(q) || e.dept.toLowerCase().includes(q));
+  const q = state.contactSearch.trim().toLowerCase();
+  const contacts = state.clientContacts.filter((c) => !q || c.name.toLowerCase().includes(q) || c.client.toLowerCase().includes(q));
 
-  function unitsHeldBy(empId: string) {
-    return state.units.filter((u) => state.assignments[u.id] === empId).map((u) => u.label);
+  function unitsHeldBy(contactId: string) {
+    return state.units.filter((u) => state.assignments[u.id] === contactId).map((u) => u.label);
   }
 
-  function onDragStart(e: ReactDragEvent, empId: string, name: string) {
-    e.dataTransfer.setData('text/plain', empId);
+  function onDragStart(e: ReactDragEvent, contactId: string, name: string) {
+    e.dataTransfer.setData('text/plain', contactId);
     e.dataTransfer.effectAllowed = 'move';
 
     const ghost = document.createElement('div');
@@ -48,14 +48,14 @@ export function AssignPanel() {
     e.dataTransfer.setDragImage(ghost, 20, 20);
     dragGhostRef.current = ghost;
 
-    setDragId(empId);
-    actions.dragStartEmp(empId);
+    setDragId(contactId);
+    actions.dragStartContact(contactId);
   }
   function onDragEnd() {
     dragGhostRef.current?.remove();
     dragGhostRef.current = null;
     setDragId(null);
-    actions.dragStartEmp(null);
+    actions.dragStartContact(null);
   }
 
   return (
@@ -99,31 +99,31 @@ export function AssignPanel() {
           <h3 className={card.cardTitle}>People</h3>
         </div>
         <div className={styles.peopleSearchWrap}>
-          <input className={card.input} placeholder="Search people" value={state.empSearch} onChange={(e) => actions.setEmpSearch(e.target.value)} />
+          <input className={card.input} placeholder="Search people" value={state.contactSearch} onChange={(e) => actions.setContactSearch(e.target.value)} />
           <p className={styles.dragHint}>Drag a person onto a desk, locker, or parking stall to assign it.</p>
         </div>
         <div className={styles.peopleList}>
-          {state.loading && state.employees.length === 0 && <SkeletonRows rows={6} avatar />}
-          {employees.map((emp) => {
-            const held = unitsHeldBy(emp.id);
-            // Mock demo ids look like "e1".."e14" and have no real record to open — only
-            // real (numeric) employee ids from @facilio/api get a working summary-page link.
-            const recordUrl = /^\d+$/.test(emp.id) ? facilioRecordUrl('employee', emp.id) : null;
+          {state.loading && state.clientContacts.length === 0 && <SkeletonRows rows={6} avatar />}
+          {contacts.map((contact) => {
+            const held = unitsHeldBy(contact.id);
+            // Mock demo ids look like "c1".."c14" and have no real record to open — only
+            // real (numeric) client-contact ids from @facilio/api get a working summary-page link.
+            const recordUrl = /^\d+$/.test(contact.id) ? facilioRecordUrl('clientcontact', contact.id) : null;
             return (
               <div
-                key={emp.id}
+                key={contact.id}
                 className={styles.personRow}
                 draggable
-                onDragStart={(e) => onDragStart(e, emp.id, emp.name)}
+                onDragStart={(e) => onDragStart(e, contact.id, contact.name)}
                 onDragEnd={onDragEnd}
                 onClick={() => recordUrl && window.open(recordUrl, '_blank', 'noopener,noreferrer')}
-                style={{ opacity: dragId === emp.id ? 0.45 : 1, cursor: recordUrl ? 'pointer' : 'grab' }}
-                title={recordUrl ? 'Open employee record' : undefined}
+                style={{ opacity: dragId === contact.id ? 0.45 : 1, cursor: recordUrl ? 'pointer' : 'grab' }}
+                title={recordUrl ? 'Open client contact record' : undefined}
               >
-                <span className={styles.avatar}>{initials(emp.name)}</span>
+                <span className={styles.avatar}>{initials(contact.name)}</span>
                 <div className={styles.personText}>
-                  <div className={styles.personName}>{emp.name}</div>
-                  <div className={styles.personDept}>{emp.dept}</div>
+                  <div className={styles.personName}>{contact.name}</div>
+                  <div className={styles.personDept}>{contact.client}</div>
                 </div>
                 {held.length > 0 && <span className={styles.heldBadge}>{held.join(', ')}</span>}
                 {recordUrl && (
@@ -143,15 +143,15 @@ export function AssignPanel() {
 
 function AssignBody({ unitId }: { unitId: string }) {
   const { state, actions } = useFloorplan();
-  const empId = state.assignments[unitId];
+  const contactId = state.assignments[unitId];
   const reassigning = state.webReassign === unitId;
 
-  if (empId && !reassigning) {
+  if (contactId && !reassigning) {
     return (
       <div>
         <div className={styles.assignedRow}>
-          <span className={styles.avatar}>{initials(employeeName(state, empId))}</span>
-          <span className={styles.assignedName}>{employeeName(state, empId)}</span>
+          <span className={styles.avatar}>{initials(contactName(state, contactId))}</span>
+          <span className={styles.assignedName}>{contactName(state, contactId)}</span>
         </div>
         <div className={styles.actionsRow}>
           <Button variant="danger" style={{ flex: 1, justifyContent: 'center' }} onClick={() => actions.vacate(unitId)}>
@@ -168,9 +168,9 @@ function AssignBody({ unitId }: { unitId: string }) {
   return (
     <div>
       <Select
-        value={empId ?? null}
+        value={contactId ?? null}
         placeholder="— Choose a person —"
-        options={state.employees.map((e) => ({ value: e.id, label: e.name, sublabel: e.dept }))}
+        options={state.clientContacts.map((c) => ({ value: c.id, label: c.name, sublabel: c.client }))}
         onChange={(v) => actions.assign(v, unitId)}
         fullWidth
         aria-label="Assign to"

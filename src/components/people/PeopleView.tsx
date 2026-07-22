@@ -4,22 +4,22 @@ import { initials } from '../../state/selectors';
 import { facilioRecordUrl } from '../../lib/facilioApi';
 import styles from './PeopleView.module.css';
 
-/** Simple directory of employees. Assigned desks are derived from `state.assignments`. */
+/** Simple directory of client contacts. Assigned desks are derived from `state.assignments`. */
 export function PeopleView() {
   const { state } = useFloorplan();
   const [search, setSearch] = useState('');
 
-  const deskByEmp = useMemo(() => {
+  const deskByContact = useMemo(() => {
     const map: Record<string, string> = {};
-    for (const [unitId, empId] of Object.entries(state.assignments)) {
+    for (const [unitId, contactId] of Object.entries(state.assignments)) {
       const u = state.units.find((x) => x.id === unitId);
-      if (u) map[empId] = u.label;
+      if (u) map[contactId] = u.label;
     }
     return map;
   }, [state.assignments, state.units]);
 
-  const people = state.employees
-    .filter((e) => !search || e.name.toLowerCase().includes(search.toLowerCase()) || (e.dept ?? '').toLowerCase().includes(search.toLowerCase()))
+  const people = state.clientContacts
+    .filter((c) => !search || c.name.toLowerCase().includes(search.toLowerCase()) || (c.client ?? '').toLowerCase().includes(search.toLowerCase()))
     .slice()
     .sort((a, b) => a.name.localeCompare(b.name));
 
@@ -29,7 +29,7 @@ export function PeopleView() {
         <div className={styles.head}>
           <div>
             <h1 className={styles.h1}>People</h1>
-            <p className={styles.sub}>{state.employees.length} people in this workspace</p>
+            <p className={styles.sub}>{state.clientContacts.length} people in this workspace</p>
           </div>
           <input className={styles.search} placeholder="Search people…" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
@@ -38,15 +38,15 @@ export function PeopleView() {
           <div className={styles.empty}>No people match “{search}”.</div>
         ) : (
           <div className={styles.list}>
-            {people.map((e) => {
-              const real = /^\d+$/.test(e.id) ? facilioRecordUrl('employee', e.id) : null;
-              const desk = deskByEmp[e.id];
+            {people.map((c) => {
+              const real = /^\d+$/.test(c.id) ? facilioRecordUrl('clientcontact', c.id) : null;
+              const desk = deskByContact[c.id];
               return (
-                <div key={e.id} className={styles.row}>
-                  <span className={styles.avatar}>{initials(e.name) || '·'}</span>
+                <div key={c.id} className={styles.row}>
+                  <span className={styles.avatar}>{initials(c.name) || '·'}</span>
                   <div className={styles.meta}>
-                    <span className={styles.name}>{e.name}</span>
-                    {e.dept && <span className={styles.dept}>{e.dept}</span>}
+                    <span className={styles.name}>{c.name}</span>
+                    {c.client && <span className={styles.dept}>{c.client}</span>}
                   </div>
                   {desk && <span className={styles.deskPill}>{desk}</span>}
                   {real && (

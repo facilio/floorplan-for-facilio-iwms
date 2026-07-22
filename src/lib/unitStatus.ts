@@ -59,7 +59,7 @@ export function markerStyle(state: AppState, unit: Unit, markerScale = 1): Marke
   const dropTarget = state.mode === 'edit' && state.dragOverId === unit.id;
   const shadow = dropTarget ? '0 0 0 4px rgba(41,160,30,0.4)' : selected ? '0 0 0 3px rgba(0,89,214,0.28)' : 'var(--shadow-xs)';
   const zIndex = dropTarget ? 6 : selected ? 5 : 2;
-  const empId = state.assignments[unit.id];
+  const contactId = state.assignments[unit.id];
 
   // Amenity markers are informational in every mode: FILLED with the marker's
   // own color (stairs teal, elevator amber, …) with a white glyph / short text
@@ -100,12 +100,12 @@ export function markerStyle(state: AppState, unit: Unit, markerScale = 1): Marke
       return { bg: 'var(--ink-100)', bd: 'var(--ink-500)', fg: 'var(--ink-600)', opacity: 1, shadow, size, radius, zIndex, occText: null, icon: markerIcon(unit.type) };
     }
     if (state.dragOverId === unit.id) {
-      return { bg: 'var(--blue-100)', bd: 'var(--blue-500)', fg: 'var(--blue-700)', opacity: 1, shadow: '0 0 0 4px rgba(0,89,214,0.22)', size, radius, zIndex: 6, occText: empId ? initialsOf(employeeNameFallback(state, empId)) : null, icon: empId ? null : markerIcon(unit.type) };
+      return { bg: 'var(--blue-100)', bd: 'var(--blue-500)', fg: 'var(--blue-700)', opacity: 1, shadow: '0 0 0 4px rgba(0,89,214,0.22)', size, radius, zIndex: 6, occText: contactId ? initialsOf(contactNameFallback(state, contactId)) : null, icon: contactId ? null : markerIcon(unit.type) };
     }
-    if (empId) {
+    if (contactId) {
       // Occupied desk: solid fill in the configurable "assigned" color, white initials.
       const c = moduleColor(state, unit.type, 'assigned');
-      return { bg: c, bd: c, fg: '#fff', opacity: 1, shadow, size, radius, zIndex, occText: initialsOf(employeeNameFallback(state, empId)), icon: null };
+      return { bg: c, bd: c, fg: '#fff', opacity: 1, shadow, size, radius, zIndex, occText: initialsOf(contactNameFallback(state, contactId)), icon: null };
     }
     const free = moduleColor(state, unit.type, 'free');
     return { bg: tint(free), bd: free, fg: free, opacity: 1, shadow, size, radius, zIndex, occText: null, icon: markerIcon(unit.type) };
@@ -125,8 +125,8 @@ export function markerStyle(state: AppState, unit: Unit, markerScale = 1): Marke
       size,
       radius,
       zIndex,
-      occText: empId ? initialsOf(employeeNameFallback(state, empId)) : null,
-      icon: empId ? null : markerIcon(unit.type),
+      occText: contactId ? initialsOf(contactNameFallback(state, contactId)) : null,
+      icon: contactId ? null : markerIcon(unit.type),
     };
   }
   const conflicts = conflictsFor(state.bookings, unit.id, state.date, state.start, state.end);
@@ -148,11 +148,11 @@ function markerIcon(type: Unit['type']): MarkerStyle['icon'] {
 function initialsOf(name: string): string {
   return name.split(' ').map((p) => p[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
 }
-function employeeNameFallback(state: AppState, empId: string): string {
-  return state.employees.find((e) => e.id === empId)?.name ?? empId;
+function contactNameFallback(state: AppState, contactId: string): string {
+  return state.clientContacts.find((e) => e.id === contactId)?.name ?? contactId;
 }
 
-export function unitStatus(state: AppState, unit: Unit, employeeName: (id: string) => string): UnitStatus {
+export function unitStatus(state: AppState, unit: Unit, contactName: (id: string) => string): UnitStatus {
   if (unit.type === 'amenity') {
     const name = unit.markerKind || unit.icon ? resolveMarkerDef(state.customMarkers, unit).name : 'Amenity';
     return { key: 'amenity', text: name, bg: TOKEN.ink100, fg: TOKEN.ink600, dot: 'var(--ink-500)' };
@@ -165,11 +165,11 @@ export function unitStatus(state: AppState, unit: Unit, employeeName: (id: strin
     if (!isAssignable(unit)) {
       return { key: 'na', text: 'Not assignable', bg: TOKEN.ink100, fg: TOKEN.ink600, dot: 'var(--ink-400)' };
     }
-    const empId = state.assignments[unit.id];
-    if (empId) {
+    const contactId = state.assignments[unit.id];
+    if (contactId) {
       return {
         key: 'assigned',
-        text: `Assigned · ${employeeName(empId)}`,
+        text: `Assigned · ${contactName(contactId)}`,
         bg: TOKEN.blue050,
         fg: TOKEN.blue700,
         dot: moduleColor(state, unit.type, 'assigned'),
@@ -179,11 +179,11 @@ export function unitStatus(state: AppState, unit: Unit, employeeName: (id: strin
   }
   // book mode
   if (!isBookable(unit)) {
-    const empId = state.assignments[unit.id];
+    const contactId = state.assignments[unit.id];
     return {
       key: 'notBookable',
       // whose desk it is stays visible from the booking tab too
-      text: empId ? `Assigned · ${employeeName(empId)}` : 'Not bookable',
+      text: contactId ? `Assigned · ${contactName(contactId)}` : 'Not bookable',
       bg: TOKEN.ink100,
       fg: TOKEN.ink600,
       dot: 'var(--ink-400)',

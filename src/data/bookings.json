@@ -4,7 +4,7 @@
     "unitId": "rm1",
     "start": 540,
     "end": 630,
-    "by": "e2",
+    "by": "c2",
     "purpose": "Sprint planning"
   },
   {
@@ -12,7 +12,7 @@
     "unitId": "rm2",
     "start": 840,
     "end": 900,
-    "by": "e9",
+    "by": "c9",
     "purpose": "Client review"
   },
   {
@@ -20,15 +20,7 @@
     "unitId": "ws10",
     "start": 540,
     "end": 1020,
-    "by": "e14",
+    "by": "c14",
     "purpose": "Visitor desk"
-  },
-  {
-    "id": "b4",
-    "unitId": "rm3",
-    "start": 780,
-    "end": 810,
-    "by": "e6",
-    "purpose": ""
   }
 ]

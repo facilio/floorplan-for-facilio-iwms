@@ -1,7 +1,7 @@
 import { useRef } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
-import { bookedUnitIds, conflictsFor, employeeName, isBookable, unitById } from '../../state/selectors';
+import { bookedUnitIds, conflictsFor, contactName, isBookable, unitById } from '../../state/selectors';
 import { fmtTime } from '../../lib/geometry';
 import { Select } from '../primitives/Select';
 import { Button } from '../primitives/Button';
@@ -120,7 +120,7 @@ function ScheduleList({ unitId }: { unitId: string }) {
             {fmtTime(b.start)}–{fmtTime(b.end)}
           </div>
           <div className={styles.listMeta}>
-            <div className={styles.listBy}>{employeeName(state, b.by)}</div>
+            <div className={styles.listBy}>{contactName(state, b.by)}</div>
             {b.purpose && <div className={styles.listPurpose}>{b.purpose}</div>}
           </div>
           <button className={styles.cancelLink} onClick={() => actions.cancelBooking(b.id)}>
@@ -201,7 +201,7 @@ function DayTimeline({ unitId }: { unitId: string }) {
               borderColor: mine ? 'var(--blue-400)' : 'var(--danger-500)',
               color: mine ? 'var(--blue-700)' : 'var(--danger-700)',
             }}
-            title={`${label} · ${fmtTime(b.start)}–${fmtTime(b.end)} · ${employeeName(state, b.by)}${b.purpose ? ' · ' + b.purpose : ''}`}
+            title={`${label} · ${fmtTime(b.start)}–${fmtTime(b.end)} · ${contactName(state, b.by)}${b.purpose ? ' · ' + b.purpose : ''}`}
           >
             {h >= 22 && (
               <span className={styles.blockLabel}>

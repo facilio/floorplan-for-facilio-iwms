@@ -420,6 +420,12 @@ function Inspector() {
           <span className={card.statLabel}>Type</span>
           <span className={card.statValue}>{TYPE_META[sel.type].name}</span>
         </div>
+        {sel.type === 'room' && (
+          <div className={card.statRow}>
+            <span className={card.statLabel}>Is Reservable</span>
+            <span className={card.statValue}>{sel.isReservable === false ? 'No — assignable' : 'Yes — bookable'}</span>
+          </div>
+        )}
         {sel.room && (
           <div className={card.statRow}>
             <span className={card.statLabel}>Room</span>
