@@ -4,7 +4,7 @@ import { renderPdfToDataUrl } from './pdfPreview';
 import { computeSyntheticGeometry, geometryStringToQuad, quadToGeometryString, quadToLngLat } from './geoReference';
 import type { FloorplanDataSource } from './dataSource';
 import type { Asset } from './assets';
-import type { Assignments, Booking, Building, ClientContact, Floor, FloorplanCustomization, MarkerDef, PlanId, PointGeom, Site, Unit, UnitType } from './types';
+import type { Assignments, Booking, Building, ClientContact, Floor, FloorplanCustomization, MarkerDef, PlanId, PointGeom, PolyGeom, Site, Unit, UnitType } from './types';
 
 /**
  * `fetchOriginal=true` on `v2/files/preview` returns the ORIGINAL uploaded bytes — for a plain
@@ -373,12 +373,19 @@ export async function uploadFloorplanFile(
 }
 
 /**
- * Syncs this app's placed desks/lockers/parking-stalls (point units only — room/zone polygons
- * need a real `space` module record via `floorplanmarkedzone.space`, which this app doesn't
- * create, so those stay local-only) to real `floorplanmarker` records, confirmed against a live
- * org: required fields are `geoId, geometry, indoorfloorplan, properties, type` (`geoId` doubles
- * as our idempotency key — this app's own stable unit id — so re-saving updates in place instead
- * of duplicating).
+ * Syncs this app's placed units to the real `indoorfloorplan` record: point units (desks/
+ * lockers/parking/amenities) into its embedded `markers` array, room polygons into its embedded
+ * `markedZones` array — confirmed against a live capture of the real web app's own save (both are
+ * plain fields on the record, not separate modules; `geoId` on each entry is this app's own unit
+ * id, doubling as the idempotency key so re-saving updates in place instead of duplicating).
+ *
+ * Only units that ALREADY have a matching real entry (by `geoId`, from some prior real save) are
+ * synced — a brand-new room or amenity placed in this app (no matching entry yet) is skipped with
+ * a warning rather than guessed at: unlike desks/lockers/parking stalls (`ensureRealSpaceRecord`),
+ * there's no confirmed real payload yet for what creating a NEW room/amenity backing record
+ * (`space`/`zoneModuleId`/`recordId` for a zone, `markerType`/`markerModuleId`/`recordId` for an
+ * amenity) looks like — it may vary by room category/marker type. New desks/lockers/parking
+ * stalls are unaffected; those still create their backing record inline (see below).
  *
  * Skipped per plan-type when `indoorfloorplan.geometry` isn't set yet (no synthetic
  * geo-reference — see `geoReference.ts` — has been computed, e.g. a floor plan uploaded before
@@ -387,13 +394,15 @@ export async function uploadFloorplanFile(
  */
 export async function saveFloorplanMarkers(floorId: string, units: Unit[]): Promise<void> {
   if (!isFacilioApiConfigured) return;
-  const pointUnits = units.filter(
-    (u): u is Unit & { geom: PointGeom } => u.geom.kind === 'point' && (u.type === 'workstation' || u.type === 'locker' || u.type === 'parking')
+  const syncable = units.filter(
+    (u) =>
+      (u.geom.kind === 'point' && (u.type === 'workstation' || u.type === 'locker' || u.type === 'parking' || u.type === 'amenity')) ||
+      (u.geom.kind === 'poly' && u.type === 'room')
   );
   const byType = await getFloorplanDetailsByType(floorId).catch(() => ({}) as Record<string, any>);
 
-  const byPlan = new Map<PlanId, (Unit & { geom: PointGeom })[]>();
-  for (const u of pointUnits) {
+  const byPlan = new Map<PlanId, Unit[]>();
+  for (const u of syncable) {
     const list = byPlan.get(u.plan) ?? [];
     list.push(u);
     byPlan.set(u.plan, list);
@@ -414,14 +423,17 @@ export async function saveFloorplanMarkers(floorId: string, units: Unit[]): Prom
 }
 
 /**
- * The indoorfloorplan record's own fields, including its embedded `markers` array — markers are
- * NOT a separate related module (the old `floorplanmarker` relatedList approach didn't actually
- * work): confirmed live, `v3/modules/data/update` for `indoorfloorplan` carries the FULL markers
- * array as a field on the record itself, joined to this app's own units via each marker's
- * `geoId` (a client-assigned id — this app's own unit id). Existing markers reference their
- * backing desk/locker/parkingstall record by a bare `recordId`; only a brand-new marker (created
- * inline together with its record) needs the record nested in full, which this app doesn't do —
- * it creates the record separately first (see `ensureRealSpaceRecord`), then references it by id.
+ * The indoorfloorplan record's own fields, including its embedded `markers`/`markedZones` arrays
+ * — neither is a separate related module (the old `floorplanmarker`/`floorplanmarkedzone`
+ * relatedList approach didn't actually work): confirmed live, `v3/modules/data/update` for
+ * `indoorfloorplan` carries both FULL arrays as fields on the record itself, joined to this app's
+ * own units via each entry's `geoId` (a client-assigned id — this app's own unit id). Existing
+ * entries reference their backing record (desk/locker/parkingstall/space, or a markertype +
+ * arbitrary module record for amenities) by a bare `recordId`; only a brand-new entry (created
+ * inline together with its record) needs the record nested in full, which this app doesn't do for
+ * desks/lockers/parking — it creates the record separately first (see `ensureRealSpaceRecord`),
+ * then references it by id. Rooms/amenities have no such creation path yet (see
+ * `saveFloorplanMarkers`).
  */
 async function fetchIndoorFloorPlanRecord(indoorFloorPlanId: number): Promise<any | null> {
   const res = await facilioApi.fetchRecord<any>('indoorfloorplan', { id: indoorFloorPlanId });
@@ -429,25 +441,38 @@ async function fetchIndoorFloorPlanRecord(indoorFloorPlanId: number): Promise<an
   return res.indoorfloorplan;
 }
 
-async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: (Unit & { geom: PointGeom })[]): Promise<void> {
+async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: Unit[]): Promise<void> {
   const record = await fetchIndoorFloorPlanRecord(indoorFloorPlanId);
   if (!record) return;
   const quad = geometryStringToQuad(record.geometry);
   if (!quad) return;
 
-  const existing: any[] = record.markers ?? [];
-  const existingByGeoId = new Map(existing.filter((m) => m.geoId).map((m) => [m.geoId, m]));
+  const pointUnits = units.filter((u): u is Unit & { geom: PointGeom } => u.geom.kind === 'point');
+  const roomUnits = units.filter((u): u is Unit & { geom: PolyGeom } => u.geom.kind === 'poly' && u.type === 'room');
+
+  // ---- markers: desks/lockers/parking stalls/amenities (point geometry) ----
+  const existingMarkers: any[] = record.markers ?? [];
+  const existingMarkersByGeoId = new Map(existingMarkers.filter((m) => m.geoId).map((m) => [m.geoId, m]));
   const nextMarkers: any[] = [];
 
-  for (const unit of units) {
+  for (const unit of pointUnits) {
+    const match = existingMarkersByGeoId.get(unit.id);
+    if (!match && unit.type === 'amenity') {
+      // No confirmed real payload for a BRAND NEW amenity's backing record — skip rather than
+      // guess at markerType/markerModuleId/recordId. An amenity that already has an entry (from
+      // a prior real save) still round-trips below.
+      // eslint-disable-next-line no-console
+      console.warn(`[facilio-api] amenity marker ${unit.id} has no existing backend entry — not synced (creation flow unconfirmed)`);
+      continue;
+    }
     const [lng, lat] = quadToLngLat(quad, unit.geom.x, unit.geom.y);
     const geometry = JSON.stringify({ type: 'Point', coordinates: [lng, lat] });
     const properties = JSON.stringify({ unitType: unit.type, secondary: unit.secondary ?? null });
-    const match = existingByGeoId.get(unit.id);
     // Spread the existing entry first so anything it already carries (recordId, markerType,
     // markerModuleId, etc.) survives the round-trip untouched — only geometry/label are ours to
-    // change. A brand-new entry just gets the minimal fields; no markerType is set for it since
-    // this app doesn't know which markertype id represents each unit type (unconfirmed).
+    // change. A brand-new (desk/locker/parking) entry just gets the minimal fields; no markerType
+    // is set for it since this app doesn't know which markertype id represents each unit type
+    // (unconfirmed).
     nextMarkers.push({
       ...(match ?? {}),
       geoId: unit.id,
@@ -475,16 +500,49 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: (
   }
   // Markers this app doesn't own (no geoId — amenities/decorative markers placed by other
   // tools) are preserved untouched; a geoId-tagged marker whose unit is gone gets dropped.
-  for (const m of existing) {
+  for (const m of existingMarkers) {
     if (!m.geoId) nextMarkers.push(m);
   }
 
-  // Round-trip the WHOLE fetched record, not just {markers} — a live capture of the real web
-  // app's own save confirmed the update payload always carries every field back (customizationJSON,
-  // customizationBookingJSON, name, geometry, etc.), not just the ones actually changing. A
-  // markers-only partial patch risks the backend treating this as a full replace and wiping
-  // those other fields rather than merging.
-  const res = await facilioApi.updateRecord('indoorfloorplan', { id: indoorFloorPlanId, data: { ...record, markers: nextMarkers } });
+  // ---- markedZones: rooms (polygon geometry) ----
+  const existingZones: any[] = record.markedZones ?? [];
+  const existingZonesByGeoId = new Map(existingZones.filter((z) => z.geoId).map((z) => [z.geoId, z]));
+  const nextZones: any[] = [];
+
+  for (const unit of roomUnits) {
+    const match = existingZonesByGeoId.get(unit.id);
+    if (!match) {
+      // Same reasoning as amenities above — no confirmed payload for creating a brand-new zone's
+      // backing `space` record (zoneModuleId varies by example, likely by room category).
+      // eslint-disable-next-line no-console
+      console.warn(`[facilio-api] room ${unit.id} has no existing backend zone — not synced (creation flow unconfirmed)`);
+      continue;
+    }
+    const ring = [...unit.geom.pts, unit.geom.pts[0]].map(([x, y]) => quadToLngLat(quad, x, y));
+    const geometry = JSON.stringify({ type: 'Polygon', coordinates: [ring] });
+    nextZones.push({
+      ...match,
+      geoId: unit.id,
+      geometry,
+      properties: match.properties ?? '{}',
+      type: 'Feature',
+      indoorfloorplan: { id: indoorFloorPlanId },
+      label: unit.label,
+      isReservable: unit.isReservable ?? match.isReservable,
+      space: match.space ? { ...match.space, reservable: unit.isReservable ?? match.space.reservable } : match.space,
+    });
+  }
+  // Zones this app doesn't own preserved untouched; one whose unit is gone gets dropped, same as markers.
+  for (const z of existingZones) {
+    if (!z.geoId) nextZones.push(z);
+  }
+
+  // Round-trip the WHOLE fetched record, not just {markers, markedZones} — a live capture of the
+  // real web app's own save confirmed the update payload always carries every field back
+  // (customizationJSON, customizationBookingJSON, name, geometry, etc.), not just the ones
+  // actually changing. A partial patch risks the backend treating this as a full replace and
+  // wiping those other fields rather than merging.
+  const res = await facilioApi.updateRecord('indoorfloorplan', { id: indoorFloorPlanId, data: { ...record, markers: nextMarkers, markedZones: nextZones } });
   if (res.error) {
     // eslint-disable-next-line no-console
     console.warn(`[facilio-api] marker sync failed for plan ${indoorFloorPlanId}`, res.error);
