@@ -199,6 +199,10 @@ function markerIcon(type: Unit['type']): MarkerStyle['icon'] {
   return null;
 }
 function initialsOf(name: string): string {
+  // A numeric "name" is an unresolved contact id (assignee not in the loaded directory — e.g. a
+  // permission-limited or paginated contact fetch). Digit "initials" like "88" read as garbage on
+  // the marker; a generic person glyph at least reads as "assigned to someone".
+  if (/^\d+$/.test(name.trim())) return '?';
   return name.split(' ').map((p) => p[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
 }
 function contactNameFallback(state: AppState, contactId: string): string {

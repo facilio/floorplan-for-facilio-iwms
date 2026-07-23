@@ -331,12 +331,38 @@ export const facilioApi = {
  * live org: whether GET query params are read from `data` isn't documented, so they're encoded
  * into the URL's query string directly instead, sidestepping the question.
  */
+/**
+ * Query-string builder matching axios's `params` semantics for the flat cases this app uses:
+ * null/undefined entries are OMITTED (URLSearchParams would literally send "undefined"), and
+ * everything else is stringified. Keeps connected-mode requests encoding params identically to
+ * dev mode, so a param added later can't silently differ between the two transports.
+ */
+function toQueryString(params?: Record<string, unknown>): string {
+  if (!params) return '';
+  const sp = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v === null || v === undefined) continue;
+    sp.set(k, String(v));
+  }
+  const s = sp.toString();
+  return s ? `?${s}` : '';
+}
+
+/** `invokeFacilioAPI` returns a JSON STRING — parse with a diagnosable error instead of a bare SyntaxError when the body is empty/HTML (e.g. an edge error page). */
+function parseSdkJson(raw: unknown, path: string): any {
+  if (typeof raw !== 'string') return raw;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    throw new Error(`facilio-api: non-JSON response from ${path} (${raw.length} chars: ${raw.slice(0, 80)})`);
+  }
+}
+
 export async function customGet(path: string, params?: Record<string, unknown>, opts?: { devAbsoluteUrl?: string }): Promise<any> {
   if (isConnectedApp) {
     const app = await facilioAppReady();
-    const query = params && Object.keys(params).length ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : '';
-    const raw = await app.request.invokeFacilioAPI(`${path}${query}`, { method: 'GET' });
-    return typeof raw === 'string' ? JSON.parse(raw) : raw;
+    const raw = await app.request.invokeFacilioAPI(`${path}${toQueryString(params)}`, { method: 'GET' });
+    return parseSdkJson(raw, path);
   }
   const res = await devInstance!.get(opts?.devAbsoluteUrl ?? path, { params });
   return res.data;
@@ -361,9 +387,8 @@ export async function customPost(
 ): Promise<any> {
   if (isConnectedApp) {
     const app = await facilioAppReady();
-    const query = params && Object.keys(params).length ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : '';
-    const raw = await app.request.invokeFacilioAPI(`${path}${query}`, { method: 'POST', data: body });
-    return typeof raw === 'string' ? JSON.parse(raw) : raw;
+    const raw = await app.request.invokeFacilioAPI(`${path}${toQueryString(params)}`, { method: 'POST', data: body });
+    return parseSdkJson(raw, path);
   }
   const res = await devInstance!.post(opts?.devAbsoluteUrl ?? path, body, { params });
   return res.data;

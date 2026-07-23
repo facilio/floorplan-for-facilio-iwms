@@ -103,10 +103,21 @@ interface PersistedShape {
   bookings: Booking[];
 }
 
+/** Per-session monotonic suffix so two bookings minted in the same millisecond can't share an id. */
+let bookingSeq = 0;
+
 function loadPersisted(): PersistedShape | null {
   try {
     const raw = localStorage.getItem(LS_KEY);
-    return raw ? (JSON.parse(raw) as PersistedShape) : null;
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PersistedShape;
+    // Shape-check, not just parse-check: a corrupt-but-valid-JSON store (e.g. units not an array)
+    // would otherwise throw TypeError deep inside every getUnits/getBookings .filter and, in
+    // local-only mode with no fallback tier, load the floor empty forever. Bad store -> reseed.
+    if (!Array.isArray(parsed?.units) || !Array.isArray(parsed?.bookings) || typeof parsed?.assignments !== 'object' || parsed.assignments === null) {
+      return null;
+    }
+    return parsed;
   } catch {
     return null;
   }
@@ -116,8 +127,12 @@ function savePersisted(next: Partial<PersistedShape>) {
   try {
     const cur = loadPersisted() || { units: SEED_UNITS, assignments: SEED_ASSIGNMENTS, bookings: [] };
     localStorage.setItem(LS_KEY, JSON.stringify({ ...cur, ...next }));
-  } catch {
-    /* ignore quota/serialization errors */
+  } catch (err) {
+    // Don't fail the caller (the in-memory state is still correct for this session), but a silent
+    // swallow here meant quota-full sessions showed "booked"/"saved" toasts for data that never
+    // persisted — at least leave a trace.
+    // eslint-disable-next-line no-console
+    console.warn('[dataSource] localStorage persist failed — session edits will not survive reload', err);
   }
 }
 
@@ -200,13 +215,16 @@ export class LocalJsonDataSource implements FloorplanDataSource {
     const bookings = saved?.bookings ?? SEED_BOOKINGS.map((b) => ({ ...b, date }));
     const units = await this.getUnits(floorId);
     const ids = new Set(units.map((u) => u.id));
-    return bookings.filter((b) => ids.has(b.unitId) && b.date === date);
+    // Scope by the booking's own floorId when it carries one (see Booking.floorId — bookings
+    // against real backend units aren't resolvable through the local seed); legacy rows without
+    // it keep the old seed-membership filter.
+    return bookings.filter((b) => (b.floorId ? b.floorId === floorId : ids.has(b.unitId)) && b.date === date);
   }
 
   async createBooking(input: Omit<Booking, 'id'>): Promise<Booking> {
     const saved = loadPersisted();
     const bookings = saved?.bookings ?? SEED_BOOKINGS.map((b) => ({ ...b, date: input.date }));
-    const booking: Booking = { ...input, id: 'b' + Date.now() };
+    const booking: Booking = { ...input, id: `b${Date.now()}-${++bookingSeq}` };
     savePersisted({ bookings: [...bookings, booking] });
     return booking;
   }
@@ -336,7 +354,10 @@ export class CompositeDataSource implements FloorplanDataSource {
   /** Fast path across tiers that implement it; callers fall back to the per-call path on throw. */
   async getFloorData(floorId: string, date: string, planId: string): Promise<FloorBundle> {
     let lastErr: unknown = new Error('no tier implements getFloorData');
-    for (const tier of this.tiers) {
+    // activeTiers (not this.tiers): only the local tier implements getFloorData today, so
+    // iterating all tiers would silently serve seed data even with local fallback disabled —
+    // bypassing the same precedence rule every other method honors.
+    for (const tier of this.activeTiers()) {
       if (!tier.getFloorData) continue;
       try {
         return await tier.getFloorData(floorId, date, planId);

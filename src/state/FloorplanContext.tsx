@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useReducer, useRef } fro
 import type { Dispatch, MutableRefObject, ReactNode } from 'react';
 import { dataSource, clearLocalData, setAllowLocalFallback as dataSourceSetAllowLocalFallback } from '../lib/dataSource';
 import type { CreateSpaceLoc } from '../lib/dataSource';
-import { CONTACTS as MOCK_CONTACTS, seedBookings, seedUnits, seedAssignments } from '../lib/mockData';
+import { seedBookings, seedUnits, seedAssignments } from '../lib/mockData';
 import { floorImageKey, resolveMarkerDef, TYPE_META } from '../lib/types';
 import type { AmenityIcon, Assignments, Booking, ClientContact, MarkerDef, PlanId, Role, Site, Unit, UnitType } from '../lib/types';
 import type { CadGroup } from '../lib/cadAnalyze';
@@ -510,7 +510,14 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       const geoId = await findUnitIdForDeskRecord(md.floorId, md.recordId).catch(() => null);
       const u = geoId ? units.find((x) => x.id === geoId) : null;
       if (u) {
-        if (u.plan !== state.planId) dispatch({ type: 'SET_PLAN', planId: u.plan });
+        if (u.plan !== state.planId) {
+          dispatch({ type: 'SET_PLAN', planId: u.plan });
+          // Same as focusUnit: a bare SET_PLAN doesn't load the target plan's image — without
+          // this, landing on a not-yet-fetched plan blanks the canvas.
+          if (!state.floorImages[floorImageKey(md.floorId, u.plan)]) {
+            ensureFloorplanImage(dispatch, md.floorId, u.plan, state.allowLocalFallback);
+          }
+        }
         const view = focusUnitView(u, rectW, rectH, state.view.z, viewInsets(state));
         dispatch({ type: 'SET_VIEW', view, animate: true });
         dispatch({ type: 'MARK_USER_ZOOMED', value: true });
@@ -872,8 +879,10 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
             })
           );
       }
-      const contactName = MOCK_CONTACTS.find((c) => c.id === contactId)?.name ?? contactId;
-      const prevName = prevContactId ? MOCK_CONTACTS.find((c) => c.id === prevContactId)?.name : null;
+      // Resolve names from the LIVE contact directory, not the mock seed — real contacts have
+      // numeric ids the mock list can't know, which used to toast the raw id ("8830421 assigned").
+      const contactName = state.clientContacts.find((c) => c.id === contactId)?.name ?? contactId;
+      const prevName = prevContactId ? state.clientContacts.find((c) => c.id === prevContactId)?.name : null;
       showToast(`${contactName} assigned to ${target.label}` + (prevName ? ` — replaced ${prevName}` : ''));
     },
     vacate: async (unitId: string) => {
@@ -889,7 +898,7 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
           console.warn('[facilio-api] real vacate failed', err);
         });
       }
-      const prevName = prevContactId ? MOCK_CONTACTS.find((c) => c.id === prevContactId)?.name : null;
+      const prevName = prevContactId ? state.clientContacts.find((c) => c.id === prevContactId)?.name : null;
       if (target) showToast(`${target.label} vacated` + (prevName ? ` — ${prevName} unassigned` : ''));
     },
     setWebReassign: (id: string | null) => {
@@ -1001,6 +1010,7 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       const local: Booking = {
         id: 'b' + Date.now(),
         unitId: form.unitId,
+        floorId: state.floorId,
         date: form.date,
         start: form.start,
         end: form.end,
@@ -1070,6 +1080,7 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       const booking: Booking = {
         id: 'b' + Date.now(),
         unitId: input.unitId,
+        floorId: state.floorId,
         date: input.date,
         start: input.start,
         end: input.end,
@@ -1089,6 +1100,7 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       const booking: Booking = {
         id: 'b' + Date.now(),
         unitId,
+        floorId: state.floorId,
         date: state.date,
         start: state.start,
         end: state.end,

@@ -28,7 +28,10 @@ interface MobileAppProps {
 export function MobileApp({ mode, onClose }: MobileAppProps) {
   const { state, actions } = useFloorplan();
   const meta = floorMeta(state, state.floorId);
-  const hasPlan = !!meta?.floor.hasPlan;
+  // Same rule as PortfolioTree: the static floor flag OR a plan discovered at runtime (real fetch
+  // / this-session upload). The flag alone hid real floors behind "No floorplan" on mobile while
+  // the web canvas rendered them fine. A loaded image for the active plan also counts.
+  const hasPlan = !!meta?.floor.hasPlan || !!state.floorsWithPlans[state.floorId] || !!state.floorImages[floorImageKey(state.floorId, state.planId)];
   const myUnit = myAssignedUnit(state);
   const [qrOpen, setQrOpen] = useState(false);
   const [spacesOpen, setSpacesOpen] = useState(false);

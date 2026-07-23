@@ -227,7 +227,9 @@ export function Canvas() {
       const a = toNorm(Math.min(m.x1, m.x2) + r.left, Math.min(m.y1, m.y2) + r.top, r, state.view);
       const b = toNorm(Math.max(m.x1, m.x2) + r.left, Math.max(m.y1, m.y2) + r.top, r, state.view);
       const hits = state.units
-        .filter((u) => (u.type === 'room' && u.geom.kind === 'poly') || (u.type !== 'room' && u.plan === state.planId))
+        // Mirror the render filter below (amenities show on every plan; unplaced never drawn) —
+        // the marquee must be able to catch exactly what's visible, nothing more.
+        .filter((u) => (u.type === 'room' && u.geom.kind === 'poly') || (u.type !== 'room' && !u.unplaced && (u.type === 'amenity' || u.plan === state.planId)))
         .filter((u) => {
           const { cx, cy } = unitCenter(u);
           return cx >= a.x && cx <= b.x && cy >= a.y && cy <= b.y;

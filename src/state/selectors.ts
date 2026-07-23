@@ -12,7 +12,10 @@ export function contactById(state: AppState, id: string | null | undefined): Cli
 }
 
 export function contactName(state: AppState, id: string | null | undefined): string {
-  return contactById(state, id)?.name ?? '';
+  // Unknown id (assignee outside the loaded contact directory): label it rather than returning ''
+  // — a blank name renders as "Assigned · " / an empty avatar row in the panels.
+  if (!id) return '';
+  return contactById(state, id)?.name ?? `Contact #${id}`;
 }
 
 export function initials(name: string): string {

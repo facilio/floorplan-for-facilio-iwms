@@ -155,6 +155,13 @@ export interface ClientContact {
 export interface Booking {
   id: string;
   unitId: string;
+  /**
+   * Floor the booked unit lives on — stamped at creation. The local tier scopes getBookings by
+   * this: it used to filter by seed-unit membership instead, which silently DROPPED any booking
+   * whose unitId is a real backend record id (not in the seed) on the next reload. Optional so
+   * older stored rows stay valid — those fall back to the seed-membership filter.
+   */
+  floorId?: string;
   date: string;
   /** Minutes from midnight. */
   start: number;
