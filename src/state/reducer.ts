@@ -318,7 +318,10 @@ export function reducer(state: AppState, action: Action): AppState {
       };
     case 'SELECT_FLOOR_DONE':
       if (action.floorId !== state.floorId) return state;
-      return { ...state, units: action.units, savedUnits: action.units, unsavedChanges: 0, assignments: action.assignments, bookings: action.bookings, loading: false };
+      // Reset the edit-mode "Available to place" pool too: it only ever holds records un-placed
+      // during THIS floor's edit session, so carrying it across a floor switch would leak the old
+      // floor's records into the new floor's list (and let them be placed onto the wrong floor).
+      return { ...state, units: action.units, savedUnits: action.units, unplacedUnits: [], unsavedChanges: 0, assignments: action.assignments, bookings: action.bookings, loading: false };
     case 'SET_PLAN':
       return { ...state, planId: action.planId, ...resetSelectionState(state) };
     case 'SET_STAGE_SIZE':
