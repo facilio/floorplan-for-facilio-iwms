@@ -565,6 +565,13 @@ interface RealSpaceRef {
   recordId: number;
   /** The floor's site id — sent on `moves` records to match the real web app's payload shape. */
   siteId?: number;
+  /**
+   * Rooms only — their real "space" module's numeric id, read directly off the zone entry
+   * (`markedZones[].zoneModuleId`) rather than resolved via `moduleIdFor`: the two real zones
+   * captured had DIFFERENT `zoneModuleId` values, so unlike desks/lockers/parking there's no
+   * single fixed module name to resolve generically (likely varies by room category).
+   */
+  parentModuleId?: number;
 }
 
 /**
@@ -585,6 +592,7 @@ const realSpaceRecordCache = new Map<string, RealSpaceRef>();
  * an assignment always produces its Move/desk record instead of silently skipping.
  */
 async function ensureRealSpaceRecord(unit: Unit): Promise<RealSpaceRef | null> {
+  if (unit.type === 'room') return ensureRealZoneRecord(unit);
   const moduleName = REAL_SPACE_MODULE[unit.type];
   if (!moduleName) return null;
   const cached = realSpaceRecordCache.get(unit.id);
@@ -650,6 +658,34 @@ async function ensureRealSpaceRecord(unit: Unit): Promise<RealSpaceRef | null> {
     await facilioApi.updateRecord('indoorfloorplan', { id: summary.id, data: { ...latest, markers: latestMarkers } }).catch(() => {});
   }
   const ref = { recordId, siteId };
+  realSpaceRecordCache.set(unit.id, ref);
+  return ref;
+}
+
+/**
+ * A room's backing "space" record, read-only — mirrors `saveFloorplanMarkers`' `markedZones`
+ * sync: only a room that already has a matching real zone entry (by `geoId`, from some prior
+ * real save/import) resolves. A brand-new room has no confirmed creation payload yet (same
+ * reasoning as `saveFloorplanMarkers`), so this returns null rather than guessing at one.
+ */
+async function ensureRealZoneRecord(unit: Unit): Promise<RealSpaceRef | null> {
+  const cached = realSpaceRecordCache.get(unit.id);
+  if (cached) return cached;
+
+  const byType = await getFloorplanDetailsByType(unit.floor).catch(() => ({}) as Record<string, any>);
+  const summary = byType[String(FLOOR_PLAN_TYPE[unit.plan])];
+  if (!summary?.id) return null;
+
+  const record = await fetchIndoorFloorPlanRecord(summary.id);
+  if (!record) return null;
+  const zones: any[] = record.markedZones ?? [];
+  const zone = zones.find((z) => z.geoId === unit.id);
+  if (!zone?.recordId) return null;
+
+  const floorRes = await facilioApi.fetchRecord<any>('floor', { id: unit.floor });
+  const siteId = floorRes.error || !floorRes.floor ? undefined : Number(lookupId(floorRes.floor, 'site')) || undefined;
+
+  const ref: RealSpaceRef = { recordId: zone.recordId, siteId, parentModuleId: zone.zoneModuleId };
   realSpaceRecordCache.set(unit.id, ref);
   return ref;
 }
@@ -926,8 +962,15 @@ function epochAt(dateISO: string, minutes: number): number {
   return new Date(y, m - 1, d, Math.floor(minutes / 60), minutes % 60, 0, 0).getTime();
 }
 
-/** Which spacebooking lookup field carries the booked resource, per real module. */
+/**
+ * Which spacebooking lookup field carries the booked resource, per real module. Rooms aren't in
+ * `REAL_SPACE_MODULE` (see `ensureRealZoneRecord`), so they're handled separately in
+ * `createRealBooking` — `'space'`, matching the field name the real org's own zone entries use
+ * for the same backing record (`markedZones[].space`); not independently confirmed for
+ * spacebooking's create payload specifically.
+ */
 const SPACEBOOKING_LOOKUP: Record<string, string> = { desks: 'desk', parkingstall: 'parkingStall' };
+const ROOM_SPACEBOOKING_LOOKUP = 'space';
 
 export interface RealBookingResult {
   ok: boolean;
@@ -939,11 +982,12 @@ export interface RealBookingResult {
  * Creates a booking in the real Facilio backend for a placed unit, routed by the org's booking
  * module setting:
  *
- * - `space`  -> `spacebooking` (confirmed live): `{[desk|parkingStall]:{id}, parentModuleId,
- *   bookingStartTime, bookingEndTime, reservedBy/host/internalAttendees, noOfAttendees, name}`.
- *   The unit must resolve to a real desks/parkingstall record (via `ensureRealSpaceRecord`, i.e.
- *   a real geo-referenced floor with a synced marker) — on mock/unmapped floors this returns
- *   `{ok:false}` and the caller keeps only the local booking.
+ * - `space`  -> `spacebooking` (confirmed live for desks/parking): `{[desk|parkingStall|space]:{id},
+ *   parentModuleId, bookingStartTime, bookingEndTime, reservedBy/host/internalAttendees,
+ *   noOfAttendees, name}`. The unit must resolve to a real desks/parkingstall record (via
+ *   `ensureRealSpaceRecord`) or, for rooms, an existing real zone entry (via
+ *   `ensureRealZoneRecord` — read-only, no creation for a brand-new room) — on mock/unmapped
+ *   floors this returns `{ok:false}` and the caller keeps only the local booking.
  * - `facility` -> `facilitybooking`. Facility bookings are SLOT-based (a `facility` record with
  *   generated slots), which this app doesn't yet provision, so this is a marked TODO that returns
  *   `{ok:false, reason}` for now rather than posting an invalid record.
@@ -1135,14 +1179,15 @@ export async function createRealBooking(unit: Unit, dateISO: string, start: numb
     return { ok: false, reason: 'facility booking requires slot provisioning (not yet wired)' };
   }
 
-  const lookupField = SPACEBOOKING_LOOKUP[REAL_SPACE_MODULE[unit.type] ?? ''];
+  const lookupField = unit.type === 'room' ? ROOM_SPACEBOOKING_LOOKUP : SPACEBOOKING_LOOKUP[REAL_SPACE_MODULE[unit.type] ?? ''];
   if (!lookupField) return { ok: false, reason: `no spacebooking mapping for ${unit.type}` };
 
   const ref = await ensureRealSpaceRecord(unit);
   if (!ref) return { ok: false, reason: 'no real backend record for this unit' };
 
-  const moduleName = REAL_SPACE_MODULE[unit.type]!;
-  const parentModuleId = await moduleIdFor(moduleName, ref.recordId);
+  // Rooms carry their own parentModuleId (the zone's zoneModuleId — see ensureRealZoneRecord);
+  // desks/lockers/parking resolve it generically via their fixed module name.
+  const parentModuleId = ref.parentModuleId ?? (await moduleIdFor(REAL_SPACE_MODULE[unit.type]!, ref.recordId));
   if (!parentModuleId) return { ok: false, reason: 'could not resolve parentModuleId' };
 
   const reservedBy = Number(input.reservedBy);
