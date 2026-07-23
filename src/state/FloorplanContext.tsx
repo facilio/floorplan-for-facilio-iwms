@@ -73,11 +73,19 @@ function viewInsets(state: AppState) {
  * housekeeping callers (discard/reset re-persist) already attach their own silent catch.
  */
 async function persistUnits(floorId: string, planId: PlanId, units: Unit[]): Promise<void> {
-  const local = dataSource.saveUnits(floorId, units);
   if (!isFacilioApiConfigured) {
-    await local;
+    await dataSource.saveUnits(floorId, units);
     return;
   }
+  // Real backend configured: the indoorfloorplan sync below is the AUTHORITATIVE save — the
+  // local mirror is only a read cache, and one that legitimately rejects whenever Settings >
+  // local fallback is off (no tier implements saveUnits then). Its failure must not fail the
+  // save: that combination made every "Save changes" report "Could not save changes" and keep
+  // the unsaved bar up even though the real sync had actually landed in the org.
+  const local = dataSource.saveUnits(floorId, units).catch((err) => {
+    // eslint-disable-next-line no-console
+    console.warn('[persistUnits] local mirror save failed (real sync is authoritative)', err);
+  });
   await Promise.all([local, saveFloorplanMarkers(floorId, planId, units)]);
 }
 
@@ -225,10 +233,16 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
    * lets a failure become an uncaught rejection: e.g. local fallback disabled (Settings › Local
    * data) + the real tier not wired for units (it never is — see FacilioApiDataSource.saveUnits)
    * would otherwise throw out of whatever onClick handler triggered it.
+   *
+   * With a real backend configured, this local write is only a read cache (the explicit "Save
+   * changes" real sync is the authoritative save — see persistUnits), and it ALWAYS rejects when
+   * local fallback is off — so no error toast there, or every single drag/place would flash
+   * "Couldn't save your changes" despite the save flow working fine. Pure local mode keeps the
+   * toast: there, this IS the only persistence.
    */
   function saveUnitsBestEffort(floorId: string, units: Unit[]) {
     dataSource.saveUnits(floorId, units).catch((err) => {
-      showToast("Couldn't save your changes");
+      if (!isFacilioApiConfigured) showToast("Couldn't save your changes");
       // eslint-disable-next-line no-console
       console.warn('[saveUnits] failed', err);
     });
