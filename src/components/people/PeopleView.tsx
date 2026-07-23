@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
 import { initials } from '../../state/selectors';
-import { facilioRecordUrl } from '../../lib/facilioApi';
+import { openRecordSummary } from '../../lib/facilioApi';
 import styles from './PeopleView.module.css';
 
 /** Simple directory of client contacts. Assigned desks are derived from `state.assignments`. */
@@ -39,7 +39,7 @@ export function PeopleView() {
         ) : (
           <div className={styles.list}>
             {people.map((c) => {
-              const real = /^\d+$/.test(c.id) ? facilioRecordUrl('clientcontact', c.id) : null;
+              const canOpen = /^\d+$/.test(c.id);
               const desk = deskByContact[c.id];
               return (
                 <div key={c.id} className={styles.row}>
@@ -49,13 +49,18 @@ export function PeopleView() {
                     {c.client && <span className={styles.dept}>{c.client}</span>}
                   </div>
                   {desk && <span className={styles.deskPill}>{desk}</span>}
-                  {real && (
-                    <a className={styles.openLink} href={real} target="_blank" rel="noreferrer" title="Open record in Facilio">
+                  {canOpen && (
+                    <button
+                      type="button"
+                      className={styles.openLink}
+                      onClick={() => openRecordSummary('clientcontact', c.id, { newTab: true })}
+                      title="Open record in Facilio"
+                    >
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
                         <path d="M15 3h6v6M10 14L21 3" />
                       </svg>
-                    </a>
+                    </button>
                   )}
                 </div>
               );

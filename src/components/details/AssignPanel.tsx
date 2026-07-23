@@ -3,7 +3,7 @@ import type { DragEvent as ReactDragEvent } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
 import { contactName, initials, isAssignable, unitById } from '../../state/selectors';
 import { TYPE_META } from '../../lib/types';
-import { facilioRecordUrl } from '../../lib/facilioApi';
+import { openRecordSummary } from '../../lib/facilioApi';
 import { Select } from '../primitives/Select';
 import { Button } from '../primitives/Button';
 import { SkeletonRows } from '../primitives/Skeleton';
@@ -107,8 +107,8 @@ export function AssignPanel() {
           {contacts.map((contact) => {
             const held = unitsHeldBy(contact.id);
             // Mock demo ids look like "c1".."c14" and have no real record to open — only
-            // real (numeric) client-contact ids from the real backend get a working summary-page link.
-            const recordUrl = /^\d+$/.test(contact.id) ? facilioRecordUrl('clientcontact', contact.id) : null;
+            // real (numeric) client-contact ids from the real backend can open a summary page.
+            const canOpen = /^\d+$/.test(contact.id);
             return (
               <div
                 key={contact.id}
@@ -116,9 +116,9 @@ export function AssignPanel() {
                 draggable
                 onDragStart={(e) => onDragStart(e, contact.id, contact.name)}
                 onDragEnd={onDragEnd}
-                onClick={() => recordUrl && window.open(recordUrl, '_blank', 'noopener,noreferrer')}
-                style={{ opacity: dragId === contact.id ? 0.45 : 1, cursor: recordUrl ? 'pointer' : 'grab' }}
-                title={recordUrl ? 'Open client contact record' : undefined}
+                onClick={() => canOpen && openRecordSummary('clientcontact', contact.id, { newTab: true })}
+                style={{ opacity: dragId === contact.id ? 0.45 : 1, cursor: canOpen ? 'pointer' : 'grab' }}
+                title={canOpen ? 'Open client contact record' : undefined}
               >
                 <span className={styles.avatar}>{initials(contact.name)}</span>
                 <div className={styles.personText}>
@@ -126,7 +126,7 @@ export function AssignPanel() {
                   <div className={styles.personDept}>{contact.client}</div>
                 </div>
                 {held.length > 0 && <span className={styles.heldBadge}>{held.join(', ')}</span>}
-                {recordUrl && (
+                {canOpen && (
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={styles.openIcon}>
                     <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
                     <path d="M15 3h6v6M10 14L21 3" />

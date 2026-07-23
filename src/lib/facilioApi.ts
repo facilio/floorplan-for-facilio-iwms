@@ -38,10 +38,33 @@ export const apiOrigin: string | null = absoluteBaseURL ? new URL(absoluteBaseUR
  * Builds a link to a record's summary page in the real Facilio web app (e.g.
  * `https://pre-app-stage2.facilio.in/maintenance/goto/summary/clientcontact/123`), matching the
  * `RECORD URL` convention documented on the CMMS actions.
+ *
+ * Dev-mode use only (see `openRecordSummary`) — in connected-app mode `apiOrigin` isn't
+ * guaranteed to be the real org's domain at all: without an explicit
+ * `VITE_FACILIO_API_BASE_URL` override it falls back to `window.location.origin`, i.e. THIS
+ * app's own hosting domain, not Facilio. A link built from it would silently 404/misnavigate.
  */
 export function facilioRecordUrl(moduleName: string, id: string | number): string | null {
   if (!apiOrigin) return null;
   return `${apiOrigin}/maintenance/goto/summary/${moduleName}/${id}`;
+}
+
+/**
+ * Opens a real record's summary page. Connected-app mode never redirects to `apiOrigin`/
+ * `facilioRecordUrl` (see its caveat above) — it asks the SDK's `interface.openSummary` to
+ * navigate the PARENT Facilio app instead (confirmed via the SDK docs: `{module, id, newtab}`),
+ * which is correct regardless of what domain this app happens to be hosted on. Dev mode has no
+ * parent app to delegate to, so it falls back to `facilioRecordUrl` + a new tab — there, that
+ * domain genuinely is the org's own web app.
+ */
+export async function openRecordSummary(moduleName: string, id: string | number, opts?: { newTab?: boolean }): Promise<void> {
+  if (isConnectedApp) {
+    const app = await facilioAppReady();
+    app.interface.openSummary({ module: moduleName, id: Number(id), ...(opts?.newTab ? { newtab: true } : {}) });
+    return;
+  }
+  const url = facilioRecordUrl(moduleName, id);
+  if (url) window.open(url, '_blank', 'noopener,noreferrer');
 }
 
 // ---------------------------------------------------------------------------
