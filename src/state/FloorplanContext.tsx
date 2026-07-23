@@ -67,21 +67,18 @@ function viewInsets(state: AppState) {
  * AWAITS the real sync too (concurrently with the local save, not sequentially) — it used to fire
  * this in the background and resolve as soon as the (near-instant) local save finished, so the
  * "Save changes" button's spinner disappeared and "Changes saved" showed well before the actual,
- * slower real-backend round trip was done. A real-sync failure now also surfaces its own toast
- * (previously just a console.warn) instead of silently reporting success.
+ * slower real-backend round trip was done. A real-sync failure REJECTS (it used to be swallowed
+ * with a console.warn while the UI reported "saved") — explicit-save callers catch it, show the
+ * error, and skip MARK_SAVED so the unsaved-changes bar honestly stays; the background
+ * housekeeping callers (discard/reset re-persist) already attach their own silent catch.
  */
-async function persistUnits(dispatch: Dispatch<Action>, floorId: string, planId: PlanId, units: Unit[]): Promise<void> {
+async function persistUnits(floorId: string, planId: PlanId, units: Unit[]): Promise<void> {
   const local = dataSource.saveUnits(floorId, units);
   if (!isFacilioApiConfigured) {
     await local;
     return;
   }
-  const real = saveFloorplanMarkers(floorId, planId, units).catch((err) => {
-    showToastVia(dispatch, "Saved, but some changes may not be visible to other users yet");
-    // eslint-disable-next-line no-console
-    console.warn('[facilio-api] marker sync failed', err);
-  });
-  await Promise.all([local, real]);
+  await Promise.all([local, saveFloorplanMarkers(floorId, planId, units)]);
 }
 
 /**
@@ -331,13 +328,19 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       // saving must complete before the switch, unlike discard, which is instant.
       dispatch({ type: 'SET_SAVING', value: true });
       try {
-        await persistUnits(dispatch, state.floorId, state.planId, state.units);
+        await persistUnits(state.floorId, state.planId, state.units);
         dispatch({ type: 'MARK_SAVED' });
-      } catch {
-        showToast('Could not save changes');
-      } finally {
+      } catch (err) {
+        // Save failed — DON'T switch modes as if it worked; the modal stays open (pending switch
+        // kept) so the user can retry Save or explicitly Discard instead.
+        const reason = (err as Error).message;
+        showToast(reason ? `Could not save changes: ${reason}` : 'Could not save changes');
+        // eslint-disable-next-line no-console
+        console.warn('[confirmSaveAndSwitch] failed', err);
         dispatch({ type: 'SET_SAVING', value: false });
+        return;
       }
+      dispatch({ type: 'SET_SAVING', value: false });
       dispatch({ type: 'SET_MODE', mode: target });
       if (target === 'assign' || target === 'book') dispatch({ type: 'SET_PANEL_OPEN', id: 'details', open: true });
       dispatch({ type: 'SET_PENDING_MODE_SWITCH', mode: null });
@@ -354,7 +357,7 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       dispatch({ type: 'SET_PENDING_MODE_SWITCH', mode: null });
       // Auto-save already pushed the now-discarded edits per action — re-persist the reverted
       // snapshot in the background so the store matches what's shown.
-      void persistUnits(dispatch, state.floorId, state.planId, state.savedUnits).catch(() => {});
+      void persistUnits(state.floorId, state.planId, state.savedUnits).catch(() => {});
     },
     /**
      * In-place discard (the ✕ on the unsaved-changes bar): revert to the last-saved snapshot and
@@ -364,7 +367,7 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       dispatch({ type: 'DISCARD_CHANGES' });
       showToast('Changes discarded');
       // Background housekeeping, same as confirmDiscardAndSwitch.
-      void persistUnits(dispatch, state.floorId, state.planId, state.savedUnits).catch(() => {});
+      void persistUnits(state.floorId, state.planId, state.savedUnits).catch(() => {});
     },
     setTool: (tool: AppState['tool']) => dispatch({ type: 'SET_TOOL', tool }),
     /** Arm the amenity tool with a marker-library entry (built-in or custom). */
@@ -1158,7 +1161,7 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       const assignments = seedAssignments();
       const bookings = seedBookings(state.date);
       dispatch({ type: 'RESET_DEMO', units, assignments, bookings });
-      void persistUnits(dispatch, state.floorId, state.planId, units).catch(() => {});
+      void persistUnits(state.floorId, state.planId, units).catch(() => {});
       showToast('Demo data reset');
     },
 
@@ -1170,11 +1173,15 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
     saveChanges: async () => {
       dispatch({ type: 'SET_SAVING', value: true });
       try {
-        await persistUnits(dispatch, state.floorId, state.planId, state.units);
+        await persistUnits(state.floorId, state.planId, state.units);
         dispatch({ type: 'MARK_SAVED' });
         showToast('Changes saved');
       } catch (err) {
-        showToast('Could not save changes');
+        // No MARK_SAVED — the unsaved-changes bar honestly stays until a save actually lands.
+        const reason = (err as Error).message;
+        showToast(reason ? `Could not save changes: ${reason}` : 'Could not save changes');
+        // eslint-disable-next-line no-console
+        console.warn('[saveChanges] failed', err);
       } finally {
         dispatch({ type: 'SET_SAVING', value: false });
       }

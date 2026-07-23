@@ -454,10 +454,9 @@ export async function saveFloorplanMarkers(floorId: string, planId: PlanId, unit
   const summary = byType[String(targetType)];
   if (!summary?.id) return;
 
-  await syncMarkersForIndoorFloorPlan(summary.id, syncable).catch((err) => {
-    // eslint-disable-next-line no-console
-    console.warn(`[facilio-api] marker sync failed for plan ${planId}`, err);
-  });
+  // Deliberately NOT caught here — a failed sync must reject so persistUnits' failure toast can
+  // actually fire; swallowing it here (as this used to) meant the UI always reported "saved".
+  await syncMarkersForIndoorFloorPlan(summary.id, syncable);
 }
 
 /**
@@ -504,7 +503,13 @@ async function markerTypeIdByName(name: string): Promise<number | null> {
         }
         return map;
       })
-      .catch(() => new Map<string, number>());
+      .catch(() => {
+        // Transient failure — clear so the next save retries, instead of pinning an empty map
+        // (= markerType never attached again) for the whole session. Same pattern as
+        // modulesListCache.
+        markerTypeIdByNameCache = null;
+        return new Map<string, number>();
+      });
   }
   const map = await markerTypeIdByNameCache;
   return map.get(name.toLowerCase()) ?? null;
@@ -512,7 +517,12 @@ async function markerTypeIdByName(name: string): Promise<number | null> {
 
 async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: Unit[]): Promise<void> {
   const record = await fetchIndoorFloorPlanRecord(indoorFloorPlanId);
-  if (!record) return;
+  // The caller only reaches here for a plan record that's known to exist (getFloorplanDetailsByType
+  // returned it) — a null fetch is a real failure, not a "nothing to sync" case, so throw for the
+  // save toast rather than silently reporting saved.
+  if (!record) throw new Error(`indoorfloorplan ${indoorFloorPlanId} fetch failed`);
+  // No geo-reference (plan uploaded before synthetic geometry existed): a documented, intentional
+  // skip — there's no sane lng/lat conversion, and guessing would silently misplace markers.
   const quad = geometryStringToQuad(record.geometry);
   if (!quad) return;
 
@@ -634,8 +644,8 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
   // wiping those other fields rather than merging.
   const res = await facilioApi.updateRecord('indoorfloorplan', { id: indoorFloorPlanId, data: { ...record, markers: nextMarkers, markedZones: nextZones } });
   if (res.error) {
-    // eslint-disable-next-line no-console
-    console.warn(`[facilio-api] marker sync failed for plan ${indoorFloorPlanId}`, res.error);
+    // Throw (not just warn) — the save UI must be able to report this instead of "saved".
+    throw new Error(res.error.message || `indoorfloorplan ${indoorFloorPlanId} update failed (code ${res.error.code ?? '?'})`);
   }
 }
 
@@ -883,21 +893,43 @@ export interface ModuleSummary {
 
 let modulesListCache: Promise<ModuleSummary[]> | null = null;
 
+/** One raw module object -> ModuleSummary, tolerant of id/name living under either field name. */
+function toModuleSummary(m: any): ModuleSummary {
+  return { id: Number(m?.id ?? m?.moduleId), name: m?.name ?? m?.moduleName ?? '', displayName: m?.displayName ?? m?.name ?? m?.moduleName ?? '' };
+}
+
 /**
  * All modules in the org (`v3/modules/list/all?skipPermission=true` — confirmed live) — the
- * "Select Module" dropdown when creating a custom marker type (recordModuleId). Response shape
- * not independently confirmed, so several reasonable list locations are tried. Cached for the
- * session (module list doesn't change during a session).
+ * "Select Module" dropdown when creating a custom marker type (recordModuleId). The response
+ * carries TWO separate lists — system modules and custom modules (per the user's description of
+ * the real payload; exact key names not captured, so common spellings of each are tried) — which
+ * are combined into one list here, de-duped by module id, system first. Falls back to the older
+ * single-list guesses when neither split list is present. Cached for the session (module list
+ * doesn't change during a session).
  */
 export function getAllModules(): Promise<ModuleSummary[]> {
   if (!isFacilioApiConfigured) return Promise.resolve([]);
   if (!modulesListCache) {
     modulesListCache = customGet('v3/modules/list/all', { skipPermission: true })
       .then((body: any) => {
-        const list = body?.data ?? body?.result?.modules ?? body?.result ?? body?.modules ?? [];
-        return (Array.isArray(list) ? list : [])
-          .map((m: any) => ({ id: Number(m.id ?? m.moduleId), name: m.name ?? m.moduleName ?? '', displayName: m.displayName ?? m.name ?? m.moduleName ?? '' }))
-          .filter((m: ModuleSummary) => Number.isFinite(m.id) && m.name);
+        const root = body?.data ?? body?.result ?? body ?? {};
+        const asArray = (v: unknown) => (Array.isArray(v) ? v : []);
+        const system = asArray(root.systemModules ?? root.system ?? root.defaultModules);
+        const custom = asArray(root.customModules ?? root.custom);
+        let combined = [...system, ...custom];
+        if (combined.length === 0) {
+          // Older single-list fallbacks, kept in case some org/version returns a flat list.
+          const flat = root.modules ?? body?.data ?? body?.result?.modules ?? body?.result ?? body?.modules ?? [];
+          combined = asArray(flat);
+        }
+        const seen = new Set<number>();
+        return combined
+          .map(toModuleSummary)
+          .filter((m: ModuleSummary) => {
+            if (!Number.isFinite(m.id) || !m.name || seen.has(m.id)) return false;
+            seen.add(m.id);
+            return true;
+          });
       })
       .catch((err: unknown) => {
         // eslint-disable-next-line no-console
