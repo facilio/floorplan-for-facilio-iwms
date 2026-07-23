@@ -181,6 +181,37 @@ function BookingFormInner() {
       start = slotStart;
       end = slotStart + slotLen;
     }
+    // Known/built-in fields are rendered with a required indicator (the real org form's own
+    // `required` flag when one's loaded, else the hardcoded fallback layout's required set) but
+    // were never actually validated before submit — only the generic org-form extras were.
+    const usingOrgForm = !!formMeta && formMeta.fields.length > 0;
+    const isRequired = (fieldName: string, fallbackRequired: boolean): boolean =>
+      usingOrgForm ? !!formMeta!.fields.find((f) => f.name === fieldName)?.required : fallbackRequired;
+    if (isRequired('name', !isFacility) && !name.trim()) {
+      actions.showToast('“Name” is required');
+      return;
+    }
+    if (isRequired('host', !isFacility) && !host) {
+      actions.showToast('“Host” is required');
+      return;
+    }
+    if (isRequired('reservedBy', true) && !reservedBy) {
+      actions.showToast(`“${reserverLabel}” is required`);
+      return;
+    }
+    if (isRequired('noOfAttendees', true) && !(Number(noOfAttendees) > 0)) {
+      actions.showToast('“Number Of Attendees” is required');
+      return;
+    }
+    if (isRequired('internalAttendees', false) && internalAttendees.length === 0) {
+      actions.showToast('“Internal Attendees” is required');
+      return;
+    }
+    if (isRequired('externalAttendees', false) && externalAttendees.length === 0) {
+      actions.showToast('“External Attendees” is required');
+      return;
+    }
+
     const { values: extraValues, missing } = collectExtras(formMeta);
     if (missing) {
       actions.showToast(`“${missing}” is required`);

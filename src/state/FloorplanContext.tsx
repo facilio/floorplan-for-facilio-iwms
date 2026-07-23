@@ -936,11 +936,13 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
         })
           .then((res) => {
             if (!res.ok) {
+              showToast(`Saved locally, but the real booking failed: ${res.reason ?? 'unknown error'}`);
               // eslint-disable-next-line no-console
               console.warn(`[facilio-api] real ${state.bookingModule} booking skipped/failed: ${res.reason}`);
             }
           })
           .catch((err) => {
+            showToast(`Saved locally, but the real booking failed: ${(err as Error).message ?? 'unknown error'}`);
             // eslint-disable-next-line no-console
             console.warn('[facilio-api] real booking error', err);
           });

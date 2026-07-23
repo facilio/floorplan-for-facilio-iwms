@@ -873,17 +873,18 @@ const bookingFormListCache = new Map<string, Promise<BookingFormSummary[]>>();
 const bookingFormDetailCache = new Map<string, Promise<BookingFormMeta | null>>();
 
 /**
- * All of the module's forms (`v2/forms?moduleName=`) — the modal's switcher when there's more
- * than one. Cached per module for the session; resolves [] when unconfigured or on API failure
- * so the modal can fall back to its built-in field list.
+ * All of the module's forms (`v2/{moduleName}/forms?moduleName=&skipPermission=true` — confirmed
+ * live) — the modal's switcher when there's more than one. Cached per module for the session;
+ * resolves [] when unconfigured or on API failure so the modal can fall back to its built-in
+ * field list.
  */
 export function fetchBookingFormList(module: 'space' | 'facility'): Promise<BookingFormSummary[]> {
   if (!isFacilioApiConfigured) return Promise.resolve([]);
   const moduleName = module === 'space' ? 'spacebooking' : 'facilitybooking';
   let pending = bookingFormListCache.get(moduleName);
   if (!pending) {
-    // v2/forms answers the plain {responseCode, result} envelope — customGet returns the body verbatim.
-    pending = customGet('v2/forms', { moduleName })
+    // v2/{moduleName}/forms answers the plain {responseCode, result} envelope — customGet returns the body verbatim.
+    pending = customGet(`v2/${moduleName}/forms`, { moduleName, skipPermission: true })
       .then((body: { result?: { forms?: BookingFormSummary[] } }) => (body?.result?.forms ?? []).filter((f) => !f.hideInList))
       .catch((err: unknown) => {
         // eslint-disable-next-line no-console
