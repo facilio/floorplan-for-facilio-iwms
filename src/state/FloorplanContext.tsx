@@ -174,6 +174,20 @@ function roomLabelAt(state: AppState, x: number, y: number): string | null {
 function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef: MutableRefObject<DOMRect | null>) {
   const showToast = (message: string) => showToastVia(dispatch, message);
 
+  /**
+   * Fire-and-forget per-action persistence — every edit action calls this and moves on. Never
+   * lets a failure become an uncaught rejection: e.g. local fallback disabled (Settings › Local
+   * data) + the real tier not wired for units (it never is — see FacilioApiDataSource.saveUnits)
+   * would otherwise throw out of whatever onClick handler triggered it.
+   */
+  function saveUnitsBestEffort(floorId: string, units: Unit[]) {
+    dataSource.saveUnits(floorId, units).catch((err) => {
+      showToast("Couldn't save your changes");
+      // eslint-disable-next-line no-console
+      console.warn('[saveUnits] failed', err);
+    });
+  }
+
   async function loadFloor(floorId: string): Promise<Unit[]> {
     dispatch({ type: 'SELECT_FLOOR_START', floorId });
     // Flag the image load NOW, not when loadFloorPlanTypesAndImage eventually starts — the
@@ -454,7 +468,7 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       if (existing) {
         const geom = { kind: 'point' as const, x, y };
         dispatch({ type: 'UPDATE_UNIT', id: existing.id, patch: { geom } });
-        dataSource.saveUnits(state.floorId, state.units.map((u) => (u.id === existing.id ? { ...u, geom } : u)));
+        saveUnitsBestEffort(state.floorId, state.units.map((u) => (u.id === existing.id ? { ...u, geom } : u)));
         showToast(`${asset.name} moved`);
         return;
       }
@@ -471,7 +485,7 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
         plan: state.planId,
       };
       dispatch({ type: 'ADD_UNIT', unit });
-      dataSource.saveUnits(state.floorId, [...state.units, unit]);
+      saveUnitsBestEffort(state.floorId, [...state.units, unit]);
       showToast(`${asset.name} placed`);
     },
     /** Library markers place directly (no which-record dialog) with the armed marker kind. */
@@ -494,7 +508,7 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
         plan: state.planId,
       };
       dispatch({ type: 'ADD_UNIT', unit });
-      dataSource.saveUnits(state.floorId, [...state.units, unit]);
+      saveUnitsBestEffort(state.floorId, [...state.units, unit]);
       showToast(`${unit.label} added`);
     },
     /**
@@ -508,7 +522,7 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       if (dragged.type !== target.type) return;
       dispatch({ type: 'REPLACE_UNIT_AT', unitId, targetId });
       const placedDragged: Unit = { ...dragged, geom: { ...target.geom }, room: target.room, floor: state.floorId };
-      dataSource.saveUnits(
+      saveUnitsBestEffort(
         state.floorId,
         state.units.filter((u) => u.id !== targetId && u.id !== unitId).concat(placedDragged),
       );
@@ -522,7 +536,7 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       const pooled = state.unplacedUnits.find((u) => u.id === unitId);
       if (pooled) {
         dispatch({ type: 'PLACE_EXISTING_UNIT', unitId, geom: { kind: 'point', x: spot.x, y: spot.y }, room });
-        dataSource.saveUnits(state.floorId, [...state.units, { ...pooled, geom: { kind: 'point', x: spot.x, y: spot.y }, room, floor: state.floorId }]);
+        saveUnitsBestEffort(state.floorId, [...state.units, { ...pooled, geom: { kind: 'point', x: spot.x, y: spot.y }, room, floor: state.floorId }]);
         showToast(`${pooled.label} placed`);
         return;
       }
@@ -531,7 +545,7 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       if (!placed || placed.geom.kind !== 'point') return;
       dispatch({ type: 'SET_PENDING_PLACEMENT', placement: null });
       dispatch({ type: 'UPDATE_UNIT', id: unitId, patch: { geom: { kind: 'point', x: spot.x, y: spot.y }, room } });
-      dataSource.saveUnits(state.floorId, state.units.map((u) => (u.id === unitId ? { ...u, geom: { kind: 'point', x: spot.x, y: spot.y }, room } : u)));
+      saveUnitsBestEffort(state.floorId, state.units.map((u) => (u.id === unitId ? { ...u, geom: { kind: 'point', x: spot.x, y: spot.y }, room } : u)));
       showToast(`${placed.label} moved`);
     },
     /**
@@ -566,7 +580,7 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       dispatch({ type: 'SET_PENDING_PLACEMENT', placement: null });
       const unit = await dataSource.createUnit(resolveSpaceLoc(state.portfolio, state.floorId), base).catch(() => base);
       dispatch({ type: 'ADD_UNIT', unit });
-      dataSource.saveUnits(state.floorId, [...state.units, unit]);
+      saveUnitsBestEffort(state.floorId, [...state.units, unit]);
       showToast(`${label} added`);
     },
     /**
@@ -578,14 +592,14 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       const pooled = state.unplacedUnits.find((u) => u.id === unitId);
       if (pooled) {
         dispatch({ type: 'PLACE_EXISTING_UNIT', unitId, geom: { kind: 'point', x, y }, room });
-        dataSource.saveUnits(state.floorId, [...state.units, { ...pooled, geom: { kind: 'point', x, y }, room, floor: state.floorId }]);
+        saveUnitsBestEffort(state.floorId, [...state.units, { ...pooled, geom: { kind: 'point', x, y }, room, floor: state.floorId }]);
         showToast(`${pooled.label} placed`);
         return;
       }
       const placed = state.units.find((u) => u.id === unitId);
       if (!placed || placed.geom.kind !== 'point') return;
       dispatch({ type: 'UPDATE_UNIT', id: unitId, patch: { geom: { kind: 'point', x, y }, room } });
-      dataSource.saveUnits(state.floorId, state.units.map((u) => (u.id === unitId ? { ...u, geom: { kind: 'point', x, y }, room } : u)));
+      saveUnitsBestEffort(state.floorId, state.units.map((u) => (u.id === unitId ? { ...u, geom: { kind: 'point', x, y }, room } : u)));
       showToast(`${placed.label} moved`);
     },
     pushDraftPoint: (pt: [number, number]) => dispatch({ type: 'PUSH_DRAFT_POINT', pt }),
@@ -605,7 +619,7 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       // persist its polygon locally. Falls back to the local record if the connector isn't there.
       const unit = await dataSource.createUnit(resolveSpaceLoc(state.portfolio, state.floorId), base).catch(() => base);
       dispatch({ type: 'CLOSE_DRAFT', unit });
-      dataSource.saveUnits(state.floorId, [...state.units, unit]);
+      saveUnitsBestEffort(state.floorId, [...state.units, unit]);
       showToast(`${label} created — rename it in the Selection panel`);
     },
     clearDraft: () => dispatch({ type: 'CLEAR_DRAFT' }),
@@ -692,7 +706,7 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       const totalMapped = created.length + placedFromPool.length;
       if (totalMapped > 0) {
         dispatch({ type: 'APPLY_AUTOMAP', created, placedFromPool });
-        dataSource.saveUnits(state.floorId, [...state.units, ...created, ...placedFromPool]);
+        saveUnitsBestEffort(state.floorId, [...state.units, ...created, ...placedFromPool]);
       }
       dispatch({ type: 'SET_AUTOMAP_GROUPS', groups: null });
       showToast(
@@ -713,25 +727,25 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       if (!(meters > 0) || state.calib.length !== 2) return;
       const ppm = calibratedPxPerMeter(state.calib[0], state.calib[1], meters);
       dispatch({ type: 'APPLY_CALIB', pxPerMeter: ppm });
-      dataSource.saveUnits(state.floorId, state.units); // units unaffected, but keep persistence consistent
+      saveUnitsBestEffort(state.floorId, state.units); // units unaffected, but keep persistence consistent
       showToast(`Scale set — ${ppm.toFixed(1)} px/m`);
     },
     clearCalib: () => dispatch({ type: 'CLEAR_CALIB' }),
 
     updateUnit: (id: string, patch: Partial<Unit>) => {
       dispatch({ type: 'UPDATE_UNIT', id, patch });
-      dataSource.saveUnits(state.floorId, state.units.map((u) => (u.id === id ? { ...u, ...patch } : u)));
+      saveUnitsBestEffort(state.floorId, state.units.map((u) => (u.id === id ? { ...u, ...patch } : u)));
     },
     /** Bulk patch — one dispatch + one persist, for group moves (marquee multi-select). */
     updateUnits: (updates: { id: string; patch: Partial<Unit> }[]) => {
       dispatch({ type: 'UPDATE_UNITS', updates });
       const patches = new Map(updates.map((u) => [u.id, u.patch]));
-      dataSource.saveUnits(state.floorId, state.units.map((u) => (patches.has(u.id) ? { ...u, ...patches.get(u.id)! } : u)));
+      saveUnitsBestEffort(state.floorId, state.units.map((u) => (patches.has(u.id) ? { ...u, ...patches.get(u.id)! } : u)));
     },
     deleteUnit: (id: string) => {
       const u = unitById(state, id);
       dispatch({ type: 'DELETE_UNIT', id });
-      dataSource.saveUnits(state.floorId, state.units.filter((x) => x.id !== id));
+      saveUnitsBestEffort(state.floorId, state.units.filter((x) => x.id !== id));
       if (u) showToast(`${u.label} deleted`);
     },
     /** Bulk delete (marquee multi-select) — one dispatch + one persist. */
@@ -739,7 +753,7 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       if (ids.length === 0) return;
       const set = new Set(ids);
       dispatch({ type: 'DELETE_UNITS', ids });
-      dataSource.saveUnits(state.floorId, state.units.filter((x) => !set.has(x.id)));
+      saveUnitsBestEffort(state.floorId, state.units.filter((x) => !set.has(x.id)));
       showToast(`${ids.length} unit${ids.length === 1 ? '' : 's'} deleted`);
     },
 
@@ -1082,7 +1096,7 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       const assignments = seedAssignments();
       const bookings = seedBookings(state.date);
       dispatch({ type: 'RESET_DEMO', units, assignments, bookings });
-      persistUnits(state.floorId, units);
+      void persistUnits(state.floorId, units).catch(() => {});
       showToast('Demo data reset');
     },
 
