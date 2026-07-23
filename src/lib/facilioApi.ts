@@ -342,14 +342,21 @@ export async function customGet(path: string, params?: Record<string, unknown>, 
   return res.data;
 }
 
+function base64ToBlob(base64: string): Blob {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes]);
+}
+
 /**
  * A stored file's bytes, for display. Dev mode returns the raw blob (as before — callers run it
  * through their own image/PDF/CAD rendering as needed): `opts.original` (needed for anything this
  * app re-renders itself, e.g. CAD/PDF floor plans) goes through `v2/files/download/{fileId}`
  * rather than `v2/files/preview/{fileId}?fetchOriginal=true` — a plain preview call, even with
- * that flag, isn't guaranteed to be the untouched original (this is what a DWG floor plan not
- * rendering traced back to). The plain (non-original) preview path is unaffected — that one
- * deliberately wants Facilio's server-rendered raster image, not the source file.
+ * that flag, isn't guaranteed to be the untouched original. The plain (non-original) preview path
+ * is unaffected — that one deliberately wants Facilio's server-rendered raster image, not the
+ * source file.
  *
  * Connected mode uses `common.toBase64({fileId})`, the endpoint the SDK docs confirm returns
  * image data. An earlier `invokeFacilioAPI('v2/files/preview/...')` attempt (SDK guidance: use it
@@ -360,13 +367,26 @@ export async function customGet(path: string, params?: Record<string, unknown>, 
  * also tried and confirmed, live, to 404 (connected apps aren't same-origin with the org's
  * backend). The SDK has no documented download-with-bytes primitive (`interface.triggerDownload`
  * saves straight to the user's device — no Blob/bytes this app can hand to its own CAD renderer),
- * so connected mode has no equivalent fix for `opts.original` yet.
+ * so `toBase64` is the only option there for `opts.original` too.
+ *
+ * A real bug this traced back to: for `opts.original`, THIS function used to hand back
+ * `toBase64`'s result as a ready-made `data:image/png;base64,...` `dataUrl` unconditionally — every
+ * caller then used that dataUrl as-is (see `blobToRenderableDataUrl`'s callers), never running it
+ * through the CAD/PDF content-sniffing that only kicks in for a `{blob, contentType}` result. A
+ * DWG/DXF/PDF floor plan's bytes, mislabeled as a PNG data URL, just renders as a broken image —
+ * exactly why a DWG plan showed right after upload (client-side render of the picked File) but
+ * not after a refresh (re-fetched by id through this path). Now `opts.original` always returns a
+ * real Blob here too, so callers' existing content-detection runs the same as dev mode — just
+ * sniffed from the bytes themselves (DWG/DXF/PDF magic headers) instead of a Content-Type header,
+ * since `toBase64` doesn't expose one.
  */
 export async function fetchFilePreview(fileId: number, opts?: { original?: boolean }): Promise<{ dataUrl: string | null; blob?: Blob; contentType?: string }> {
   if (isConnectedApp) {
     const app = await facilioAppReady();
     const base64 = await app.common.toBase64({ fileId });
-    return { dataUrl: base64 ? `data:image/png;base64,${base64}` : null };
+    if (!base64) return { dataUrl: null };
+    if (!opts?.original) return { dataUrl: `data:image/png;base64,${base64}` };
+    return { dataUrl: null, blob: base64ToBlob(base64) };
   }
   const res = await devInstance!.get(opts?.original ? `v2/files/download/${fileId}` : `v2/files/preview/${fileId}`, { responseType: 'blob' });
   const contentType = res.headers?.['content-type'];

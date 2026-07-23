@@ -7,17 +7,35 @@ import type { Asset } from './assets';
 import type { Assignments, Booking, Building, ClientContact, Floor, FloorplanCustomization, MarkerDef, PlanId, PointGeom, PolyGeom, Site, Unit, UnitType } from './types';
 
 /**
+ * Sniffs a DWG/DXF/PDF signature off the file's own leading bytes — the fallback when no
+ * Content-Type is available to check (connected-app mode's `common.toBase64` exposes no headers
+ * at all, unlike dev mode's real HTTP response). DWG's version tag always starts with the ASCII
+ * bytes "AC" (e.g. "AC1015"); PDF always starts with "%PDF"; ASCII DXF (this app only ever
+ * produces/consumes the ASCII variant) opens with a "0" group code then "SECTION".
+ */
+async function sniffCadOrPdfType(blob: Blob): Promise<string> {
+  const head = new Uint8Array(await blob.slice(0, 64).arrayBuffer());
+  if (head.length >= 2 && head[0] === 0x41 && head[1] === 0x43) return 'image/vnd.dwg';
+  if (head.length >= 4 && head[0] === 0x25 && head[1] === 0x50 && head[2] === 0x44 && head[3] === 0x46) return 'application/pdf';
+  const text = new TextDecoder('ascii', { fatal: false }).decode(head);
+  if (/^\s*0\s*[\r\n]+\s*SECTION/i.test(text)) return 'image/vnd.dxf';
+  return '';
+}
+
+/**
  * `fetchFilePreview(fileId, {original: true})` (dev mode: `v2/files/download/{fileId}` — see its
  * doc comment for why not the preview endpoint) returns the ORIGINAL uploaded bytes — for a plain
  * raster image that's directly usable as an `<img>` source, but a floor's plan is often a DWG/
  * DXF/PDF source file (confirmed against a live org: `Content-Type: image/vnd.dwg`), which a
- * browser can't decode natively. Detect that from the response's real content-type (not the
- * `.dwg` extension, which isn't available here — this isn't a locally-picked `File`) and run it
- * through the same client-side CAD/PDF renderers the upload flow uses, so a floor plan that was
+ * browser can't decode natively. Detect that from the response's real content-type when there is
+ * one (not the `.dwg` extension, which isn't available here — this isn't a locally-picked `File`),
+ * else sniff the bytes themselves (connected-app mode has no Content-Type to read at all), and run
+ * it through the same client-side CAD/PDF renderers the upload flow uses, so a floor plan that was
  * uploaded as a DWG still shows a rendered image, not a broken `<img>` icon.
  */
 async function blobToRenderableDataUrl(blob: Blob, contentType: string | undefined): Promise<string> {
-  const type = (contentType || blob.type || '').toLowerCase();
+  let type = (contentType || blob.type || '').toLowerCase();
+  if (!type) type = await sniffCadOrPdfType(blob);
   if (type.includes('dwg') || type.includes('dxf')) {
     const file = new File([blob], `floorplan.${type.includes('dxf') ? 'dxf' : 'dwg'}`, { type });
     return renderCadToDataUrl(file);
