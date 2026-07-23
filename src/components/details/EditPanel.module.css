@@ -271,6 +271,10 @@
   color: var(--ink-700);
   font: 600 11.5px/1 var(--font-sans);
   cursor: grab;
+  /* Without this, a long marker name forces the grid column (and this button) wider than the
+     panel instead of truncating: a grid/flex item's default min-width is its content's natural
+     width, not 0, so .markerName's overflow/ellipsis never gets a chance to apply. */
+  min-width: 0;
 }
 .markerBtn:hover {
   border-color: var(--blue-300);
