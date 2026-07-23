@@ -283,7 +283,7 @@ async function fetchViewerData(floorplanId: number, mode: ViewerMode, opts: View
 }
 
 interface ViewerMarkerFeature {
-  geometry?: { type?: string; coordinates?: [number, number] };
+  geometry?: { type?: string; coordinates?: any };
   properties?: Record<string, any>;
 }
 
@@ -291,33 +291,44 @@ function isPointFeature(f: ViewerMarkerFeature): boolean {
   return f?.geometry?.type === 'Point' && Array.isArray(f.geometry.coordinates) && f.geometry.coordinates.length === 2;
 }
 
-/**
- * Builds the [lng,lat] -> 0-1 image-fraction converter for one plan's marker set.
- *
- * viewerData's marker coordinates are NOT guaranteed to live in the same space as the plan's own
- * stored `geometry` quad: markers this app itself wrote sit in that quad's synthetic lng/lat, but
- * markers placed through Facilio's native editor come back in a separate local system anchored
- * near [0,0] (confirmed from a live ASSIGNMENT capture — inverting the quad on those yields
- * fractions in the tens-of-thousands). So: try the quad inverse first, and only trust it when every
- * point lands in a sane band around [0,1]; otherwise fall back to normalizing the marker set
- * against its own bounding box (with padding), which keeps desks in the right positions relative to
- * each other even when there's no shared georeference to the raster. Latitude increases "up", so
- * the y axis is flipped to the image convention (y=0 at top).
- */
-function pointFractionMapper(features: ViewerMarkerFeature[], quad: GeoQuad | null): (coords: [number, number]) => [number, number] {
-  const pts = features.filter(isPointFeature).map((f) => f.geometry!.coordinates as [number, number]);
+function isPolygonFeature(f: ViewerMarkerFeature): boolean {
+  return f?.geometry?.type === 'Polygon' && Array.isArray(f.geometry.coordinates) && Array.isArray(f.geometry.coordinates[0]);
+}
 
-  if (quad && pts.length) {
-    const inRange = pts.every(([lng, lat]) => {
+/** The outer ring ([[lng,lat],...]) of a Polygon feature, or null. */
+function polygonRing(f: ViewerMarkerFeature): [number, number][] | null {
+  const ring = f?.geometry?.coordinates?.[0];
+  if (!Array.isArray(ring)) return null;
+  const pts = ring.filter((c: any) => Array.isArray(c) && c.length === 2) as [number, number][];
+  return pts.length >= 3 ? pts : null;
+}
+
+/**
+ * Builds the [lng,lat] -> 0-1 image-fraction converter for one plan, from ALL of its coordinates
+ * (point markers + polygon-zone vertices) so markers and rooms share one consistent transform.
+ *
+ * viewerData's coordinates are NOT guaranteed to live in the same space as the plan's own stored
+ * `geometry` quad: features this app itself wrote sit in that quad's synthetic lng/lat, but ones
+ * placed through Facilio's native editor come back in a separate local system anchored near [0,0]
+ * (confirmed from a live ASSIGNMENT capture — inverting the quad on those yields fractions in the
+ * tens-of-thousands). So: try the quad inverse first, and only trust it when every point lands in a
+ * sane band around [0,1]; otherwise fall back to normalizing the coordinate set against its own
+ * bounding box (with padding), which keeps features in the right positions relative to each other
+ * even with no shared georeference to the raster. Latitude increases "up", so the y axis is flipped
+ * to the image convention (y=0 at top).
+ */
+function fractionMapper(coords: [number, number][], quad: GeoQuad | null): (coords: [number, number]) => [number, number] {
+  if (quad && coords.length) {
+    const inRange = coords.every(([lng, lat]) => {
       const [x, y] = lngLatToFraction(quad, lng, lat);
       return x > -0.5 && x < 1.5 && y > -0.5 && y < 1.5;
     });
     if (inRange) return ([lng, lat]) => lngLatToFraction(quad, lng, lat);
   }
 
-  if (!pts.length) return () => [0.5, 0.5];
-  const xs = pts.map((p) => p[0]);
-  const ys = pts.map((p) => p[1]);
+  if (!coords.length) return () => [0.5, 0.5];
+  const xs = coords.map((p) => p[0]);
+  const ys = coords.map((p) => p[1]);
   const minX = Math.min(...xs), maxX = Math.max(...xs);
   const minY = Math.min(...ys), maxY = Math.max(...ys);
   const spanX = maxX - minX || 1;
@@ -367,14 +378,56 @@ function markerFeatureToUnit(
 }
 
 /**
+ * A polygon zone from viewerData's `spaceZone` layer -> a room Unit. Rooms/spaces are drawn as
+ * marked zones (Polygon), NOT point markers, so they come through this layer rather than `marker`.
+ * `isReservable`/`reservable` drives assign-vs-book (see Unit.isReservable).
+ */
+function zoneFeatureToUnit(
+  f: ViewerMarkerFeature,
+  floorId: string,
+  planId: PlanId,
+  toFraction: (coords: [number, number]) => [number, number],
+  index: number
+): Unit | null {
+  const ring = polygonRing(f);
+  if (!ring) return null;
+  const p = f.properties ?? {};
+  // Drop the trailing closing vertex if the ring repeats its first point (GeoJSON convention);
+  // this app's PolyGeom stores an open ring.
+  const open = ring.length > 1 && ring[0][0] === ring[ring.length - 1][0] && ring[0][1] === ring[ring.length - 1][1] ? ring.slice(0, -1) : ring;
+  const pts = open.map((c) => toFraction(c));
+
+  const recordId = p.recordId ?? p.spaceId ?? p.space?.id;
+  const id = String(recordId ?? p.objectId ?? `${planId}-zone-${index}`);
+  const label = (typeof p.label === 'string' && p.label.trim()) || tooltipTitleLabel(f) || id;
+  const secondary = typeof p.secondaryLabel === 'string' && p.secondaryLabel.trim() ? p.secondaryLabel.trim() : undefined;
+  const reservable = p.isReservable ?? p.reservable ?? p.space?.reservable;
+
+  return {
+    id,
+    type: 'room',
+    label,
+    secondary,
+    room: null,
+    geom: { kind: 'poly', pts },
+    floor: floorId,
+    plan: planId,
+    ...(typeof reservable === 'boolean' ? { isReservable: reservable } : {}),
+  };
+}
+
+/**
  * All placed units on a floor, from viewerData — unioned across every plan type configured for the
  * floor (workstations/lockers/parking each have their own `indoorfloorplan` record + viewerData
- * feed). Positions/type/desk-metadata come straight from the feed; ASSIGNMENT mode is used since
- * marker POSITIONS don't vary by view mode.
+ * feed). Point markers (desks/lockers/parking/amenities) come from the `marker` layer; rooms/spaces
+ * come from the `spaceZone` layer. Positions/type/metadata come straight from the feed; ASSIGNMENT
+ * mode is used since geometry doesn't vary by view mode.
  */
 async function viewerDataUnitsForFloor(floorId: string): Promise<Unit[]> {
   const byType = await getFloorplanDetailsByType(floorId);
-  const units: Unit[] = [];
+  // Dedupe by unit id — a room/space can appear in more than one plan type's feed; a later entry
+  // just refreshes the earlier one rather than double-listing it.
+  const byId = new Map<string, Unit>();
   let attempted = 0;
   let failed = 0;
   for (const [typeNum, summary] of Object.entries(byType)) {
@@ -388,28 +441,44 @@ async function viewerDataUnitsForFloor(floorId: string): Promise<Unit[]> {
       return null;
     });
     if (!data) continue;
+
     const quad = geometryStringToQuad(data.indoorfloorplan?.geometry);
-    const features: ViewerMarkerFeature[] = (data.marker?.features ?? []).filter(isPointFeature);
-    const toFraction = pointFractionMapper(features, quad);
-    let added = 0;
-    features.forEach((f, i) => {
+    const markerFeatures: ViewerMarkerFeature[] = (data.marker?.features ?? []).filter(isPointFeature);
+    const zoneFeatures: ViewerMarkerFeature[] = (data.spaceZone?.features ?? []).filter(isPolygonFeature);
+    // One transform per plan, fed every coordinate (markers + zone vertices) so both layers align.
+    const allCoords: [number, number][] = [
+      ...markerFeatures.map((f) => f.geometry!.coordinates as [number, number]),
+      ...zoneFeatures.flatMap((f) => polygonRing(f) ?? []),
+    ];
+    const toFraction = fractionMapper(allCoords, quad);
+
+    let markers = 0;
+    let rooms = 0;
+    markerFeatures.forEach((f, i) => {
       const unit = markerFeatureToUnit(f, floorId, planId, toFraction, i);
       if (unit) {
-        units.push(unit);
-        added += 1;
+        byId.set(unit.id, unit);
+        markers += 1;
+      }
+    });
+    zoneFeatures.forEach((f, i) => {
+      const unit = zoneFeatureToUnit(f, floorId, planId, toFraction, i);
+      if (unit) {
+        byId.set(unit.id, unit);
+        rooms += 1;
       }
     });
     // eslint-disable-next-line no-console
-    console.debug(`[facilio-api] viewerData ${planId} plan ${summary.id}: ${features.length} markers -> ${added} units`);
+    console.debug(`[facilio-api] viewerData ${planId} plan ${summary.id}: ${markerFeatures.length} markers, ${zoneFeatures.length} zones -> ${markers} units + ${rooms} rooms`);
   }
   // A floor with configured plans where EVERY viewerData call failed is a real error, not an empty
   // floor — throw so the composite falls back to the local tier (keeps the sidebar populated)
   // rather than returning [] (which the composite treats as a valid "empty floor" answer, no
-  // fallback). A genuinely empty floor (calls succeeded, zero markers) still returns [].
+  // fallback). A genuinely empty floor (calls succeeded, zero features) still returns [].
   if (attempted > 0 && failed === attempted) {
     throw new Error(`facilio-api: viewerData failed for all ${attempted} plan type(s) on floor ${floorId}`);
   }
-  return units;
+  return [...byId.values()];
 }
 
 /**
