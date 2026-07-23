@@ -8,7 +8,7 @@ import type { AmenityIcon, Assignments, Booking, ClientContact, MarkerDef, PlanI
 import type { CadGroup } from '../lib/cadAnalyze';
 import type { Asset } from '../lib/assets';
 import { isFacilioApiConfigured } from '../lib/facilioApi';
-import { assignUnitReal, createRealBooking, fetchFloorplanImage, fetchMyDesk, findUnitIdForDeskRecord, getAnyFloor, getFloorPlanSummary, saveFloorplanMarkers, vacateUnitReal } from '../lib/facilioApiDataSource';
+import { assignUnitReal, createRealBooking, fetchFloorplanCustomization, fetchFloorplanImage, fetchMyDesk, findUnitIdForDeskRecord, getAnyFloor, getFloorPlanSummary, saveFloorplanMarkers, vacateUnitReal } from '../lib/facilioApiDataSource';
 import { listFloorplanFloorIds, loadFloorplanFile, persistFloorplanFile } from '../lib/floorplanFileStore';
 import { loadSettings, saveSettings, settingsFromState } from '../lib/settingsStore';
 import { pathForView, viewFromLocation } from '../lib/routes';
@@ -139,6 +139,8 @@ async function loadFloorPlanTypesAndImage(dispatch: Dispatch<Action>, floorId: s
           void persistFloorplanFile(floorId, resolvedPlanId, { dataUrl: storable }).catch(() => {});
         }
       }
+      const customization = await fetchFloorplanCustomization(floorId, resolvedPlanId).catch(() => null);
+      if (customization) dispatch({ type: 'SET_FLOOR_CUSTOMIZATION', floorId, planId: resolvedPlanId, customization });
     }
   } finally {
     dispatch({ type: 'SET_FLOOR_IMAGE_LOADING', value: false });
@@ -160,6 +162,10 @@ async function ensureFloorplanImage(dispatch: Dispatch<Action>, floorId: string,
       imageUrl = stored?.dataUrl ?? null;
     }
     if (imageUrl) dispatch({ type: 'SET_FLOOR_IMAGE', floorId, planId, dataUrl: imageUrl });
+    if (isFacilioApiConfigured) {
+      const customization = await fetchFloorplanCustomization(floorId, planId).catch(() => null);
+      if (customization) dispatch({ type: 'SET_FLOOR_CUSTOMIZATION', floorId, planId, customization });
+    }
   } finally {
     dispatch({ type: 'SET_FLOOR_IMAGE_LOADING', value: false });
   }

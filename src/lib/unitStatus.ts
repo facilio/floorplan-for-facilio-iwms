@@ -1,7 +1,7 @@
 import type { AppState } from '../state/types';
 import { conflictsFor, isAssignable, isBookable } from '../state/selectors';
-import { resolveMarkerDef, STATE_DEFS } from './types';
-import type { Unit } from './types';
+import { floorImageKey, resolveMarkerDef, STATE_DEFS } from './types';
+import type { BookingStateColors, FloorplanCustomization, LabelSpec, Unit } from './types';
 import { fmtTime } from './geometry';
 
 export function moduleColor(state: AppState, type: Unit['type'], key: string): string {
@@ -14,6 +14,47 @@ export function moduleColor(state: AppState, type: Unit['type'], key: string): s
 /** A pale wash of a state color for a marker's fill (border/text stay the saturated color). */
 function tint(color: string): string {
   return `color-mix(in srgb, ${color} 16%, #fff)`;
+}
+
+/**
+ * The real org's rendering rules for the active floor+plan, if fetched (see
+ * `fetchFloorplanCustomization` / `SET_FLOOR_CUSTOMIZATION`). Null means fall back to this app's
+ * own configurable colors below — either it hasn't loaded yet, or this floor+plan has none.
+ */
+function customizationFor(state: AppState): FloorplanCustomization | null {
+  return state.floorCustomizations[floorImageKey(state.floorId, state.planId)] ?? null;
+}
+
+/** Point markers (workstation/locker/parking, all backed by a desk-like record) vs. polygon rooms — the real schema's two label/color families. */
+function categoryOf(type: Unit['type']): 'desk' | 'space' {
+  return type === 'room' ? 'space' : 'desk';
+}
+
+/** Strips alpha from a real `rgba(...)` state color so a marker's border/text stays legible even when its fill is a translucent real-org color. Non-rgba input passes through unchanged. */
+function opaque(color: string): string {
+  const m = color.match(/^rgba?\(([^,]+),([^,]+),([^,]+)/);
+  return m ? `rgb(${m[1].trim()},${m[2].trim()},${m[3].trim()})` : color;
+}
+
+function realBookColor(cust: FloorplanCustomization | null, category: 'desk' | 'space', key: keyof BookingStateColors): string | null {
+  const s = category === 'space' ? cust?.spaceBookingState : cust?.deskBookingState;
+  const c = s?.[key];
+  return typeof c === 'string' && c.trim() ? c : null;
+}
+
+function realAssignColor(cust: FloorplanCustomization | null, occupied: boolean): string | null {
+  const s = cust?.assignmentState;
+  const c = occupied ? s?.assignedColor : s?.unAssignedColor;
+  return typeof c === 'string' && c.trim() ? c : null;
+}
+
+/** bg/bd/fg triple for a state: the real org's color when available (translucent fill, opaque border/text — mirrors the tint()+saturated pattern below), else this app's own configurable color. */
+function colorTriple(real: string | null, fallback: string, solidFallback: boolean): { bg: string; bd: string; fg: string } {
+  if (real) {
+    const solid = opaque(real);
+    return { bg: real, bd: solid, fg: solid };
+  }
+  return solidFallback ? { bg: fallback, bd: fallback, fg: '#fff' } : { bg: tint(fallback), bd: fallback, fg: fallback };
 }
 
 export interface UnitStatus {
@@ -94,6 +135,9 @@ export function markerStyle(state: AppState, unit: Unit, markerScale = 1): Marke
     return { bg: '#fff', bd: 'var(--blue-300)', fg: 'var(--blue-600)', opacity: 1, shadow, size, radius, zIndex, occText: null, icon: unit.type === 'workstation' ? 'workstation' : null };
   }
 
+  const cust = customizationFor(state);
+  const category = categoryOf(unit.type);
+
   if (state.mode === 'assign') {
     if (!isAssignable(unit)) {
       // solid neutral, NOT a washed-out ghost — every marker stays legible
@@ -103,19 +147,26 @@ export function markerStyle(state: AppState, unit: Unit, markerScale = 1): Marke
       return { bg: 'var(--blue-100)', bd: 'var(--blue-500)', fg: 'var(--blue-700)', opacity: 1, shadow: '0 0 0 4px rgba(0,89,214,0.22)', size, radius, zIndex: 6, occText: contactId ? initialsOf(contactNameFallback(state, contactId)) : null, icon: contactId ? null : markerIcon(unit.type) };
     }
     if (contactId) {
-      // Occupied desk: solid fill in the configurable "assigned" color, white initials.
-      const c = moduleColor(state, unit.type, 'assigned');
-      return { bg: c, bd: c, fg: '#fff', opacity: 1, shadow, size, radius, zIndex, occText: initialsOf(contactNameFallback(state, contactId)), icon: null };
+      // Occupied desk: the real org's "assigned" color when configured, else this app's own
+      // configurable color, solid-filled with white initials (see colorTriple).
+      const { bg, bd, fg } = colorTriple(realAssignColor(cust, true), moduleColor(state, unit.type, 'assigned'), true);
+      return { bg, bd, fg, opacity: 1, shadow, size, radius, zIndex, occText: initialsOf(contactNameFallback(state, contactId)), icon: null };
     }
-    const free = moduleColor(state, unit.type, 'free');
-    return { bg: tint(free), bd: free, fg: free, opacity: 1, shadow, size, radius, zIndex, occText: null, icon: markerIcon(unit.type) };
+    const { bg, bd, fg } = colorTriple(realAssignColor(cust, false), moduleColor(state, unit.type, 'free'), false);
+    return { bg, bd, fg, opacity: 1, shadow, size, radius, zIndex, occText: null, icon: markerIcon(unit.type) };
   }
 
   // book mode
   if (!isBookable(unit)) {
-    // Previously 35%-opacity white — assigned desks were invisible on the
-    // plan. Solid grey chip instead, with the occupant's initials so the
-    // booking view still says whose desk it is.
+    // Previously 35%-opacity white — assigned desks were invisible on the plan. The real org's
+    // "not reservable" color when configured (this app's non-bookable concept maps directly onto
+    // it), else a solid grey chip, with the occupant's initials so the booking view still says
+    // whose desk it is.
+    const real = realBookColor(cust, category, 'nonReservableColor');
+    if (real) {
+      const solid = opaque(real);
+      return { bg: real, bd: solid, fg: solid, opacity: 1, shadow, size, radius, zIndex, occText: contactId ? initialsOf(contactNameFallback(state, contactId)) : null, icon: contactId ? null : markerIcon(unit.type) };
+    }
     return {
       bg: 'var(--ink-100)',
       bd: 'var(--ink-500)',
@@ -131,12 +182,14 @@ export function markerStyle(state: AppState, unit: Unit, markerScale = 1): Marke
   }
   const conflicts = conflictsFor(state.bookings, unit.id, state.date, state.start, state.end);
   if (conflicts.length) {
-    const c = moduleColor(state, unit.type, 'booked');
-    return { bg: tint(c), bd: c, fg: c, opacity: 1, shadow, size, radius, zIndex, occText: null, icon: markerIcon(unit.type) };
+    const { bg, bd, fg } = colorTriple(realBookColor(cust, category, 'notAvailableColor'), moduleColor(state, unit.type, 'booked'), false);
+    return { bg, bd, fg, opacity: 1, shadow, size, radius, zIndex, occText: null, icon: markerIcon(unit.type) };
   }
-  // bookable + free/available — the configurable "go" color.
+  // bookable + free/available — the real org's "available" color when configured, else the
+  // configurable "go" color.
   const avail = moduleColor(state, unit.type, unit.type === 'room' ? 'available' : 'free');
-  return { bg: tint(avail), bd: avail, fg: avail, opacity: 1, shadow, size, radius, zIndex, occText: null, icon: markerIcon(unit.type) };
+  const { bg, bd, fg } = colorTriple(realBookColor(cust, category, 'availableColor'), avail, false);
+  return { bg, bd, fg, opacity: 1, shadow, size, radius, zIndex, occText: null, icon: markerIcon(unit.type) };
 }
 
 function markerIcon(type: Unit['type']): MarkerStyle['icon'] {
@@ -161,6 +214,9 @@ export function unitStatus(state: AppState, unit: Unit, contactName: (id: string
     const name = { workstation: 'Desk', locker: 'Locker', parking: 'Parking stall', room: 'Room', amenity: 'Amenity' }[unit.type];
     return { key: 'type', text: name, bg: TOKEN.ink100, fg: TOKEN.ink600, dot: moduleColor(state, unit.type, 'free') };
   }
+  const cust = customizationFor(state);
+  const category = categoryOf(unit.type);
+
   if (state.mode === 'assign') {
     if (!isAssignable(unit)) {
       return { key: 'na', text: 'Not assignable', bg: TOKEN.ink100, fg: TOKEN.ink600, dot: 'var(--ink-400)' };
@@ -172,10 +228,10 @@ export function unitStatus(state: AppState, unit: Unit, contactName: (id: string
         text: `Assigned · ${contactName(contactId)}`,
         bg: TOKEN.blue050,
         fg: TOKEN.blue700,
-        dot: moduleColor(state, unit.type, 'assigned'),
+        dot: opaque(realAssignColor(cust, true) ?? moduleColor(state, unit.type, 'assigned')),
       };
     }
-    return { key: 'free', text: 'Free', bg: TOKEN.success050, fg: TOKEN.success700, dot: moduleColor(state, unit.type, 'free') };
+    return { key: 'free', text: 'Free', bg: TOKEN.success050, fg: TOKEN.success700, dot: opaque(realAssignColor(cust, false) ?? moduleColor(state, unit.type, 'free')) };
   }
   // book mode
   if (!isBookable(unit)) {
@@ -186,7 +242,7 @@ export function unitStatus(state: AppState, unit: Unit, contactName: (id: string
       text: contactId ? `Assigned · ${contactName(contactId)}` : 'Not bookable',
       bg: TOKEN.ink100,
       fg: TOKEN.ink600,
-      dot: 'var(--ink-400)',
+      dot: opaque(realBookColor(cust, category, 'nonReservableColor') ?? 'var(--ink-400)'),
     };
   }
   const conflicts = conflictsFor(state.bookings, unit.id, state.date, state.start, state.end);
@@ -196,8 +252,64 @@ export function unitStatus(state: AppState, unit: Unit, contactName: (id: string
       text: `Booked ${fmtTime(conflicts[0].start)}–${fmtTime(conflicts[0].end)}`,
       bg: TOKEN.danger050,
       fg: TOKEN.danger700,
-      dot: moduleColor(state, unit.type, 'booked'),
+      dot: opaque(realBookColor(cust, category, 'notAvailableColor') ?? moduleColor(state, unit.type, 'booked')),
     };
   }
-  return { key: 'available', text: 'Available', bg: TOKEN.success050, fg: TOKEN.success700, dot: moduleColor(state, unit.type, unit.type === 'room' ? 'available' : 'free') };
+  return {
+    key: 'available',
+    text: 'Available',
+    bg: TOKEN.success050,
+    fg: TOKEN.success700,
+    dot: opaque(realBookColor(cust, category, 'availableColor') ?? moduleColor(state, unit.type, unit.type === 'room' ? 'available' : 'free')),
+  };
+}
+
+/** Resolved label text for a marker's above/below chips, per the real org's label-type rules (see FloorplanCustomization) — falls back to this app's plain desk-name/assignee-name behavior when no real customization is loaded. */
+export interface ResolvedLabels {
+  primary: string;
+  secondary: string | null;
+}
+
+function resolveLabelText(spec: LabelSpec | undefined, ctx: { name: string; contactName: string | null; category: string | null }): string | null {
+  if (!spec) return null;
+  switch (spec.labelType) {
+    case 'CUSTOM':
+      return spec.customText?.trim() || null;
+    case 'DESK_NAME':
+      return ctx.name;
+    case 'FIRST_NAME':
+      return ctx.contactName ? ctx.contactName.trim().split(/\s+/)[0] : null;
+    case 'LAST_NAME':
+      return ctx.contactName ? ctx.contactName.trim().split(/\s+/).slice(-1)[0] : null;
+    case 'FULL_NAME':
+      return ctx.contactName;
+    case 'CATEGORY':
+      return ctx.category;
+    case 'DEFAULT':
+    default:
+      return ctx.name;
+  }
+}
+
+export function resolveMarkerLabels(state: AppState, unit: Unit, contactNameOf: (id: string) => string): ResolvedLabels {
+  // Amenities are markertype records with their own name, not a desk/space — no real-schema label rule applies.
+  if (unit.type === 'amenity') return { primary: unit.label, secondary: null };
+
+  const contactId = state.assignments[unit.id];
+  const contactNameVal = contactId ? contactNameOf(contactId) : null;
+  const cust = customizationFor(state);
+  if (state.mode === 'edit' || !cust) {
+    return { primary: unit.label, secondary: state.mode === 'assign' && contactNameVal ? contactNameVal : null };
+  }
+
+  const category = categoryOf(unit.type);
+  const primarySpec = category === 'space' ? cust.spacePrimaryLabel : cust.deskPrimaryLabel;
+  const secondarySpec = category === 'space' ? cust.spaceSecondaryLabel : cust.deskSecondaryLabel;
+  const ctx = { name: unit.label, contactName: contactNameVal, category: unit.secondary ?? null };
+  // A resolved-empty PRIMARY (e.g. FULL_NAME with no assignee) falls back to the plain desk/room
+  // name rather than rendering a blank label — the real product's exact empty-state isn't known.
+  return {
+    primary: resolveLabelText(primarySpec, ctx) ?? unit.label,
+    secondary: resolveLabelText(secondarySpec, ctx),
+  };
 }

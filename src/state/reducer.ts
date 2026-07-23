@@ -1,5 +1,5 @@
 import { DEFAULT_PERMS, floorImageKey } from '../lib/types';
-import type { Booking, Building, Floor, MarkerDef, PlanId, Site, Unit } from '../lib/types';
+import type { Booking, Building, Floor, FloorplanCustomization, MarkerDef, PlanId, Site, Unit } from '../lib/types';
 import { clamp, fitView } from '../lib/geometry';
 import { seedBookings } from '../lib/mockData';
 import { viewFromLocation } from '../lib/routes';
@@ -135,6 +135,7 @@ export function buildInitialState(): AppState {
     // Start in the loading state so a fresh load / refresh paints the shimmer immediately, not a
     // blank/placeholder canvas. The mount-time image load clears it in its finally block.
     floorImageLoading: true,
+    floorCustomizations: {},
   };
 }
 
@@ -223,6 +224,7 @@ export type Action =
   | { type: 'SET_FLOOR_IMAGE'; floorId: string; planId: PlanId; dataUrl: string }
   | { type: 'SET_FLOOR_PLAN_TYPES'; floorId: string; types: AppState['floorPlanTypes'][string] }
   | { type: 'SET_FLOOR_IMAGE_LOADING'; value: boolean }
+  | { type: 'SET_FLOOR_CUSTOMIZATION'; floorId: string; planId: PlanId; customization: FloorplanCustomization | null }
   | { type: 'SET_MY_DESK'; myDesk: AppState['myDesk'] }
   | { type: 'MARK_SAVED' }
   | { type: 'SET_SAVING'; value: boolean }
@@ -573,6 +575,13 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, floorPlanTypes: { ...state.floorPlanTypes, [action.floorId]: action.types } };
     case 'SET_FLOOR_IMAGE_LOADING':
       return { ...state, floorImageLoading: action.value };
+    case 'SET_FLOOR_CUSTOMIZATION': {
+      if (!action.customization) return state;
+      return {
+        ...state,
+        floorCustomizations: { ...state.floorCustomizations, [floorImageKey(action.floorId, action.planId)]: action.customization },
+      };
+    }
     case 'SET_MY_DESK':
       return { ...state, myDesk: action.myDesk };
     case 'SET_SAVING':

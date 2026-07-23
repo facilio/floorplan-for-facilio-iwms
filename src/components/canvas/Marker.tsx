@@ -1,7 +1,7 @@
 import type { DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
 import { contactName, myAssignedUnit } from '../../state/selectors';
-import { markerStyle, unitStatus } from '../../lib/unitStatus';
+import { markerStyle, resolveMarkerLabels, unitStatus } from '../../lib/unitStatus';
 import type { PointGeom, Unit } from '../../lib/types';
 import { MARKER_ICONS as ICONS } from './markerIcons';
 import styles from './Marker.module.css';
@@ -68,10 +68,10 @@ export function Marker({ unit, invZ, onDragStart }: { unit: Unit; invZ: number; 
 
   const title = `${unit.label}${unit.room ? ' · ' + unit.room : ''} — ${status.text}`;
 
-  // Under-marker label. Assign view: desk name on top, assignee (if any)
-  // underneath. Book view: the space name. Amenities: their name, always.
-  const contactId = state.assignments[unit.id];
-  const assignedName = state.mode === 'assign' && contactId ? contactName(state, contactId) : null;
+  // Under-marker label. Resolved per the real org's customizationBooking label rules when
+  // loaded (e.g. assignee's full name on top, desk name underneath) — falls back to desk/room
+  // name on top + assignee underneath (assign view only) when no real customization is available.
+  const labels = resolveMarkerLabels(state, unit, (id) => contactName(state, id));
   const showLabel = (state.mode === 'assign' || state.mode === 'book' || unit.type === 'amenity') && invZ <= 1.9;
 
   return (
@@ -149,11 +149,11 @@ export function Marker({ unit, invZ, onDragStart }: { unit: Unit; invZ: number; 
             whiteSpace: 'nowrap',
           }}
         >
-          {unit.label}
+          {labels.primary}
         </div>
       )}
-      {/* Secondary label (assignee) BELOW the marker. */}
-      {showLabel && assignedName && (
+      {/* Secondary label BELOW the marker. */}
+      {showLabel && labels.secondary && (
         <div
           style={{
             position: 'absolute',
@@ -172,7 +172,7 @@ export function Marker({ unit, invZ, onDragStart }: { unit: Unit; invZ: number; 
             whiteSpace: 'nowrap',
           }}
         >
-          {assignedName}
+          {labels.secondary}
         </div>
       )}
     </>

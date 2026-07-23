@@ -4,6 +4,7 @@ import type {
   Booking,
   ClientContact,
   EditTool,
+  FloorplanCustomization,
   MarkerDef,
   PanelsState,
   Perms,
@@ -152,4 +153,10 @@ export interface AppState {
   floorPlanTypes: Record<string, { id: PlanId; name: string; recordId: number }[]>;
   /** True while a floor/plan-type's real image (or the plan-type list) is being fetched — drives the loading overlay over the canvas. */
   floorImageLoading: boolean;
+  /**
+   * Per floor/plan (floorImageKey) real rendering rules (`indoorfloorplan.customizationBooking`)
+   * — drives marker colors/labels in assign/book view (see lib/unitStatus). Absent key = not
+   * fetched yet or not configured for that floor+plan; falls back to this app's own colors.
+   */
+  floorCustomizations: Record<string, FloorplanCustomization>;
 }

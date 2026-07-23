@@ -289,6 +289,47 @@ export interface OptDef {
   def: boolean;
 }
 
+/**
+ * The real org's plan-level rendering rules (`indoorfloorplan.customizationBooking`, confirmed
+ * against a live capture) — drives marker colors/labels in assign/book view. `desk*` fields apply
+ * to point markers (workstation/locker/parking, all backed by a desk-like record); `space*`
+ * applies to polygon markers (rooms). Only the fields this app actually renders are modeled here
+ * — the real schema also carries tooltip/module-visibility settings this app doesn't consume.
+ */
+export type LabelType = 'DEFAULT' | 'DESK_NAME' | 'FIRST_NAME' | 'LAST_NAME' | 'FULL_NAME' | 'CATEGORY' | 'CUSTOM';
+
+export interface LabelSpec {
+  labelType: LabelType;
+  customText?: string;
+  color?: string;
+  fontSize?: number;
+}
+
+export interface BookingStateColors {
+  nonReservableColor?: string;
+  availableColor?: string;
+  partiallyAvailableColor?: string;
+  notAvailableColor?: string;
+  opacity?: number;
+}
+
+export interface AssignmentStateColors {
+  unAssignedColor?: string;
+  assignedColor?: string;
+  unAssignedOpacity?: number;
+  assignedOpacity?: number;
+}
+
+export interface FloorplanCustomization {
+  deskPrimaryLabel?: LabelSpec;
+  deskSecondaryLabel?: LabelSpec;
+  deskBookingState?: BookingStateColors;
+  spacePrimaryLabel?: LabelSpec;
+  spaceSecondaryLabel?: LabelSpec;
+  spaceBookingState?: BookingStateColors;
+  assignmentState?: AssignmentStateColors;
+}
+
 export const OPT_DEFS: Record<UnitType, OptDef[]> = {
   workstation: [
     { key: 'hotDesking', label: 'Allow hot-desking', desc: 'Let client contacts book unassigned desks by the hour', def: true },

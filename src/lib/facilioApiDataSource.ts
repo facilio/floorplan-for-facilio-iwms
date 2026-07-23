@@ -4,7 +4,7 @@ import { renderPdfToDataUrl } from './pdfPreview';
 import { computeSyntheticGeometry, geometryStringToQuad, quadToGeometryString, quadToLngLat } from './geoReference';
 import type { FloorplanDataSource } from './dataSource';
 import type { Asset } from './assets';
-import type { Assignments, Booking, Building, ClientContact, Floor, MarkerDef, PlanId, PointGeom, Site, Unit, UnitType } from './types';
+import type { Assignments, Booking, Building, ClientContact, Floor, FloorplanCustomization, MarkerDef, PlanId, PointGeom, Site, Unit, UnitType } from './types';
 
 /**
  * `fetchOriginal=true` on `v2/files/preview` returns the ORIGINAL uploaded bytes — for a plain
@@ -220,6 +220,22 @@ export async function fetchFloorplanImage(floorId: string, planId: PlanId): Prom
   if (preview.dataUrl) return preview.dataUrl;
   if (!preview.blob) return null;
   return blobToRenderableDataUrl(preview.blob, preview.contentType);
+}
+
+/**
+ * The real org's rendering rules for this floor+plan — `indoorfloorplan.customizationBooking`,
+ * confirmed against a live capture. Reuses `fetchIndoorFloorPlanRecord` (the same record marker
+ * sync round-trips) since the summary from `getFloorplanDetailsByType` omits it, same as `fileId`.
+ * Drives marker colors/labels in assign/book view; a null return means this app's own configurable
+ * colors (Settings › module colors) should be used instead.
+ */
+export async function fetchFloorplanCustomization(floorId: string, planId: PlanId): Promise<FloorplanCustomization | null> {
+  if (!isFacilioApiConfigured) return null;
+  const byType = await getFloorplanDetailsByType(floorId);
+  const summary = byType[String(FLOOR_PLAN_TYPE[planId])];
+  if (!summary?.id) return null;
+  const record = await fetchIndoorFloorPlanRecord(summary.id);
+  return record?.customizationBooking ?? null;
 }
 
 /**
