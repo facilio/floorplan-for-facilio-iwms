@@ -15,6 +15,8 @@ export interface SettingsConfig {
   bookingModule?: 'space' | 'facility';
   /** User-created marker-library entries (Edit view › Markers › New marker). */
   customMarkers?: MarkerDef[];
+  /** When false, a real-org data failure shows an error instead of silently falling back to local/seed data. */
+  allowLocalFallback?: boolean;
 }
 
 const LS_KEY = 'facilio_floorplan_settings_v1';
@@ -27,6 +29,7 @@ export function settingsFromState(state: AppState): SettingsConfig {
     slotGranularity: state.slotGranularity,
     bookingModule: state.bookingModule,
     customMarkers: state.customMarkers,
+    allowLocalFallback: state.allowLocalFallback,
   };
 }
 

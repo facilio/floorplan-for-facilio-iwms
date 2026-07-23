@@ -213,6 +213,20 @@ export async function fetchFloorplanImage(floorId: string, planId: PlanId): Prom
   return blobToRenderableDataUrl(preview.blob, preview.contentType);
 }
 
+/**
+ * The cheapest possible "does any floor exist" check — a single paginated record (`page: 1,
+ * perPage: 1`), no site/building context needed. Used only as the last-resort boot-time default
+ * floor when the current user has no assigned/booked desk to land on instead (see `fetchMyDesk`,
+ * tried first) — replaces walking the whole site/building tree just to find "a" floor.
+ */
+export async function getAnyFloor(): Promise<{ id: string; name: string } | null> {
+  if (!isFacilioApiConfigured) return null;
+  const res = await facilioApi.fetchAll('floor', { page: 1, perPage: 1 });
+  if (res.error || !res.list?.length) return null;
+  const f = res.list[0];
+  return { id: String(f.id), name: f.name };
+}
+
 export interface FloorplanFileUploadResult {
   fileId: number;
   /** Object URL of the ORIGINAL uploaded bytes (a valid <img> src only for plain images). */

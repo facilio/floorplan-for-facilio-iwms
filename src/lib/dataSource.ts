@@ -1,6 +1,18 @@
 import { FacilioApiDataSource } from './facilioApiDataSource';
+import { isFacilioApiConfigured } from './facilioApi';
 import type { Asset } from './assets';
 import type { Assignments, Booking, Building, ClientContact, Floor, Site, Unit } from './types';
+
+/**
+ * Toggle whether the local/mock tier may be used as a fallback when the real API tier fails or
+ * returns nothing — synced from the "Local data" setting (Settings screen) whenever it changes.
+ * Only has an effect when a real backend is actually configured (`isFacilioApiConfigured`); in
+ * plain local dev there's no "real" tier to prefer over, so disabling this does nothing there.
+ */
+let allowLocalFallback = true;
+export function setAllowLocalFallback(value: boolean): void {
+  allowLocalFallback = value;
+}
 
 // Local dev data lives as editable JSON in src/data/*.json — change a file and the app uses it
 // (Vite picks the JSON up on save). This is the seed the LocalJsonDataSource serves; session edits
@@ -241,12 +253,17 @@ export class CompositeDataSource implements FloorplanDataSource {
     this.tiers = tiers;
   }
 
+  /** The local tier, excluded when the user has disabled local fallback against a real backend. */
+  private activeTiers(): FloorplanDataSource[] {
+    return !allowLocalFallback && isFacilioApiConfigured ? this.tiers.filter((t) => t.name !== 'local-json') : this.tiers;
+  }
+
   private async run<K extends keyof FloorplanDataSource>(
     method: K,
     ...args: FloorplanDataSource[K] extends (...a: infer A) => any ? A : never
   ): Promise<any> {
     let lastErr: unknown;
-    for (const tier of this.tiers) {
+    for (const tier of this.activeTiers()) {
       try {
         // @ts-expect-error - dynamic dispatch across the shared interface
         const result = await tier[method](...args);

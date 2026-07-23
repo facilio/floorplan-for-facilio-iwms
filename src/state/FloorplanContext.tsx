@@ -1,14 +1,14 @@
 import { createContext, useContext, useEffect, useMemo, useReducer, useRef } from 'react';
 import type { Dispatch, MutableRefObject, ReactNode } from 'react';
-import { dataSource, clearLocalData } from '../lib/dataSource';
+import { dataSource, clearLocalData, setAllowLocalFallback as dataSourceSetAllowLocalFallback } from '../lib/dataSource';
 import type { CreateSpaceLoc } from '../lib/dataSource';
-import { PORTFOLIO as MOCK_PORTFOLIO, CONTACTS as MOCK_CONTACTS, seedBookings, seedUnits, seedAssignments } from '../lib/mockData';
+import { CONTACTS as MOCK_CONTACTS, seedBookings, seedUnits, seedAssignments } from '../lib/mockData';
 import { floorImageKey, resolveMarkerDef, TYPE_META } from '../lib/types';
-import type { AmenityIcon, Booking, MarkerDef, PlanId, Role, Site, Unit, UnitType } from '../lib/types';
+import type { AmenityIcon, Assignments, Booking, ClientContact, MarkerDef, PlanId, Role, Site, Unit, UnitType } from '../lib/types';
 import type { CadGroup } from '../lib/cadAnalyze';
-import { DEMO_ASSETS } from '../lib/assets';
+import type { Asset } from '../lib/assets';
 import { isFacilioApiConfigured } from '../lib/facilioApi';
-import { assignUnitReal, createRealBooking, fetchFloorplanImage, fetchMyDesk, findUnitIdForDeskRecord, getFloorPlanSummary, saveFloorplanMarkers, vacateUnitReal } from '../lib/facilioApiDataSource';
+import { assignUnitReal, createRealBooking, fetchFloorplanImage, fetchMyDesk, findUnitIdForDeskRecord, getAnyFloor, getFloorPlanSummary, saveFloorplanMarkers, vacateUnitReal } from '../lib/facilioApiDataSource';
 import { listFloorplanFloorIds, loadFloorplanFile, persistFloorplanFile } from '../lib/floorplanFileStore';
 import { loadSettings, saveSettings, settingsFromState } from '../lib/settingsStore';
 import { pathForView, viewFromLocation } from '../lib/routes';
@@ -26,6 +26,13 @@ interface Ctx {
 const FloorplanCtx = createContext<Ctx | null>(null);
 
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
+
+/** Module-level so it's reachable from the boot effect too, not just actions built in buildActions. */
+function showToastVia(dispatch: Dispatch<Action>, message: string) {
+  dispatch({ type: 'SHOW_TOAST', message });
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => dispatch({ type: 'SHOW_TOAST', message: null }), 3200);
+}
 
 /**
  * Overlay chrome the auto-fit must clear so plan content never hides under
@@ -75,43 +82,6 @@ function resolveSpaceLoc(portfolio: Site[], floorId: string): CreateSpaceLoc {
     }
   }
   return { siteId: null, buildingId: null, floorId };
-}
-
-/**
- * Races a promise against a hard deadline — used so a boot-time walk across many sites/buildings
- * (or a single slow/stuck call somewhere in it) can never leave the app stuck loading forever;
- * it just falls back to `fallback` instead.
- */
-function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
-  return Promise.race([p, new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms))]);
-}
-
-/**
- * First floor found anywhere in the org, fetched only as-needed (site by site, building by
- * building) rather than assuming the whole tree is already loaded — buildings/floors are now
- * lazy (see `getBuildingsForSite`/`getFloorsForBuilding`), so this walk doubles as the boot-time
- * resolution AND populates `state.portfolio` along the way via the same actions manually
- * expanding the tree would dispatch, avoiding a redundant re-fetch if the user later expands
- * that same site/building themselves. Callers should wrap this in `withTimeout` — an org with
- * many empty sites/buildings before the first real floor means many sequential round-trips.
- */
-async function firstFloorId(portfolio: Site[], dispatch: Dispatch<Action>): Promise<string | undefined> {
-  for (const site of portfolio) {
-    let buildings = site.buildings;
-    if (buildings.length === 0) {
-      buildings = await dataSource.getBuildingsForSite(site.id).catch(() => []);
-      dispatch({ type: 'SITE_BUILDINGS_LOADED', siteId: site.id, buildings });
-    }
-    for (const building of buildings) {
-      let floors = building.floors;
-      if (floors.length === 0) {
-        floors = await dataSource.getFloorsForBuilding(building.id).catch(() => []);
-        dispatch({ type: 'BUILDING_FLOORS_LOADED', siteId: site.id, buildingId: building.id, floors });
-      }
-      if (floors[0]) return floors[0].id;
-    }
-  }
-  return undefined;
 }
 
 /**
@@ -202,11 +172,7 @@ function roomLabelAt(state: AppState, x: number, y: number): string | null {
 }
 
 function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef: MutableRefObject<DOMRect | null>) {
-  const showToast = (message: string) => {
-    dispatch({ type: 'SHOW_TOAST', message });
-    if (toastTimer) clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => dispatch({ type: 'SHOW_TOAST', message: null }), 3200);
-  };
+  const showToast = (message: string) => showToastVia(dispatch, message);
 
   async function loadFloor(floorId: string): Promise<Unit[]> {
     dispatch({ type: 'SELECT_FLOOR_START', floorId });
@@ -244,11 +210,29 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       }
     }
 
+    // Individually caught (not a bare Promise.all) so one failing tier can't strand this floor's
+    // load forever (state.loading would never clear) — local-fallback-disabled failures surface
+    // as a toast + empty result instead.
+    let floorLoadFailed = false;
     const [units, assignments, bookings] = await Promise.all([
-      dataSource.getUnits(floorId),
-      dataSource.getAssignments(floorId),
-      dataSource.getBookings(floorId, state.date),
+      dataSource.getUnits(floorId).catch((err) => {
+        floorLoadFailed = true;
+        // eslint-disable-next-line no-console
+        console.warn('[loadFloor] units load failed', err);
+        return [] as Unit[];
+      }),
+      dataSource.getAssignments(floorId).catch((err) => {
+        // eslint-disable-next-line no-console
+        console.warn('[loadFloor] assignments load failed', err);
+        return {} as Assignments;
+      }),
+      dataSource.getBookings(floorId, state.date).catch((err) => {
+        // eslint-disable-next-line no-console
+        console.warn('[loadFloor] bookings load failed', err);
+        return [] as Booking[];
+      }),
     ]);
+    if (floorLoadFailed) showToast("Couldn't load this floor's data");
     dispatch({ type: 'SELECT_FLOOR_DONE', floorId, units, assignments, bookings });
     loadFloorPlanTypesAndImage(dispatch, floorId, state.planId);
     return units;
@@ -824,7 +808,12 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
     },
 
     setDate: async (value: string) => {
-      const bookings = await dataSource.getBookings(state.floorId, value);
+      const bookings = await dataSource.getBookings(state.floorId, value).catch((err) => {
+        showToast("Couldn't load bookings for that date");
+        // eslint-disable-next-line no-console
+        console.warn('[setDate] bookings load failed', err);
+        return [] as Booking[];
+      });
       dispatch({ type: 'SET_DATE', value, bookings });
     },
     setTimeRange: (start: number, end: number) => dispatch({ type: 'SET_TIME_RANGE', start, end }),
@@ -1042,6 +1031,11 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
     setSettingsTab: (tab: AppState['settingsTab']) => dispatch({ type: 'SET_SETTINGS_TAB', tab }),
     setModuleColor: (key: string, hex: string) => dispatch({ type: 'SET_MODULE_COLOR', key, hex }),
     setSlotGranularity: (minutes: number) => dispatch({ type: 'SET_SLOT_GRANULARITY', minutes }),
+    /** dataSource.ts can't read React state directly, so this keeps its module-level flag in sync. */
+    setAllowLocalFallback: (value: boolean) => {
+      dispatch({ type: 'SET_ALLOW_LOCAL_FALLBACK', value });
+      dataSourceSetAllowLocalFallback(value);
+    },
 
     showToast,
 
@@ -1145,7 +1139,12 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     loadSettings()
       .then((cfg) => {
-        if (cfg) dispatch({ type: 'APPLY_SETTINGS', config: cfg });
+        if (cfg) {
+          dispatch({ type: 'APPLY_SETTINGS', config: cfg });
+          // dataSource.ts can't read React state directly — keep its module-level flag in sync
+          // with whatever the persisted setting says.
+          if (cfg.allowLocalFallback !== undefined) dataSourceSetAllowLocalFallback(cfg.allowLocalFallback);
+        }
       })
       .finally(() => {
         settingsLoadedRef.current = true;
@@ -1163,23 +1162,48 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
     }, 500);
     return () => clearTimeout(saveTimer.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.perms, state.moduleColors, state.slotGranularity, state.bookingModule, state.customMarkers]);
+  }, [state.perms, state.moduleColors, state.slotGranularity, state.bookingModule, state.customMarkers, state.allowLocalFallback]);
 
   useEffect(() => {
     if (loadedRef.current) return;
     loadedRef.current = true;
     (async () => {
+      // Local-fallback-disabled failures surface as an explicit toast + empty result, instead of
+      // either masking them with mock data or leaving this Promise.all rejected (which would
+      // strand state.loading forever, same class of bug as an unbounded SDK wait).
       const [portfolio, clientContacts, assets] = await Promise.all([
-        dataSource.getPortfolio().catch(() => MOCK_PORTFOLIO),
-        dataSource.getClientContacts().catch(() => MOCK_CONTACTS),
-        dataSource.getAssets().catch(() => DEMO_ASSETS),
+        dataSource.getPortfolio().catch((err) => {
+          showToastVia(dispatch, "Couldn't load your organization's portfolio");
+          // eslint-disable-next-line no-console
+          console.warn('[boot] portfolio load failed', err);
+          return [] as Site[];
+        }),
+        dataSource.getClientContacts().catch((err) => {
+          showToastVia(dispatch, "Couldn't load client contacts");
+          // eslint-disable-next-line no-console
+          console.warn('[boot] client contacts load failed', err);
+          return [] as ClientContact[];
+        }),
+        dataSource.getAssets().catch((err) => {
+          showToastVia(dispatch, "Couldn't load the asset catalog");
+          // eslint-disable-next-line no-console
+          console.warn('[boot] assets load failed', err);
+          return [] as Asset[];
+        }),
       ]);
       dispatch({ type: 'PORTFOLIO_LOADED', portfolio, clientContacts, assets });
 
       // The mock default floorId ('hqA3') isn't a real floor against the live backend —
-      // sending it to per-floor endpoints (getFloorplanDetailsByType) just 500s. Start on the
-      // real portfolio's actual first floor instead, when one's available.
-      const firstRealFloor = isFacilioApiConfigured ? await withTimeout(firstFloorId(portfolio, dispatch), 12000, undefined) : undefined;
+      // sending it to per-floor endpoints (getFloorplanDetailsByType) just 500s. Prefer the
+      // CURRENT USER's own assigned/booked desk's floor (so they land somewhere relevant to
+      // them); otherwise fall back to the cheapest possible "some floor exists" check — one
+      // paginated floor record — rather than walking the whole site/building tree to find one.
+      let myDesk: Awaited<ReturnType<typeof fetchMyDesk>> = null;
+      let firstRealFloor: string | undefined;
+      if (isFacilioApiConfigured) {
+        myDesk = await fetchMyDesk().catch(() => null);
+        firstRealFloor = myDesk?.floorId ?? (await getAnyFloor().catch(() => null))?.id;
+      }
       const floorId = firstRealFloor ?? state.floorId;
       if (floorId !== state.floorId) dispatch({ type: 'SELECT_FLOOR_START', floorId });
 
@@ -1191,14 +1215,9 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
       dispatch({ type: 'SELECT_FLOOR_DONE', floorId, units, assignments, bookings });
       loadFloorPlanTypesAndImage(dispatch, floorId, state.planId);
 
-      // The logged-in user's real assigned/booked desk, for the "My desk" button. Best-effort:
-      // the endpoint resolves the employee from the session and may not be reachable for every
-      // token — absence just means the button stays hidden (unless mock assignments provide one).
-      if (isFacilioApiConfigured) {
-        fetchMyDesk()
-          .then((myDesk) => dispatch({ type: 'SET_MY_DESK', myDesk }))
-          .catch(() => {});
-      }
+      // The logged-in user's real assigned/booked desk, for the "My desk" button — already
+      // resolved above (reused, not re-fetched) when configured.
+      if (isFacilioApiConfigured) dispatch({ type: 'SET_MY_DESK', myDesk });
     })();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 

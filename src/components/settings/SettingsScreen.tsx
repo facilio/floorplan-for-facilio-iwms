@@ -208,8 +208,28 @@ function PermissionsTab() {
             Clear local data
           </Button>
         </div>
+        <div className={styles.stateRow}>
+          <div className={styles.stateText}>
+            <div className={styles.rowName}>Allow local data as a fallback</div>
+            <div className={styles.rowDesc}>
+              When off, a failure loading your organization&rsquo;s real data shows an error
+              instead of silently falling back to local/seed data.
+            </div>
+          </div>
+          <AllowLocalFallbackSwitch />
+        </div>
       </div>
     </div>
+  );
+}
+
+function AllowLocalFallbackSwitch() {
+  const { state, actions } = useFloorplan();
+  const on = state.allowLocalFallback;
+  return (
+    <button className={[styles.switch, on ? styles.switchOn : ''].join(' ')} onClick={() => actions.setAllowLocalFallback(!on)}>
+      <span className={styles.knob} style={{ left: on ? 18 : 2 }} />
+    </button>
   );
 }
 

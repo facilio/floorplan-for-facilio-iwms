@@ -115,6 +115,14 @@ export interface AppState {
   settingsTab: 'permissions' | 'bookings' | UnitType;
   moduleColors: Record<string, string>;
   slotGranularity: number;
+  /**
+   * When false, the local/mock tier is excluded from the data-source fallback chain (Settings ›
+   * Local data) — a real-org data failure surfaces as an explicit error instead of silently
+   * showing local/seed data. Only takes effect when a real backend is actually configured
+   * (connected-app mode, or dev with a base URL + token) — in plain local dev there's no "real"
+   * tier to prefer, so this has no effect there.
+   */
+  allowLocalFallback: boolean;
 
   toast: string | null;
 

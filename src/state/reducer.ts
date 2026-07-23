@@ -113,6 +113,7 @@ export function buildInitialState(): AppState {
     settingsTab: 'permissions',
     moduleColors: {},
     slotGranularity: 30,
+    allowLocalFallback: true,
 
     toast: null,
 
@@ -189,6 +190,7 @@ export type Action =
   | { type: 'SET_BOOK_FORM'; form: AppState['bookForm'] }
   | { type: 'UPDATE_BOOK_FORM'; patch: Partial<NonNullable<AppState['bookForm']>> }
   | { type: 'SET_BOOKING_MODULE'; module: AppState['bookingModule'] }
+  | { type: 'SET_ALLOW_LOCAL_FALLBACK'; value: boolean }
   | { type: 'ADD_BOOKING'; booking: Booking }
   | { type: 'CANCEL_BOOKING'; id: string }
   | { type: 'SET_SCHED_VIEW'; view: AppState['schedView'] }
@@ -456,6 +458,8 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, bookForm: state.bookForm ? { ...state.bookForm, ...action.patch } : state.bookForm };
     case 'SET_BOOKING_MODULE':
       return { ...state, bookingModule: action.module };
+    case 'SET_ALLOW_LOCAL_FALLBACK':
+      return { ...state, allowLocalFallback: action.value };
     case 'APPLY_SETTINGS': {
       const c = action.config;
       return {
@@ -465,6 +469,7 @@ export function reducer(state: AppState, action: Action): AppState {
         slotGranularity: c.slotGranularity ?? state.slotGranularity,
         bookingModule: c.bookingModule ?? state.bookingModule,
         customMarkers: c.customMarkers ?? state.customMarkers,
+        allowLocalFallback: c.allowLocalFallback ?? state.allowLocalFallback,
       };
     }
     case 'ADD_BOOKING':
