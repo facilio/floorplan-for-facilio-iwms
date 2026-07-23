@@ -32,7 +32,11 @@ export function MobileApp({ mode, onClose }: MobileAppProps) {
   // / this-session upload). The flag alone hid real floors behind "No floorplan" on mobile while
   // the web canvas rendered them fine. A loaded image for the active plan also counts.
   const hasPlan = !!meta?.floor.hasPlan || !!state.floorsWithPlans[state.floorId] || !!state.floorImages[floorImageKey(state.floorId, state.planId)];
-  const myUnit = myAssignedUnit(state);
+  // Memoized like the web canvas: a full assignments scan per pan/zoom frame is wasted work.
+  const myUnit = useMemo(() => myAssignedUnit(state), [state.assignments, state.bookBy, state.units]); // eslint-disable-line react-hooks/exhaustive-deps
+  // One synthetic palette-state per render (mode synced to the mobile tab), not one spread per
+  // marker per frame — same object markerStyle reads either way.
+  const paletteState = { ...state, mode: state.mobileTab } as typeof state;
   const [qrOpen, setQrOpen] = useState(false);
   const [spacesOpen, setSpacesOpen] = useState(false);
   const [myBookingsOpen, setMyBookingsOpen] = useState(false);
@@ -40,8 +44,10 @@ export function MobileApp({ mode, onClose }: MobileAppProps) {
   const myBookingsCount = state.bookings.filter((b) => b.by === state.bookBy).length;
 
   // Memoized: the mobile map re-renders per pan/zoom frame; units only change on real edits.
+  // `unplaced` excluded to match the web canvas — org records with no on-plan position carry a
+  // 0,0 placeholder geom and would otherwise paint a pin in the top-left corner here.
   const rooms = useMemo(() => state.units.filter((u) => u.type === 'room' && u.geom.kind === 'poly'), [state.units]);
-  const markers = useMemo(() => state.units.filter((u) => u.type !== 'room' && u.geom.kind === 'point'), [state.units]);
+  const markers = useMemo(() => state.units.filter((u) => u.type !== 'room' && !u.unplaced && u.geom.kind === 'point'), [state.units]);
 
   const legend =
     state.mobileTab === 'assign'
@@ -391,7 +397,7 @@ function MobileMap({
           const contact = contactId ? contactName(state, contactId) : null;
           // Same palette as the web: markerStyle keyed on a mode synced to the
           // mobile tab, so bg / border / fill are identical across views.
-          const ms = markerStyle({ ...state, mode: state.mobileTab } as typeof state, m);
+          const ms = markerStyle(paletteState, m);
           // labels appear once zoomed in enough to not collide; the selected pin always shows
           const showLabel = v.z >= 0.5 || selected;
           return (
