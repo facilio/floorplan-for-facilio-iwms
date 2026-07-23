@@ -926,18 +926,21 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
     // overridden by this.
     let newMarkerType: { id: number } | undefined;
     // Brand-new desk/locker/parking: nest the FULL backing record inside the marker object under
-    // `desk` (confirmed field name), so this indoorfloorplan update creates the real desk record
-    // inline — a brand-new entry is created together with its nested record (the org's own save
-    // works this way), instead of a marker with no record behind it (which previously deferred
-    // record creation to the first assignment). All the record's required fields ride here:
-    // name, site/building/floor lookups, plus deskType for desks (string enum, matching the
-    // confirmed field-sync write).
+    // its module's own singular field name (`desk`/`locker`/`parkingStall` — see
+    // MARKER_RECORD_KEY; `desk` confirmed, the others follow the same singular-camelCase pattern
+    // the org's spacebooking lookups use), so this indoorfloorplan update creates the real
+    // record inline — a brand-new entry is created together with its nested record (the org's
+    // own save works this way), instead of a marker with no record behind it (which previously
+    // deferred record creation to the first assignment). All the record's required fields ride
+    // here: name, site/building/floor lookups, plus deskType for desks (string enum, matching
+    // the confirmed field-sync write).
     let newRecord: Record<string, unknown> | undefined;
+    const recordKey = MARKER_RECORD_KEY[unit.type];
     if (!match) {
       const autoName = AUTO_MARKER_TYPE_NAME[unit.type];
       const id = autoName ? await markerTypeIdByName(autoName) : null;
       if (id) newMarkerType = { id };
-      if (REAL_SPACE_MODULE[unit.type]) {
+      if (recordKey) {
         newRecord = {
           name: unit.label,
           ...(parentSiteId ? { site: { id: parentSiteId } } : {}),
@@ -954,7 +957,7 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
     nextMarkers.push({
       ...(match ?? {}),
       ...(newMarkerType ? { markerType: newMarkerType } : {}),
-      ...(newRecord ? { desk: newRecord } : {}),
+      ...(newRecord && recordKey ? { [recordKey]: newRecord } : {}),
       geoId: unit.id,
       geometry,
       properties,
@@ -995,10 +998,10 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
     const geometry = JSON.stringify({ type: 'Polygon', coordinates: [ring] });
 
     if (!match) {
-      // Brand-new room — create its backing `space` record inline (module name confirmed live,
-      // see ROOM_SPACE_MODULE), same as a brand-new desk's marker gets created inline above.
-      const created = await createRealZoneSpaceRecord(unit);
-      if (!created) continue;
+      // Brand-new room — nest the FULL backing `space` record in the zone entry, same inline-
+      // creation pattern as a brand-new desk's marker above: the backend creates the space
+      // record together with the zone (and fills recordId/zoneModuleId itself), replacing the
+      // old separate createRecord('space')-then-reference flow.
       nextZones.push({
         geoId: unit.id,
         geometry,
@@ -1007,9 +1010,13 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
         indoorfloorplan: { id: indoorFloorPlanId },
         label: unit.label,
         isReservable: unit.isReservable ?? true,
-        space: { id: created.recordId, reservable: unit.isReservable ?? true },
-        zoneModuleId: created.zoneModuleId,
-        recordId: created.recordId,
+        space: {
+          name: unit.label,
+          ...(parentSiteId ? { site: { id: parentSiteId } } : {}),
+          ...(parentBuildingId ? { building: { id: parentBuildingId } } : {}),
+          floor: { id: parentFloorId ?? unit.floor },
+          reservable: unit.isReservable ?? true,
+        },
       });
       continue;
     }
@@ -1052,6 +1059,18 @@ const REAL_SPACE_MODULE: Partial<Record<Unit['type'], string>> = {
   workstation: 'desks',
   locker: 'lockers',
   parking: 'parkingstall',
+};
+
+/**
+ * The marker object's field for a brand-new unit's nested backing record — the backend creates
+ * the record inline from it (see syncMarkersForIndoorFloorPlan). `desk` is confirmed; locker/
+ * parkingStall follow the org's singular-camelCase field pattern (same names spacebooking uses
+ * for its resource lookups). Rooms nest under `space` on the markedZone entry instead.
+ */
+const MARKER_RECORD_KEY: Partial<Record<Unit['type'], string>> = {
+  workstation: 'desk',
+  locker: 'locker',
+  parking: 'parkingStall',
 };
 
 /**
