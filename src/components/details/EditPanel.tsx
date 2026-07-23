@@ -10,7 +10,7 @@ import { Button } from '../primitives/Button';
 import { Picklist } from '../fds/Picklist';
 import { Select } from '../primitives/Select';
 import { isFacilioApiConfigured } from '../../lib/facilioApi';
-import { createMarkerType, fetchMarkerIconUrl, fetchUnitModuleState, getCustomMarkerTypes, uploadMarkerIcon } from '../../lib/facilioApiDataSource';
+import { createMarkerType, fetchMarkerIconUrl, fetchUnitModuleState, getAllModules, getCustomMarkerTypes, uploadMarkerIcon } from '../../lib/facilioApiDataSource';
 import card from './Card.module.css';
 import styles from './EditPanel.module.css';
 
@@ -248,10 +248,6 @@ function ToolsTab() {
   );
 }
 
-/** Modules a custom marker can be scoped to — options pending a confirmed "list modules" API;
- *  the Module field is mandatory, so marker creation is blocked until this is wired in. */
-const MARKER_MODULE_OPTIONS: { value: string; label: string }[] = [];
-
 function MarkersTab() {
   const { state, actions } = useFloorplan();
   const [formOpen, setFormOpen] = useState(false);
@@ -263,7 +259,16 @@ function MarkersTab() {
   const [nmPreviewUrl, setNmPreviewUrl] = useState<string | null>(null);
   const [nmColor, setNmColor] = useState('#607796');
   const [saving, setSaving] = useState(false);
+  const [moduleOptions, setModuleOptions] = useState<{ value: string; label: string }[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // The org's real module list, for the "Select Module" dropdown (markertype.recordModuleId).
+  useEffect(() => {
+    if (!isFacilioApiConfigured) return;
+    getAllModules().then((modules) => {
+      setModuleOptions(modules.map((m) => ({ value: String(m.id), label: m.displayName })));
+    });
+  }, []);
 
   // Real custom marker types (markertype module) fetched once when configured — built-ins keep
   // their own hardcoded icons; this only replaces the previously local-only custom-markers list.
@@ -393,11 +398,11 @@ function MarkersTab() {
             </label>
             <Select
               value={nmModuleId || null}
-              options={MARKER_MODULE_OPTIONS}
+              options={moduleOptions}
               onChange={setNmModuleId}
-              placeholder={MARKER_MODULE_OPTIONS.length ? 'Select Module' : 'Module list not available yet'}
+              placeholder={moduleOptions.length ? 'Select Module' : 'Loading modules…'}
               fullWidth
-              disabled={MARKER_MODULE_OPTIONS.length === 0}
+              disabled={moduleOptions.length === 0}
               aria-label="Module"
             />
             <label className={card.label} style={{ marginTop: 10 }}>

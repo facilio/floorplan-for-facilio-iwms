@@ -608,6 +608,40 @@ export async function fetchUnitModuleState(unit: Unit): Promise<string | null> {
   return res[moduleName].moduleState ?? null;
 }
 
+export interface ModuleSummary {
+  id: number;
+  name: string;
+  displayName: string;
+}
+
+let modulesListCache: Promise<ModuleSummary[]> | null = null;
+
+/**
+ * All modules in the org (`v3/modules/list/all?skipPermission=true` — confirmed live) — the
+ * "Select Module" dropdown when creating a custom marker type (recordModuleId). Response shape
+ * not independently confirmed, so several reasonable list locations are tried. Cached for the
+ * session (module list doesn't change during a session).
+ */
+export function getAllModules(): Promise<ModuleSummary[]> {
+  if (!isFacilioApiConfigured) return Promise.resolve([]);
+  if (!modulesListCache) {
+    modulesListCache = customGet('v3/modules/list/all', { skipPermission: true })
+      .then((body: any) => {
+        const list = body?.data ?? body?.result?.modules ?? body?.result ?? body?.modules ?? [];
+        return (Array.isArray(list) ? list : [])
+          .map((m: any) => ({ id: Number(m.id ?? m.moduleId), name: m.name ?? m.moduleName ?? '', displayName: m.displayName ?? m.name ?? m.moduleName ?? '' }))
+          .filter((m: ModuleSummary) => Number.isFinite(m.id) && m.name);
+      })
+      .catch((err: unknown) => {
+        // eslint-disable-next-line no-console
+        console.warn('[facilio-api] module list fetch failed', err);
+        modulesListCache = null; // transient failure — allow a retry on next open
+        return [];
+      });
+  }
+  return modulesListCache;
+}
+
 /**
  * Real custom marker types (`markertype` module — `POST v3/modules/data/create`, confirmed live
  * with `{name, description, fileId, recordModuleId, isAutoCreate}`). Neutral default color since
