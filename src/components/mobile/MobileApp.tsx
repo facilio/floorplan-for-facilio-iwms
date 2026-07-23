@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
 import { floorMeta } from '../../state/selectors';
 import { fitView, fmtTime, polygonCentroid, zoomAt } from '../../lib/geometry';
@@ -39,8 +39,9 @@ export function MobileApp({ mode, onClose }: MobileAppProps) {
   const [dateOpen, setDateOpen] = useState(false);
   const myBookingsCount = state.bookings.filter((b) => b.by === state.bookBy).length;
 
-  const rooms = state.units.filter((u) => u.type === 'room' && u.geom.kind === 'poly');
-  const markers = state.units.filter((u) => u.type !== 'room' && u.geom.kind === 'point');
+  // Memoized: the mobile map re-renders per pan/zoom frame; units only change on real edits.
+  const rooms = useMemo(() => state.units.filter((u) => u.type === 'room' && u.geom.kind === 'poly'), [state.units]);
+  const markers = useMemo(() => state.units.filter((u) => u.type !== 'room' && u.geom.kind === 'point'), [state.units]);
 
   const legend =
     state.mobileTab === 'assign'

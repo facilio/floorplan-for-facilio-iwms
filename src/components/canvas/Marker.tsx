@@ -6,13 +6,16 @@ import type { PointGeom, Unit } from '../../lib/types';
 import { MARKER_ICONS as ICONS } from './markerIcons';
 import styles from './Marker.module.css';
 
-export function Marker({ unit, invZ, onDragStart }: { unit: Unit; invZ: number; onDragStart?: (unit: Unit, e: ReactMouseEvent) => void }) {
+export function Marker({ unit, invZ, onDragStart, myUnitId }: { unit: Unit; invZ: number; onDragStart?: (unit: Unit, e: ReactMouseEvent) => void; myUnitId?: string | null }) {
   const { state, actions } = useFloorplan();
   const geom = unit.geom as PointGeom;
   const style = markerStyle(state, unit);
   const status = unitStatus(state, unit, (id) => contactName(state, id));
   const draggable = state.mode === 'edit' && state.tool === 'select';
-  const isMine = myAssignedUnit(state)?.id === unit.id;
+  // Prefer the parent-computed id: myAssignedUnit is a full assignments scan, and running it in
+  // every marker made pan/zoom frames O(markers × assignments). The fallback keeps call sites
+  // that don't pass it (mobile) working.
+  const isMine = (myUnitId !== undefined ? myUnitId : myAssignedUnit(state)?.id) === unit.id;
   const isHighlighted = state.highlightUnitId === unit.id;
 
   function onClick(e: ReactMouseEvent) {

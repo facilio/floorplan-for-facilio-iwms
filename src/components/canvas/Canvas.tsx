@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
 import { clamp, polyAreaM2, polygonCentroid, toNorm, unitCenter } from '../../lib/geometry';
+import { myAssignedUnit } from '../../state/selectors';
 import { IMG_H, IMG_W } from '../../lib/mockData';
 import { FloorplanBackground } from './FloorplanBackground';
 import { RoomPolygon } from './RoomPolygon';
@@ -483,14 +484,20 @@ export function Canvas() {
 
   // poly-guard matters: connector-tier spaces arrive without plan geometry
   // (listed in the sidebar, not drawn) — RoomPolygon would crash on them.
-  const rooms = state.units
-    .filter((u) => u.type === 'room' && u.geom.kind === 'poly')
-    .map((u) => ({ ...u, geom: previewedGeom(u) }));
-  const markers = state.units
+  // The FILTERED lists are memoized: the canvas re-renders every frame during pan/zoom
+  // (SET_VIEW), and re-scanning all units per frame is pure waste — units/plan only change on
+  // real edits. The previewedGeom map stays per-render (it tracks live drags by design).
+  const roomUnits = useMemo(() => state.units.filter((u) => u.type === 'room' && u.geom.kind === 'poly'), [state.units]);
+  const markerUnits = useMemo(
     // amenities show on every plan type; desks/lockers/parking only on theirs. `unplaced` units
     // (org records with no plan position, e.g. connector spaces) are sidebar-only, never drawn.
-    .filter((u) => u.type !== 'room' && !u.unplaced && (u.type === 'amenity' || u.plan === state.planId))
-    .map((u) => ({ ...u, geom: previewedGeom(u) }));
+    () => state.units.filter((u) => u.type !== 'room' && !u.unplaced && (u.type === 'amenity' || u.plan === state.planId)),
+    [state.units, state.planId]
+  );
+  const rooms = roomUnits.map((u) => ({ ...u, geom: previewedGeom(u) }));
+  const markers = markerUnits.map((u) => ({ ...u, geom: previewedGeom(u) }));
+  // One assignments scan per render, not one per marker (Marker's isMine fallback).
+  const myUnitId = useMemo(() => myAssignedUnit(state)?.id ?? null, [state.assignments, state.bookBy, state.units]);
 
   const selectedRoom = isEditSelect && multiSel.size === 0 ? rooms.find((r) => r.id === state.selected) : undefined;
 
@@ -540,6 +547,7 @@ export function Canvas() {
             unit={dragPreview?.id === m.id ? { ...m, geom: { kind: 'point', x: dragPreview.x, y: dragPreview.y } } : m}
             invZ={Number(invZ)}
             onDragStart={startMarkerDrag}
+            myUnitId={myUnitId}
           />
         ))}
 

@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import type { DragEvent as ReactDragEvent } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
 import { contactName } from '../../state/selectors';
@@ -51,16 +52,28 @@ export function SpacesList() {
   // session pool (markers deleted this session) PLUS org records that exist with no on-plan
   // position yet (`unplaced` — e.g. connector spaces), which were previously listed in the
   // assign/book sidebar but unreachable here.
-  const units = isEdit ? [...state.unplacedUnits, ...state.units.filter((u) => u.unplaced)] : state.units;
+  const units = useMemo(
+    () => (isEdit ? [...state.unplacedUnits, ...state.units.filter((u) => u.unplaced)] : state.units),
+    [isEdit, state.unplacedUnits, state.units]
+  );
 
-  const counts: Record<string, number> = { all: units.length };
-  for (const u of units) counts[u.type] = (counts[u.type] || 0) + 1;
+  const counts = useMemo(() => {
+    const c: Record<string, number> = { all: units.length };
+    for (const u of units) c[u.type] = (c[u.type] || 0) + 1;
+    return c;
+  }, [units]);
 
+  // Memoized: filter+sort over the full unit list re-ran on EVERY context render (each pan/zoom
+  // frame, tooltip move, …) — the inputs only change on real edits/search.
   const q = state.spaceSearch.trim().toLowerCase();
-  const filtered = units
-    .filter((u) => state.spaceFilter === 'all' || u.type === state.spaceFilter)
-    .filter((u) => !q || u.label.toLowerCase().includes(q) || (u.room ?? '').toLowerCase().includes(q) || (u.secondary ?? '').toLowerCase().includes(q))
-    .sort(unitSortCompare);
+  const filtered = useMemo(
+    () =>
+      units
+        .filter((u) => state.spaceFilter === 'all' || u.type === state.spaceFilter)
+        .filter((u) => !q || u.label.toLowerCase().includes(q) || (u.room ?? '').toLowerCase().includes(q) || (u.secondary ?? '').toLowerCase().includes(q))
+        .sort(unitSortCompare),
+    [units, state.spaceFilter, q]
+  );
 
   return (
     <div className={styles.wrap}>
