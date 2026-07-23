@@ -29,6 +29,15 @@ async function blobToRenderableDataUrl(blob: Blob, contentType: string | undefin
 }
 
 /**
+ * Facilio uses `-1` as the sentinel for "unset" throughout (confirmed live across many fields,
+ * not just fileId) — a plain falsy check doesn't catch it (`-1` is truthy), so a "no file
+ * attached" fileId of `-1` would otherwise still trigger a doomed preview/download request.
+ */
+function isValidFileId(id: unknown): id is number {
+  return typeof id === 'number' && id > 0;
+}
+
+/**
  * `indoorfloorplan.floorPlanType` — one plan record per module, confirmed against a live org
  * (only 1/2/3 are accepted; there's no generic/custom type, so `custom` floors fall back to
  * the workstation plan).
@@ -205,7 +214,7 @@ export async function fetchFloorplanImage(floorId: string, planId: PlanId): Prom
   const recordRes = await facilioApi.fetchRecord<any>('indoorfloorplan', { id: summary.id });
   if (recordRes.error || !recordRes.indoorfloorplan) return null;
   const fileId = recordRes.indoorfloorplan.fileId;
-  if (!fileId) return null;
+  if (!isValidFileId(fileId)) return null;
 
   const preview = await fetchFilePreview(fileId, { original: true });
   if (preview.dataUrl) return preview.dataUrl;
@@ -251,7 +260,7 @@ export interface FloorplanFileUploadResult {
  * otherwise null (the file isn't server-renderable, so callers fall back). Best-effort.
  */
 export async function fetchRenderedFileImage(fileId: number): Promise<string | null> {
-  if (!isFacilioApiConfigured) return null;
+  if (!isFacilioApiConfigured || !isValidFileId(fileId)) return null;
   try {
     const preview = await fetchFilePreview(fileId);
     if (preview.dataUrl) return preview.dataUrl;
@@ -642,7 +651,7 @@ export async function getCustomMarkerTypes(): Promise<MarkerDef[]> {
     name: m.name,
     color: '#607796',
     text: (m.name ?? '?').slice(0, 2).toUpperCase(),
-    fileId: m.fileId ?? undefined,
+    fileId: isValidFileId(m.fileId) ? m.fileId : undefined,
   }));
 }
 
@@ -670,7 +679,7 @@ export async function createMarkerType(input: CreateMarkerTypeInput): Promise<{ 
 
 /** A marker icon's displayable URL, resolved from its `fileId` (same file-preview path as floorplan images). */
 export async function fetchMarkerIconUrl(fileId: number): Promise<string | null> {
-  if (!isFacilioApiConfigured) return null;
+  if (!isFacilioApiConfigured || !isValidFileId(fileId)) return null;
   const preview = await fetchFilePreview(fileId, { original: true });
   if (preview.dataUrl) return preview.dataUrl;
   if (!preview.blob) return null;

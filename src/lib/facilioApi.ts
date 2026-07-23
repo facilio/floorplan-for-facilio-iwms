@@ -301,17 +301,18 @@ export const facilioApi = {
  * call sites in facilioApiDataSource.ts for why). Connected mode never needs this: `path` is
  * always resolved by the SDK relative to the org itself.
  *
- * Connected mode goes through `invokeFacilioAPI`, which the SDK docs mark deprecated but still
- * working for endpoints with no dedicated module-CRUD equivalent, and which returns a JSON
- * STRING rather than a parsed object — parsed here. NOT verified against a live org: whether
- * GET query params are read from `data` isn't documented, so they're encoded into the URL's
- * query string directly instead, sidestepping the question.
+ * Connected mode goes through `request.invokeFacilioAPI` (confirmed live path — NOT nested
+ * under `.api`, which is reserved for the Data API/module CRUD), which the SDK docs mark
+ * deprecated but still working for endpoints with no dedicated module-CRUD equivalent, and
+ * which returns a JSON STRING rather than a parsed object — parsed here. NOT verified against a
+ * live org: whether GET query params are read from `data` isn't documented, so they're encoded
+ * into the URL's query string directly instead, sidestepping the question.
  */
 export async function customGet(path: string, params?: Record<string, unknown>, opts?: { devAbsoluteUrl?: string }): Promise<any> {
   if (isConnectedApp) {
     const app = await facilioAppReady();
     const query = params && Object.keys(params).length ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : '';
-    const raw = await app.api.invokeFacilioAPI(`${path}${query}`, { method: 'GET' });
+    const raw = await app.request.invokeFacilioAPI(`${path}${query}`, { method: 'GET' });
     return typeof raw === 'string' ? JSON.parse(raw) : raw;
   }
   const res = await devInstance!.get(opts?.devAbsoluteUrl ?? path, { params });
@@ -359,7 +360,7 @@ export async function fetchFilePreview(fileId: number, opts?: { original?: boole
   if (isConnectedApp) {
     const app = await facilioAppReady();
     try {
-      const raw = await app.api.invokeFacilioAPI(`v2/files/preview/${fileId}${opts?.original ? '?fetchOriginal=true' : ''}`, { method: 'GET' });
+      const raw = await app.request.invokeFacilioAPI(`v2/files/preview/${fileId}${opts?.original ? '?fetchOriginal=true' : ''}`, { method: 'GET' });
       const dataUrl = interpretFilePreviewResponse(raw);
       if (dataUrl) return { dataUrl };
       // eslint-disable-next-line no-console
