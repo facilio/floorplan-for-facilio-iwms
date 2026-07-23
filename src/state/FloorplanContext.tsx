@@ -472,7 +472,18 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
     focusUnit: (id: string, rectW: number, rectH: number, opts?: { select?: boolean }) => {
       const u = unitById(state, id);
       if (!u) return;
-      if (u.plan !== state.planId) dispatch({ type: 'SET_PLAN', planId: u.plan });
+      // Rooms and amenities render on EVERY plan type (see Canvas's unit filter), so focusing one
+      // must NOT switch the active plan — switching would land on a plan type whose floor image
+      // isn't loaded, blanking the canvas. Only plan-scoped units (desk/locker/parking) switch,
+      // and then the target plan's image must be ensured: a bare SET_PLAN doesn't load it (that's
+      // what actions.setPlan does), so focusing a unit on another plan would otherwise blank too.
+      const planScoped = u.type === 'workstation' || u.type === 'locker' || u.type === 'parking';
+      if (planScoped && u.plan !== state.planId) {
+        dispatch({ type: 'SET_PLAN', planId: u.plan });
+        if (!state.floorImages[floorImageKey(state.floorId, u.plan)]) {
+          ensureFloorplanImage(dispatch, state.floorId, u.plan, state.allowLocalFallback);
+        }
+      }
       const view = focusUnitView(u, rectW, rectH, state.view.z, viewInsets(state));
       dispatch({ type: 'SET_VIEW', view, animate: true });
       dispatch({ type: 'MARK_USER_ZOOMED', value: true });
