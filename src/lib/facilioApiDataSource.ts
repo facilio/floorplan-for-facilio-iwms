@@ -387,13 +387,13 @@ export async function uploadFloorplanFile(
  * `FLOOR_PLAN_TYPE` number, not the raw `plan` string, so a room synced while viewing the
  * Workstations tab is actually included.
  *
- * Only units that ALREADY have a matching real entry (by `geoId`, from some prior real save) are
- * synced — a brand-new room or amenity placed in this app (no matching entry yet) is skipped with
- * a warning rather than guessed at: unlike desks/lockers/parking stalls (`ensureRealSpaceRecord`),
- * there's no confirmed real payload yet for what creating a NEW room/amenity backing record
- * (`space`/`zoneModuleId`/`recordId` for a zone, `markerType`/`markerModuleId`/`recordId` for an
- * amenity) looks like — it may vary by room category/marker type. New desks/lockers/parking
- * stalls are unaffected; those still create their backing record inline (see below).
+ * Brand-new desks/lockers/parking stalls AND rooms all create their real backing record inline
+ * (desks/etc. via `ensureRealSpaceRecord`'s pattern above; rooms via `createRealZoneSpaceRecord`,
+ * module name confirmed live — see `ROOM_SPACE_MODULE`). Amenities are the one exception: a
+ * brand-new amenity marker (no matching `markers` entry yet) is skipped with a warning rather than
+ * guessed at — there's no confirmed real payload yet for what its `markerType`/`markerModuleId`/
+ * `recordId` should be for a fresh placement. An amenity that already has a real entry (from a
+ * prior real save) still round-trips normally.
  *
  * Skipped when `indoorfloorplan.geometry` isn't set yet (no synthetic geo-reference — see
  * `geoReference.ts` — has been computed, e.g. a floor plan uploaded before this existed): there's
@@ -508,15 +508,28 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
 
   for (const unit of roomUnits) {
     const match = existingZonesByGeoId.get(unit.id);
-    if (!match) {
-      // Same reasoning as amenities above — no confirmed payload for creating a brand-new zone's
-      // backing `space` record (zoneModuleId varies by example, likely by room category).
-      // eslint-disable-next-line no-console
-      console.warn(`[facilio-api] room ${unit.id} has no existing backend zone — not synced (creation flow unconfirmed)`);
-      continue;
-    }
     const ring = [...unit.geom.pts, unit.geom.pts[0]].map(([x, y]) => quadToLngLat(quad, x, y));
     const geometry = JSON.stringify({ type: 'Polygon', coordinates: [ring] });
+
+    if (!match) {
+      // Brand-new room — create its backing `space` record inline (module name confirmed live,
+      // see ROOM_SPACE_MODULE), same as a brand-new desk's marker gets created inline above.
+      const created = await createRealZoneSpaceRecord(unit);
+      if (!created) continue;
+      nextZones.push({
+        geoId: unit.id,
+        geometry,
+        properties: '{}',
+        type: 'Feature',
+        indoorfloorplan: { id: indoorFloorPlanId },
+        label: unit.label,
+        isReservable: unit.isReservable ?? true,
+        space: { id: created.recordId, reservable: unit.isReservable ?? true },
+        zoneModuleId: created.zoneModuleId,
+        recordId: created.recordId,
+      });
+      continue;
+    }
     nextZones.push({
       ...match,
       geoId: unit.id,
@@ -558,17 +571,47 @@ const REAL_SPACE_MODULE: Partial<Record<Unit['type'], string>> = {
   parking: 'parkingstall',
 };
 
+/**
+ * Rooms' real backing module — confirmed live via `v3/floorplan/viewerData`'s
+ * `floorplanMappedmodules` list (moduleId 569101 = name `"space"`, the generic room/space
+ * business module every other space-like module extends). The two `markedZones` examples
+ * captured earlier had different `zoneModuleId` values NOT because room category varies the
+ * module (as originally assumed) — one of them was actually a locker drawn as a polygon zone
+ * (`markerModuleName: "lockers"`), not a room at all; a genuine room's zone is always this module.
+ */
+const ROOM_SPACE_MODULE = 'space';
+
 interface RealSpaceRef {
   recordId: number;
   /** The floor's site id — sent on `moves` records to match the real web app's payload shape. */
   siteId?: number;
-  /**
-   * Rooms only — their real "space" module's numeric id, read directly off the zone entry
-   * (`markedZones[].zoneModuleId`) rather than resolved via `moduleIdFor`: the two real zones
-   * captured had DIFFERENT `zoneModuleId` values, so unlike desks/lockers/parking there's no
-   * single fixed module name to resolve generically (likely varies by room category).
-   */
+  /** Rooms only — the `space` module's own numeric moduleId (for spacebooking's parentModuleId), read off the zone entry's `zoneModuleId` or resolved via `moduleIdFor` when just created. */
   parentModuleId?: number;
+}
+
+/**
+ * Creates a room's real backing `space` record (module name confirmed live, see
+ * `ROOM_SPACE_MODULE`) and resolves that module's own numeric id — shared by
+ * `syncMarkersForIndoorFloorPlan` (bulk, on "Save changes") and `ensureRealZoneRecord` (lazily, on
+ * first booking) so a brand-new room gets the same treatment either way.
+ */
+async function createRealZoneSpaceRecord(unit: Unit): Promise<{ recordId: number; zoneModuleId: number | null; siteId?: number } | null> {
+  const floorRes = await facilioApi.fetchRecord<any>('floor', { id: unit.floor });
+  if (floorRes.error || !floorRes.floor) return null;
+  const siteId = Number(lookupId(floorRes.floor, 'site')) || undefined;
+  const buildingId = lookupId(floorRes.floor, 'building');
+
+  const createRes = await facilioApi.createRecord<any>(ROOM_SPACE_MODULE, {
+    data: { name: unit.label, site: { id: siteId }, building: { id: buildingId }, floor: { id: unit.floor }, reservable: unit.isReservable ?? true },
+  });
+  if (createRes.error || !createRes[ROOM_SPACE_MODULE]?.id) {
+    // eslint-disable-next-line no-console
+    console.warn(`[facilio-api] room backing-record create failed for unit ${unit.id}`, createRes.error);
+    return null;
+  }
+  const recordId = createRes[ROOM_SPACE_MODULE].id;
+  const zoneModuleId = await moduleIdFor(ROOM_SPACE_MODULE, recordId);
+  return { recordId, zoneModuleId, siteId };
 }
 
 /**
@@ -660,10 +703,11 @@ async function ensureRealSpaceRecord(unit: Unit): Promise<RealSpaceRef | null> {
 }
 
 /**
- * A room's backing "space" record, read-only — mirrors `saveFloorplanMarkers`' `markedZones`
- * sync: only a room that already has a matching real zone entry (by `geoId`, from some prior
- * real save/import) resolves. A brand-new room has no confirmed creation payload yet (same
- * reasoning as `saveFloorplanMarkers`), so this returns null rather than guessing at one.
+ * A room's backing "space" record — mirrors `ensureRealSpaceRecord`'s desk pattern: an existing
+ * real zone entry (by `geoId`, from some prior real save/import) resolves as-is; a brand-new room
+ * gets its backing `space` record created inline (module name confirmed live, see
+ * `ROOM_SPACE_MODULE`), same as `syncMarkersForIndoorFloorPlan`'s bulk save-time creation, so a
+ * room booked before ever hitting "Save changes" still gets a real record.
  */
 async function ensureRealZoneRecord(unit: Unit): Promise<RealSpaceRef | null> {
   const cached = realSpaceRecordCache.get(unit.id);
@@ -676,11 +720,43 @@ async function ensureRealZoneRecord(unit: Unit): Promise<RealSpaceRef | null> {
   const record = await fetchIndoorFloorPlanRecord(summary.id);
   if (!record) return null;
   const zones: any[] = record.markedZones ?? [];
-  const zone = zones.find((z) => z.geoId === unit.id);
-  if (!zone?.recordId) return null;
+  let zone = zones.find((z) => z.geoId === unit.id);
+  let siteId: number | undefined;
 
-  const floorRes = await facilioApi.fetchRecord<any>('floor', { id: unit.floor });
-  const siteId = floorRes.error || !floorRes.floor ? undefined : Number(lookupId(floorRes.floor, 'site')) || undefined;
+  if (!zone) {
+    if (unit.geom.kind !== 'poly') return null;
+    const quad = geometryStringToQuad(record.geometry);
+    if (!quad) {
+      // eslint-disable-next-line no-console
+      console.warn(`[facilio-api] floor plan ${summary.id} has no geo-reference — room ${unit.id} not persisted to backend`);
+      return null;
+    }
+    const created = await createRealZoneSpaceRecord(unit);
+    if (!created) return null;
+    siteId = created.siteId;
+    const ring = [...unit.geom.pts, unit.geom.pts[0]].map(([x, y]) => quadToLngLat(quad, x, y));
+    zone = {
+      geoId: unit.id,
+      geometry: JSON.stringify({ type: 'Polygon', coordinates: [ring] }),
+      properties: '{}',
+      type: 'Feature',
+      indoorfloorplan: { id: summary.id },
+      label: unit.label,
+      isReservable: unit.isReservable ?? true,
+      space: { id: created.recordId, reservable: unit.isReservable ?? true },
+      zoneModuleId: created.zoneModuleId,
+      recordId: created.recordId,
+    };
+    // Round-trip the whole record — see the matching comment in syncMarkersForIndoorFloorPlan.
+    const createZoneRes = await facilioApi.updateRecord('indoorfloorplan', { id: summary.id, data: { ...record, markedZones: [...zones, zone] } });
+    if (createZoneRes.error) return null;
+  }
+
+  if (!zone.recordId) return null;
+  if (siteId === undefined) {
+    const floorRes = await facilioApi.fetchRecord<any>('floor', { id: unit.floor });
+    siteId = floorRes.error || !floorRes.floor ? undefined : Number(lookupId(floorRes.floor, 'site')) || undefined;
+  }
 
   const ref: RealSpaceRef = { recordId: zone.recordId, siteId, parentModuleId: zone.zoneModuleId };
   realSpaceRecordCache.set(unit.id, ref);
