@@ -262,8 +262,31 @@ export class CompositeDataSource implements FloorplanDataSource {
     method: K,
     ...args: FloorplanDataSource[K] extends (...a: infer A) => any ? A : never
   ): Promise<any> {
+    return this.runOn(this.activeTiers(), method, ...args);
+  }
+
+  /**
+   * Bookings have no real API-tier implementation yet — FacilioApiDataSource throws for all three
+   * booking methods, and the real write goes through createRealBooking directly (see
+   * FloorplanContext.submitBooking). So bookings must ALWAYS include the local tier, even when
+   * allowLocalFallback is off: that toggle exists to stop local UNIT data masking the real backend,
+   * not to disable the only booking store there is (without it, createBooking would throw
+   * "spacebooking not wired" and the booking wouldn't save at all).
+   */
+  private async runWithLocal<K extends keyof FloorplanDataSource>(
+    method: K,
+    ...args: FloorplanDataSource[K] extends (...a: infer A) => any ? A : never
+  ): Promise<any> {
+    return this.runOn(this.tiers, method, ...args);
+  }
+
+  private async runOn<K extends keyof FloorplanDataSource>(
+    tiers: FloorplanDataSource[],
+    method: K,
+    ...args: FloorplanDataSource[K] extends (...a: infer A) => any ? A : never
+  ): Promise<any> {
     let lastErr: unknown;
-    for (const tier of this.activeTiers()) {
+    for (const tier of tiers) {
       try {
         // @ts-expect-error - dynamic dispatch across the shared interface
         const result = await tier[method](...args);
@@ -346,13 +369,13 @@ export class CompositeDataSource implements FloorplanDataSource {
     return this.run('vacateUnit', unitId);
   }
   getBookings(floorId: string, date: string) {
-    return this.run('getBookings', floorId, date);
+    return this.runWithLocal('getBookings', floorId, date);
   }
   createBooking(input: Omit<Booking, 'id'>) {
-    return this.run('createBooking', input);
+    return this.runWithLocal('createBooking', input);
   }
   cancelBooking(id: string) {
-    return this.run('cancelBooking', id);
+    return this.runWithLocal('cancelBooking', id);
   }
 }
 
