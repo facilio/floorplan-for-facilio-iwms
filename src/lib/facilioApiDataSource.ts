@@ -4,7 +4,7 @@ import { renderPdfToDataUrl } from './pdfPreview';
 import { computeSyntheticGeometry, geometryStringToQuad, quadToGeometryString, quadToLngLat } from './geoReference';
 import type { FloorplanDataSource } from './dataSource';
 import type { Asset } from './assets';
-import type { Assignments, Booking, Building, ClientContact, Floor, PlanId, PointGeom, Site, Unit, UnitType } from './types';
+import type { Assignments, Booking, Building, ClientContact, Floor, MarkerDef, PlanId, PointGeom, Site, Unit, UnitType } from './types';
 
 /**
  * `fetchOriginal=true` on `v2/files/preview` returns the ORIGINAL uploaded bytes — for a plain
@@ -608,6 +608,63 @@ export async function fetchUnitModuleState(unit: Unit): Promise<string | null> {
   return res[moduleName].moduleState ?? null;
 }
 
+/**
+ * Real custom marker types (`markertype` module — `POST v3/modules/data/create`, confirmed live
+ * with `{name, description, fileId, recordModuleId, isAutoCreate}`). Neutral default color since
+ * the real schema carries no color field (this app's own MarkerDef always has one) — real markers
+ * render from their `fileId` image instead.
+ */
+export async function getCustomMarkerTypes(): Promise<MarkerDef[]> {
+  if (!isFacilioApiConfigured) return [];
+  const res = await facilioApi.fetchAll('markertype');
+  if (res.error) throw new Error(`facilio-api: marker type fetch failed (${res.error.code ?? '?'} ${res.error.message ?? ''})`.trim());
+  return (res.list ?? []).map((m: any) => ({
+    id: String(m.id),
+    name: m.name,
+    color: '#607796',
+    text: (m.name ?? '?').slice(0, 2).toUpperCase(),
+    fileId: m.fileId ?? undefined,
+  }));
+}
+
+export interface CreateMarkerTypeInput {
+  name: string;
+  description?: string;
+  fileId: number;
+  recordModuleId: number;
+}
+
+/** Creates a real `markertype` record — returns its new record id, or throws with the server's error message. */
+export async function createMarkerType(input: CreateMarkerTypeInput): Promise<{ id: string }> {
+  const res = await facilioApi.createRecord<any>('markertype', {
+    data: {
+      name: input.name,
+      description: input.description ?? '',
+      fileId: input.fileId,
+      recordModuleId: input.recordModuleId,
+      isAutoCreate: false,
+    },
+  });
+  if (res.error || !res.markertype?.id) throw new Error(res.error?.message || 'facilio-api: marker type create failed');
+  return { id: String(res.markertype.id) };
+}
+
+/** A marker icon's displayable URL, resolved from its `fileId` (same file-preview path as floorplan images). */
+export async function fetchMarkerIconUrl(fileId: number): Promise<string | null> {
+  if (!isFacilioApiConfigured) return null;
+  const preview = await fetchFilePreview(fileId, { original: true });
+  if (preview.dataUrl) return preview.dataUrl;
+  if (!preview.blob) return null;
+  return URL.createObjectURL(preview.blob);
+}
+
+/** Uploads a marker icon image, returning its fileId (for the `markertype` create payload). */
+export async function uploadMarkerIcon(file: File): Promise<number> {
+  const res = await facilioApi.uploadFiles([file]);
+  if (res.error || !res.ids?.length) throw new Error(res.error?.message || 'facilio-api: marker icon upload failed');
+  return Number(res.ids[0]);
+}
+
 export interface MyDeskInfo {
   recordId: number;
   name: string;
@@ -923,8 +980,12 @@ export async function fetchBookingForm(module: 'space' | 'facility', unitType: U
 }
 
 async function loadBookingFormDetail(module: 'space' | 'facility', moduleName: 'spacebooking' | 'facilitybooking', formId: number): Promise<BookingFormMeta | null> {
-  const detailBody = await customGet('v2/forms/getForm', { formId, moduleName });
-  const form = detailBody?.result?.form;
+  // `v2/forms/{moduleName}?fetchFormRuleFields=true&forCreate=true&formId=&skipPermission=true`
+  // (confirmed live for a different module — desks). Response shape for THIS specific endpoint
+  // wasn't confirmed, so both `result.form` and `result` itself (in case the form is the direct
+  // payload rather than nested under `.form`) are tried before giving up.
+  const detailBody = await customGet(`v2/forms/${moduleName}`, { fetchFormRuleFields: true, forCreate: true, formId, skipPermission: true });
+  const form = detailBody?.result?.form ?? (detailBody?.result?.sections ? detailBody.result : null);
   if (!form) {
     // Detail endpoint came back empty — keep the id usable with the list's naming.
     const summary = (await fetchBookingFormList(module)).find((f) => f.id === formId);
@@ -993,7 +1054,10 @@ export async function createRealBooking(unit: Unit, dateISO: string, start: numb
       // Unknown org-form fields first, so the mapped fields below always win on collision.
       ...(input.extras ?? {}),
       // Route the create through the org form the user filled — backend form rules apply.
-      ...(input.formId ? { formId: input.formId } : {}),
+      // actionFormId alongside formId, same value: seen paired this way in a confirmed live
+      // create payload for a different module (desks) — not independently confirmed for
+      // spacebooking specifically, included since it's a plausible low-risk match.
+      ...(input.formId ? { formId: input.formId, actionFormId: input.formId } : {}),
       [lookupField]: { id: ref.recordId },
       parentModuleId,
       bookingStartTime: epochAt(dateISO, start),

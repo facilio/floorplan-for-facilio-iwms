@@ -151,8 +151,10 @@ function BookingFormInner() {
         if (f.required) return { values, missing: f.label || f.name };
         continue;
       }
-      if (f.lookupModule && PEOPLE_LOOKUPS.has(f.lookupModule.toLowerCase())) {
-        // Lookup fields travel as {id} — mock ids ("c1") have no backend record and are dropped.
+      if (f.lookupModule) {
+        // ANY lookup field travels as {id} (confirmed live — department/building/floor all send
+        // {id} in a real create payload, not just people lookups). Mock ids ("c1") have no
+        // backend record and are dropped.
         const id = Number(raw);
         if (Number.isFinite(id)) values[f.name] = { id };
         else if (f.required) return { values, missing: f.label || f.name };

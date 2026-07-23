@@ -29,6 +29,8 @@ export interface MarkerDef {
   icon?: AmenityIcon;
   /** Image URL rendered as a round chip (custom markers). */
   img?: string;
+  /** Real backend file id for the marker icon (markertype.fileId) — resolved to `img` lazily. */
+  fileId?: number;
 }
 
 export const BUILTIN_MARKERS: MarkerDef[] = [
