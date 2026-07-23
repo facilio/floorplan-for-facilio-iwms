@@ -310,6 +310,8 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       dispatch({ type: 'ADD_CUSTOM_MARKER', def });
       showToast(`Marker “${def.name}” added`);
     },
+    /** Replaces the whole custom-markers list — used to populate it from the real API's markertype records. */
+    setCustomMarkers: (defs: MarkerDef[]) => dispatch({ type: 'SET_CUSTOM_MARKERS', defs }),
     setMultiSelected: (ids: string[]) => dispatch({ type: 'SET_MULTI_SELECTED', ids }),
     /** Arm/disarm an "Available to place" record for click-placement on the canvas. */
     setPlacingUnit: (id: string | null) => dispatch({ type: 'SET_PLACING_UNIT', id }),

@@ -144,6 +144,7 @@ export type Action =
   | { type: 'SET_TOOL'; tool: AppState['tool'] }
   | { type: 'SET_MARKER_KIND'; kind: string }
   | { type: 'ADD_CUSTOM_MARKER'; def: MarkerDef }
+  | { type: 'SET_CUSTOM_MARKERS'; defs: MarkerDef[] }
   | { type: 'SET_MULTI_SELECTED'; ids: string[] }
   | { type: 'SET_PLACING_UNIT'; id: string | null }
   | { type: 'REPLACE_UNIT_AT'; unitId: string; targetId: string }
@@ -246,6 +247,8 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, markerKind: action.kind, tool: 'amenity', placingUnitId: null, multiSelected: [] };
     case 'ADD_CUSTOM_MARKER':
       return { ...state, customMarkers: [...state.customMarkers, action.def] };
+    case 'SET_CUSTOM_MARKERS':
+      return { ...state, customMarkers: action.defs };
     case 'SET_MULTI_SELECTED':
       return { ...state, multiSelected: action.ids, selected: action.ids.length > 0 ? null : state.selected };
     case 'SET_PLACING_UNIT':

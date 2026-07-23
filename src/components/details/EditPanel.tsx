@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DragEvent as ReactDragEvent, ReactNode } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
 import { unitById } from '../../state/selectors';
@@ -8,8 +8,9 @@ import type { EditTool, MarkerDef } from '../../lib/types';
 import { MARKER_ICONS } from '../canvas/markerIcons';
 import { Button } from '../primitives/Button';
 import { Picklist } from '../fds/Picklist';
+import { Select } from '../primitives/Select';
 import { isFacilioApiConfigured } from '../../lib/facilioApi';
-import { fetchUnitModuleState } from '../../lib/facilioApiDataSource';
+import { createMarkerType, fetchMarkerIconUrl, fetchUnitModuleState, getCustomMarkerTypes, uploadMarkerIcon } from '../../lib/facilioApiDataSource';
 import card from './Card.module.css';
 import styles from './EditPanel.module.css';
 
@@ -247,32 +248,96 @@ function ToolsTab() {
   );
 }
 
+/** Modules a custom marker can be scoped to — options pending a confirmed "list modules" API;
+ *  the Module field is mandatory, so marker creation is blocked until this is wired in. */
+const MARKER_MODULE_OPTIONS: { value: string; label: string }[] = [];
+
 function MarkersTab() {
   const { state, actions } = useFloorplan();
   const [formOpen, setFormOpen] = useState(false);
   const [nmName, setNmName] = useState('');
+  const [nmDescription, setNmDescription] = useState('');
   const [nmText, setNmText] = useState('');
-  const [nmImg, setNmImg] = useState('');
+  const [nmModuleId, setNmModuleId] = useState('');
+  const [nmFile, setNmFile] = useState<File | null>(null);
+  const [nmPreviewUrl, setNmPreviewUrl] = useState<string | null>(null);
   const [nmColor, setNmColor] = useState('#607796');
+  const [saving, setSaving] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Real custom marker types (markertype module) fetched once when configured — built-ins keep
+  // their own hardcoded icons; this only replaces the previously local-only custom-markers list.
+  useEffect(() => {
+    if (!isFacilioApiConfigured) return;
+    let cancelled = false;
+    getCustomMarkerTypes()
+      .then(async (defs) => {
+        const resolved = await Promise.all(
+          defs.map(async (d) => (d.fileId ? { ...d, img: (await fetchMarkerIconUrl(d.fileId).catch(() => null)) ?? undefined } : d))
+        );
+        if (!cancelled) actions.setCustomMarkers(resolved);
+      })
+      .catch((err) => {
+        // eslint-disable-next-line no-console
+        console.warn('[facilio-api] custom marker types fetch failed', err);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const defs = [...BUILTIN_MARKERS, ...state.customMarkers];
 
-  function saveNewMarker() {
+  function pickFile(file: File) {
+    setNmFile(file);
+    setNmPreviewUrl(URL.createObjectURL(file));
+  }
+
+  async function saveNewMarker() {
     const name = nmName.trim();
-    if (!name) return;
-    const id = 'm' + Date.now();
-    actions.addCustomMarker({
-      id,
-      name,
-      color: nmColor,
-      text: (nmText.trim() || name).slice(0, 2).toUpperCase(),
-      img: nmImg.trim() || undefined,
-    });
-    actions.setMarkerKind(id);
+    if (!name) {
+      actions.showToast('“Marker name” is required');
+      return;
+    }
+    if (!nmModuleId) {
+      actions.showToast('“Module” is required');
+      return;
+    }
+    if (!nmFile) {
+      actions.showToast('“Marker Icon” is required');
+      return;
+    }
+    const text = (nmText.trim() || name).slice(0, 2).toUpperCase();
+
+    if (isFacilioApiConfigured) {
+      setSaving(true);
+      try {
+        const fileId = await uploadMarkerIcon(nmFile);
+        const created = await createMarkerType({ name, description: nmDescription.trim(), fileId, recordModuleId: Number(nmModuleId) });
+        const img = (await fetchMarkerIconUrl(fileId).catch(() => null)) ?? nmPreviewUrl ?? undefined;
+        actions.addCustomMarker({ id: created.id, name, color: nmColor, text, img, fileId });
+        actions.setMarkerKind(created.id);
+      } catch (err) {
+        actions.showToast(`Couldn't save the marker: ${(err as Error).message || 'unknown error'}`);
+        setSaving(false);
+        return;
+      }
+      setSaving(false);
+    } else {
+      // Local/dev — no real backend to upload to; use the client-side preview directly.
+      const id = 'm' + Date.now();
+      actions.addCustomMarker({ id, name, color: nmColor, text, img: nmPreviewUrl ?? undefined });
+      actions.setMarkerKind(id);
+    }
+
     setFormOpen(false);
     setNmName('');
+    setNmDescription('');
     setNmText('');
-    setNmImg('');
+    setNmModuleId('');
+    setNmFile(null);
+    setNmPreviewUrl(null);
     setNmColor('#607796');
   }
 
@@ -311,15 +376,71 @@ function MarkersTab() {
         {formOpen ? (
           <div className={styles.newMarkerForm}>
             <div className={styles.newMarkerTitle}>New marker</div>
-            <input className={card.input} placeholder="Name (e.g. Water cooler)" value={nmName} onChange={(e) => setNmName(e.target.value)} />
-            <input
+            <label className={card.label}>Marker name</label>
+            <input className={card.input} placeholder="Enter the name" value={nmName} onChange={(e) => setNmName(e.target.value)} />
+            <label className={card.label} style={{ marginTop: 10 }}>
+              Description
+            </label>
+            <textarea
               className={card.input}
-              placeholder="Short label (1–2 chars) e.g. WC"
-              maxLength={2}
-              value={nmText}
-              onChange={(e) => setNmText(e.target.value)}
+              style={{ height: 60, padding: '8px 10px', resize: 'vertical' }}
+              placeholder="Description"
+              value={nmDescription}
+              onChange={(e) => setNmDescription(e.target.value)}
             />
-            <input className={card.input} placeholder="Image URL (optional)" value={nmImg} onChange={(e) => setNmImg(e.target.value)} />
+            <label className={card.label} style={{ marginTop: 10 }}>
+              Module
+            </label>
+            <Select
+              value={nmModuleId || null}
+              options={MARKER_MODULE_OPTIONS}
+              onChange={setNmModuleId}
+              placeholder={MARKER_MODULE_OPTIONS.length ? 'Select Module' : 'Module list not available yet'}
+              fullWidth
+              disabled={MARKER_MODULE_OPTIONS.length === 0}
+              aria-label="Module"
+            />
+            <label className={card.label} style={{ marginTop: 10 }}>
+              Short label (1–2 chars, shown until the icon loads)
+            </label>
+            <input className={card.input} placeholder="e.g. WC" maxLength={2} value={nmText} onChange={(e) => setNmText(e.target.value)} />
+            <label className={card.label} style={{ marginTop: 10 }}>
+              Marker Icon
+            </label>
+            <div
+              style={{
+                marginTop: 4,
+                border: '1px dashed var(--ink-300)',
+                borderRadius: 8,
+                padding: '16px 12px',
+                textAlign: 'center',
+                cursor: 'pointer',
+                background: 'var(--ink-025, #fafafa)',
+              }}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                const file = e.dataTransfer.files?.[0];
+                if (file) pickFile(file);
+              }}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              {nmPreviewUrl ? (
+                <img src={nmPreviewUrl} alt="" style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: '50%' }} />
+              ) : (
+                <div style={{ font: '400 12px/1.4 var(--font-sans)', color: 'var(--ink-500)' }}>Drag and drop your file(s) or click to browse</div>
+              )}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/svg+xml"
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) pickFile(file);
+                }}
+              />
+            </div>
             <div className={styles.swatches}>
               {NM_SWATCHES.map((hex) => (
                 <button
@@ -332,11 +453,11 @@ function MarkersTab() {
               ))}
             </div>
             <div className={styles.formRow}>
-              <Button variant="secondary" fullWidth onClick={() => setFormOpen(false)}>
+              <Button variant="secondary" fullWidth onClick={() => setFormOpen(false)} disabled={saving}>
                 Cancel
               </Button>
-              <Button variant="primary" fullWidth disabled={!nmName.trim()} onClick={saveNewMarker}>
-                Add marker
+              <Button variant="primary" fullWidth disabled={saving} onClick={saveNewMarker}>
+                {saving ? 'Saving…' : 'Add marker'}
               </Button>
             </div>
           </div>
