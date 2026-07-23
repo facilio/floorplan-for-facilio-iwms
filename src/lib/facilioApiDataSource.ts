@@ -899,7 +899,16 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
 
   // ---- markers: desks/lockers/parking stalls/amenities (point geometry) ----
   const existingMarkers: any[] = record.markers ?? [];
-  const existingMarkersByGeoId = new Map(existingMarkers.filter((m) => m.geoId).map((m) => [m.geoId, m]));
+  // Units can join their marker three ways: geoId (markers this app wrote), recordId
+  // (viewerData-sourced units carry the backend record id AS their unit id — see
+  // markerFeatureToUnit), or objectId (viewerData units with no backing record, e.g. decorative
+  // markers). Matching by geoId alone treated every native-placed marker as brand-new on save —
+  // nesting a fresh record (DUPLICATING the real desk) and double-pushing the marker (the
+  // preservation loop re-added the "unmatched" original).
+  const existingMarkersByGeoId = new Map(existingMarkers.filter((m) => m.geoId).map((m) => [String(m.geoId), m]));
+  const existingMarkersByRecordId = new Map(existingMarkers.filter((m) => m.recordId != null).map((m) => [String(m.recordId), m]));
+  const existingMarkersByObjectId = new Map(existingMarkers.filter((m) => m.objectId != null).map((m) => [String(m.objectId), m]));
+  const consumedMarkers = new Set<any>();
   const nextMarkers: any[] = [];
 
   // Parent site/building for brand-new desks' nested records — off the indoorfloorplan record
@@ -909,7 +918,9 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
   const parentFloorId = lookupId(record, 'floor');
 
   for (const unit of pointUnits) {
-    const match = existingMarkersByGeoId.get(unit.id);
+    const match =
+      existingMarkersByGeoId.get(unit.id) ?? existingMarkersByRecordId.get(unit.id) ?? existingMarkersByObjectId.get(unit.id);
+    if (match) consumedMarkers.add(match);
     if (!match && unit.type === 'amenity') {
       // No confirmed real payload for a BRAND NEW amenity's backing record — skip rather than
       // guess at markerType/markerModuleId/recordId. An amenity that already has an entry (from
@@ -920,7 +931,10 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
     }
     const [lng, lat] = quadToLngLat(quad, unit.geom.x, unit.geom.y);
     const geometry = JSON.stringify({ type: 'Point', coordinates: [lng, lat] });
-    const properties = JSON.stringify({ unitType: unit.type, secondary: unit.secondary ?? null });
+    // Markers this app owns (geoId-tagged) carry this app's own properties blob; a native-placed
+    // marker's properties string is NOT ours to rewrite — preserve it on the round-trip.
+    const ownProperties = JSON.stringify({ unitType: unit.type, secondary: unit.secondary ?? null });
+    const properties = match && !match.geoId ? (match.properties ?? ownProperties) : ownProperties;
     // A brand-new entry's markerType — only resolvable for workstation right now (see
     // AUTO_MARKER_TYPE_NAME); an existing match's own markerType (spread below) is never
     // overridden by this.
@@ -981,19 +995,30 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
       }
     }
   }
-  // Markers this app doesn't own (no geoId — amenities/decorative markers placed by other
-  // tools) are preserved untouched; a geoId-tagged marker whose unit is gone gets dropped.
+  // Unconsumed markers: a geoId-tagged one whose unit is gone was deleted in this app — drop it.
+  // One with no geoId that ALSO matched no unit is preserved untouched (defensive: if the floor's
+  // units came from a fallback tier rather than viewerData, nothing joins by recordId/objectId,
+  // and dropping would wipe every native marker). Consumed ones are already in nextMarkers —
+  // re-pushing them here was the old double-push bug.
   for (const m of existingMarkers) {
-    if (!m.geoId) nextMarkers.push(m);
+    if (!consumedMarkers.has(m) && !m.geoId) nextMarkers.push(m);
   }
 
   // ---- markedZones: rooms (polygon geometry) ----
   const existingZones: any[] = record.markedZones ?? [];
-  const existingZonesByGeoId = new Map(existingZones.filter((z) => z.geoId).map((z) => [z.geoId, z]));
+  // Same three-way join as markers: geoId (ours), recordId / space.id (viewerData-sourced rooms
+  // carry the backend record id as their unit id), objectId.
+  const existingZonesByGeoId = new Map(existingZones.filter((z) => z.geoId).map((z) => [String(z.geoId), z]));
+  const existingZonesByRecordId = new Map(
+    existingZones.filter((z) => z.recordId != null || z.space?.id != null).map((z) => [String(z.recordId ?? z.space?.id), z])
+  );
+  const existingZonesByObjectId = new Map(existingZones.filter((z) => z.objectId != null).map((z) => [String(z.objectId), z]));
+  const consumedZones = new Set<any>();
   const nextZones: any[] = [];
 
   for (const unit of roomUnits) {
-    const match = existingZonesByGeoId.get(unit.id);
+    const match = existingZonesByGeoId.get(unit.id) ?? existingZonesByRecordId.get(unit.id) ?? existingZonesByObjectId.get(unit.id);
+    if (match) consumedZones.add(match);
     const ring = [...unit.geom.pts, unit.geom.pts[0]].map(([x, y]) => quadToLngLat(quad, x, y));
     const geometry = JSON.stringify({ type: 'Polygon', coordinates: [ring] });
 
@@ -1032,9 +1057,10 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
       space: match.space ? { ...match.space, reservable: unit.isReservable ?? match.space.reservable } : match.space,
     });
   }
-  // Zones this app doesn't own preserved untouched; one whose unit is gone gets dropped, same as markers.
+  // Same preservation rule as markers: drop only our own (geoId-tagged) zones whose unit is gone;
+  // preserve unmatched native zones; never re-push consumed ones.
   for (const z of existingZones) {
-    if (!z.geoId) nextZones.push(z);
+    if (!consumedZones.has(z) && !z.geoId) nextZones.push(z);
   }
 
   // Round-trip the WHOLE fetched record, not just {markers, markedZones} — a live capture of the
@@ -1047,6 +1073,9 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
     // Throw (not just warn) — the save UI must be able to report this instead of "saved".
     throw new Error(res.error.message || `indoorfloorplan ${indoorFloorPlanId} update failed (code ${res.error.code ?? '?'})`);
   }
+  // The plan's markers just changed — a viewerData response cached before this write is stale
+  // (e.g. brand-new desks would come back without their recordIds for up to the TTL).
+  viewerDataCache.clear();
 }
 
 /**
@@ -1505,6 +1534,8 @@ export async function assignUnitReal(unit: Unit, contactId: string): Promise<voi
       console.warn(`[facilio-api] assign update failed for unit ${unit.id}`, res.error);
     }
   }
+  // Assignment state changed — don't let a pre-write viewerData response serve stale occupancy.
+  viewerDataCache.clear();
 }
 
 /**
@@ -1544,6 +1575,8 @@ export async function vacateUnitReal(unit: Unit, contactId: string): Promise<voi
       console.warn(`[facilio-api] vacate update failed for unit ${unit.id}`, res.error);
     }
   }
+  // Same as assign — invalidate cached viewerData so occupancy reads fresh.
+  viewerDataCache.clear();
 }
 
 /** moduleName -> its numeric moduleId (spacebooking's `parentModuleId`). Session cache. */
