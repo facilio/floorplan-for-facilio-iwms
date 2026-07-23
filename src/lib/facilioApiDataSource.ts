@@ -463,7 +463,12 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: (
     if (!m.geoId) nextMarkers.push(m);
   }
 
-  const res = await facilioApi.updateRecord('indoorfloorplan', { id: indoorFloorPlanId, data: { markers: nextMarkers } });
+  // Round-trip the WHOLE fetched record, not just {markers} — a live capture of the real web
+  // app's own save confirmed the update payload always carries every field back (customizationJSON,
+  // customizationBookingJSON, name, geometry, etc.), not just the ones actually changing. A
+  // markers-only partial patch risks the backend treating this as a full replace and wiping
+  // those other fields rather than merging.
+  const res = await facilioApi.updateRecord('indoorfloorplan', { id: indoorFloorPlanId, data: { ...record, markers: nextMarkers } });
   if (res.error) {
     // eslint-disable-next-line no-console
     console.warn(`[facilio-api] marker sync failed for plan ${indoorFloorPlanId}`, res.error);
@@ -541,7 +546,9 @@ async function ensureRealSpaceRecord(unit: Unit): Promise<RealSpaceRef | null> {
       indoorfloorplan: { id: summary.id },
       label: unit.label,
     };
-    const createRes = await facilioApi.updateRecord('indoorfloorplan', { id: summary.id, data: { markers: [...markers, marker] } });
+    // Round-trip the whole record (not just {markers}) — see the matching comment in
+    // syncMarkersForIndoorFloorPlan for why a partial patch risks wiping other fields.
+    const createRes = await facilioApi.updateRecord('indoorfloorplan', { id: summary.id, data: { ...record, markers: [...markers, marker] } });
     if (createRes.error) return null;
   }
 
@@ -566,7 +573,7 @@ async function ensureRealSpaceRecord(unit: Unit): Promise<RealSpaceRef | null> {
   const latest = await fetchIndoorFloorPlanRecord(summary.id);
   if (latest) {
     const latestMarkers: any[] = (latest.markers ?? []).map((m: any) => (m.geoId === unit.id ? { ...m, recordId } : m));
-    await facilioApi.updateRecord('indoorfloorplan', { id: summary.id, data: { markers: latestMarkers } }).catch(() => {});
+    await facilioApi.updateRecord('indoorfloorplan', { id: summary.id, data: { ...latest, markers: latestMarkers } }).catch(() => {});
   }
   const ref = { recordId, siteId };
   realSpaceRecordCache.set(unit.id, ref);
