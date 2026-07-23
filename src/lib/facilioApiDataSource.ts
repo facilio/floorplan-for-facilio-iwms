@@ -396,11 +396,25 @@ async function viewerDataUnitsForFloor(floorId: string): Promise<Unit[]> {
 }
 
 /**
- * Desk/space -> assignee, from the same viewerData feed getUnits reads (ASSIGNMENT mode). Keyed by
- * the unit id getUnits assigns (recordId/deskId) so the two line up. `employeeId` is the assigned
- * party on the desk record; this app assigns CLIENT CONTACTS into that same field (see
- * assignUnitReal), so it's read back here as the contact id — the symmetric assumption to the
- * write path. Desks with no assignee (`employeeId` unset/-1) are omitted.
+ * The CLIENT CONTACT id assigned to a desk, read off a viewerData marker's `clientcontact_moves`
+ * property (confirmed field name, `{ id }`-shaped — the same field this app writes on assign, see
+ * assignUnitReal).
+ *
+ * Deliberately NOT `employeeId` — that's a separate entity (a real employee/people record), a
+ * different id space from `clientcontact`; the UI resolves assignment ids against
+ * `state.clientContacts` (see selectors.contactById), so an employee id there would resolve to the
+ * wrong person or none. Returns null when no client-contact assignee is present.
+ */
+function contactIdFromMarker(p: Record<string, any>): string | null {
+  const raw = p.clientcontact_moves?.id ?? p.clientcontact_moves;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? String(n) : null;
+}
+
+/**
+ * Desk/space -> client-contact assignee, from the same viewerData feed getUnits reads (ASSIGNMENT
+ * mode). Keyed by the unit id getUnits assigns (recordId/deskId) so the two line up. See
+ * `contactIdFromMarker` for why this reads the client-contact field and not `employeeId`.
  */
 async function viewerDataAssignmentsForFloor(floorId: string): Promise<Assignments> {
   const byType = await getFloorplanDetailsByType(floorId);
@@ -411,8 +425,8 @@ async function viewerDataAssignmentsForFloor(floorId: string): Promise<Assignmen
     for (const f of (data?.marker?.features ?? []) as ViewerMarkerFeature[]) {
       const p = f.properties ?? {};
       const recordId = p.recordId ?? p.deskId;
-      const employeeId = Number(p.employeeId);
-      if (recordId && Number.isFinite(employeeId) && employeeId > 0) map[String(recordId)] = String(employeeId);
+      const contactId = contactIdFromMarker(p);
+      if (recordId && contactId) map[String(recordId)] = contactId;
     }
   }
   return map;
