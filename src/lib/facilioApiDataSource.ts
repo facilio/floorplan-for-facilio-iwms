@@ -237,12 +237,18 @@ function pruneExpired<T extends { at: number }>(cache: Map<string, T>, ttl: numb
   for (const [k, v] of cache) if (now - v.at >= ttl) cache.delete(k);
 }
 
-const FLOORPLAN_DETAILS_TTL_MS = 20_000;
+/**
+ * Session-long (not TTL'd): the floor -> plan-type -> indoorfloorplan-record-id mapping only ever
+ * changes when an upload creates a NEW plan record for the floor — and that one write path
+ * invalidates this cache explicitly (see the attach step in uploadRealFloorplanFile). Keeping it
+ * session-long means "Save changes" doesn't re-call getFloorplanDetailsByType on every save just
+ * to re-derive an id that can't have changed.
+ */
 const floorplanDetailsCache = new Map<string, { at: number; promise: Promise<Record<string, any>> }>();
 
 function getFloorplanDetailsByType(floorId: string): Promise<Record<string, any>> {
   const hit = floorplanDetailsCache.get(floorId);
-  if (hit && Date.now() - hit.at < FLOORPLAN_DETAILS_TTL_MS) return hit.promise;
+  if (hit) return hit.promise;
   const promise = (async () => {
     const body = await customGet('v3/floorplan/getFloorplanDetailsByType', { floorId });
     if (body?.code !== 0) throw new Error(body?.message || `code ${body?.code ?? '?'}`);
@@ -251,7 +257,6 @@ function getFloorplanDetailsByType(floorId: string): Promise<Record<string, any>
   promise.catch(() => {
     if (floorplanDetailsCache.get(floorId)?.promise === promise) floorplanDetailsCache.delete(floorId);
   });
-  pruneExpired(floorplanDetailsCache, FLOORPLAN_DETAILS_TTL_MS);
   floorplanDetailsCache.set(floorId, { at: Date.now(), promise });
   return promise;
 }
@@ -766,6 +771,9 @@ export async function uploadFloorplanFile(
         });
     if (attachRes.error) throw new Error(attachRes.error.message || `code ${attachRes.error.code}`);
     attachedToFloorPlan = true;
+    // The ONE write that can change the floor's plan-type -> record-id mapping (creating a new
+    // indoorfloorplan) — drop the session-long cache entry so the next lookup sees it.
+    floorplanDetailsCache.delete(floorId);
   } catch (err) {
     attachError = (err as Error).message || 'attach failed';
   }
@@ -894,6 +902,12 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
   const existingMarkersByGeoId = new Map(existingMarkers.filter((m) => m.geoId).map((m) => [m.geoId, m]));
   const nextMarkers: any[] = [];
 
+  // Parent site/building for brand-new desks' nested records — off the indoorfloorplan record
+  // itself (it carries floor/building/site lookups; see the attach step that sets them).
+  const parentSiteId = lookupId(record, 'site');
+  const parentBuildingId = lookupId(record, 'building');
+  const parentFloorId = lookupId(record, 'floor');
+
   for (const unit of pointUnits) {
     const match = existingMarkersByGeoId.get(unit.id);
     if (!match && unit.type === 'amenity') {
@@ -911,10 +925,27 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
     // AUTO_MARKER_TYPE_NAME); an existing match's own markerType (spread below) is never
     // overridden by this.
     let newMarkerType: { id: number } | undefined;
+    // Brand-new desk/locker/parking: nest the FULL backing record inside the marker object, so
+    // this indoorfloorplan update creates the real desk record inline — a brand-new entry is
+    // created together with its nested record (the org's own save works this way), instead of a
+    // marker with no record behind it (which previously deferred record creation to the first
+    // assignment). All the record's required fields ride here: name, site/building/floor
+    // lookups, plus deskType for desks (string enum, matching the confirmed field-sync write).
+    let newRecord: Record<string, unknown> | undefined;
     if (!match) {
       const autoName = AUTO_MARKER_TYPE_NAME[unit.type];
       const id = autoName ? await markerTypeIdByName(autoName) : null;
       if (id) newMarkerType = { id };
+      if (REAL_SPACE_MODULE[unit.type]) {
+        newRecord = {
+          name: unit.label,
+          ...(parentSiteId ? { site: { id: parentSiteId } } : {}),
+          ...(parentBuildingId ? { building: { id: parentBuildingId } } : {}),
+          floor: { id: parentFloorId ?? unit.floor },
+          ...(unit.type === 'workstation' ? { deskType: unit.deskType ?? 'ASSIGNED' } : {}),
+          ...(unit.secondary ? { secondary: unit.secondary } : {}),
+        };
+      }
     }
     // Spread the existing entry first so anything it already carries (recordId, markerType,
     // markerModuleId, etc.) survives the round-trip untouched — only geometry/label are ours to
@@ -922,6 +953,7 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
     nextMarkers.push({
       ...(match ?? {}),
       ...(newMarkerType ? { markerType: newMarkerType } : {}),
+      ...(newRecord ? { record: newRecord } : {}),
       geoId: unit.id,
       geometry,
       properties,
