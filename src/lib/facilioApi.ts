@@ -319,39 +319,18 @@ export async function customGet(path: string, params?: Record<string, unknown>, 
 }
 
 /**
- * Tests whether a URL actually loads as an image, by trying to load it — the only reliable way
- * to know from the browser's side, since a failed cross-origin/auth request to an `<img>` src
- * fails silently (no exception, just a broken image).
- */
-function urlLoadsAsImage(url: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => resolve(true);
-    img.onerror = () => resolve(false);
-    img.src = url;
-  });
-}
-
-/**
  * A stored file's bytes, for display. Dev mode returns the raw blob (as before — callers run it
  * through their own image/PDF/CAD rendering as needed).
  *
- * Connected mode first TRIES a direct preview URL (mirroring dev mode's `v2/files/preview/
- * {fileId}` endpoint off `apiOrigin`) and actually test-loads it as an `<img>` before trusting
- * it — NOT verified against a live org: the SDK docs found no documented public/signed URL for
- * files, and connected apps generally aren't same-origin with the org's backend (that's the
- * whole reason the SDK bridge exists), so this is very likely to fail and fall through. It's
- * also very likely to be pointed at the wrong host entirely unless `VITE_FACILIO_API_BASE_URL`
- * is set for the production build — `.env.production` ships it blank, so `apiOrigin` defaults to
- * this app's OWN origin, not the org's. Falls back to `common.toBase64({fileId})` (a bare base64
- * string, no documented original-vs-server-rendered distinction) when the direct URL fails.
+ * Connected mode has no blob/binary access at all: `invokeFacilioAPI` (the only bridge for
+ * custom endpoints) is documented to return strings only, not binary — it cannot fetch raw file
+ * bytes. `common.toBase64({fileId})` is the one documented way to get image data here, so that's
+ * used directly (an earlier attempt at a direct preview URL was tried and confirmed, live, to
+ * 404 — connected apps aren't same-origin with the org's backend, which is the whole reason the
+ * SDK bridge exists in the first place). No documented original-vs-server-rendered distinction.
  */
 export async function fetchFilePreview(fileId: number, opts?: { original?: boolean }): Promise<{ dataUrl: string | null; blob?: Blob; contentType?: string }> {
   if (isConnectedApp) {
-    const candidateUrl = apiOrigin ? `${apiOrigin}/v2/files/preview/${fileId}${opts?.original ? '?fetchOriginal=true' : ''}` : null;
-    if (candidateUrl && (await urlLoadsAsImage(candidateUrl))) {
-      return { dataUrl: candidateUrl };
-    }
     const app = await facilioAppReady();
     const base64 = await app.common.toBase64({ fileId });
     return { dataUrl: base64 ? `data:image/png;base64,${base64}` : null };
