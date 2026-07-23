@@ -342,6 +342,33 @@ export async function customGet(path: string, params?: Record<string, unknown>, 
   return res.data;
 }
 
+/**
+ * POST sibling of `customGet` for custom (non-module) V3 endpoints that take a JSON body — e.g.
+ * `v3/floorplan/viewerData`. Same dual-mode transport and same verbatim-body contract (no envelope
+ * unwrapping; the caller reads `.code`/`.data` itself). `params` are query-string args (e.g.
+ * `skipPermission`), kept separate from the JSON `body`.
+ *
+ * Connected mode routes through `request.invokeFacilioAPI` with `{ method: 'POST', data: body }`.
+ * That the SDK forwards `data` as the request body for POST mirrors how the module-CRUD calls
+ * (`app.api.*`) pass their payloads, but the `invokeFacilioAPI`-for-a-custom-POST path specifically
+ * is NOT independently confirmed against a live org — dev mode (direct axios POST) is.
+ */
+export async function customPost(
+  path: string,
+  body?: unknown,
+  params?: Record<string, unknown>,
+  opts?: { devAbsoluteUrl?: string }
+): Promise<any> {
+  if (isConnectedApp) {
+    const app = await facilioAppReady();
+    const query = params && Object.keys(params).length ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : '';
+    const raw = await app.request.invokeFacilioAPI(`${path}${query}`, { method: 'POST', data: body });
+    return typeof raw === 'string' ? JSON.parse(raw) : raw;
+  }
+  const res = await devInstance!.post(opts?.devAbsoluteUrl ?? path, body, { params });
+  return res.data;
+}
+
 function base64ToBlob(base64: string): Blob {
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);

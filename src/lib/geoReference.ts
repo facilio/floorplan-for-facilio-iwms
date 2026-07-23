@@ -42,6 +42,20 @@ export function quadToLngLat(quad: GeoQuad, xFrac: number, yFrac: number): [numb
   return [top[0] + (bottom[0] - top[0]) * yFrac, top[1] + (bottom[1] - top[1]) * yFrac];
 }
 
+/**
+ * Inverse of `quadToLngLat` — [lng, lat] back to a 0-1 image fraction. Assumes the axis-aligned
+ * quad `computeSyntheticGeometry` produces (top/bottom edges share a lat, left/right edges share a
+ * lng), so it's a straight per-axis rescale rather than a full bilinear solve. Only valid for
+ * points actually in this quad's coordinate space — a caller that gets wildly out-of-[0,1] results
+ * back is looking at markers stored in a DIFFERENT space than the plan's `geometry` (see
+ * `pointFractionMapper` in facilioApiDataSource for how that case is handled).
+ */
+export function lngLatToFraction(quad: GeoQuad, lng: number, lat: number): [number, number] {
+  const lngSpan = quad.tr[0] - quad.tl[0] || 1e-12;
+  const latSpan = quad.bl[1] - quad.tl[1] || 1e-12;
+  return [(lng - quad.tl[0]) / lngSpan, (lat - quad.tl[1]) / latSpan];
+}
+
 export function quadToGeometryString(quad: GeoQuad): string {
   return JSON.stringify({ type: 'Polygon', coordinates: [[quad.tl, quad.tr, quad.br, quad.bl, quad.tl]] });
 }

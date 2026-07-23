@@ -1,10 +1,10 @@
-import { apiOrigin, customGet, facilioApi, fetchFilePreview, isFacilioApiConfigured } from './facilioApi';
+import { apiOrigin, customGet, customPost, facilioApi, fetchFilePreview, isFacilioApiConfigured } from './facilioApi';
 import { renderCadToDataUrl } from './cadPreview';
 import { renderPdfToDataUrl } from './pdfPreview';
-import { computeSyntheticGeometry, geometryStringToQuad, quadToGeometryString, quadToLngLat } from './geoReference';
+import { computeSyntheticGeometry, geometryStringToQuad, lngLatToFraction, quadToGeometryString, quadToLngLat, type GeoQuad } from './geoReference';
 import type { FloorplanDataSource } from './dataSource';
 import type { Asset } from './assets';
-import type { Assignments, Booking, Building, ClientContact, Floor, FloorplanCustomization, MarkerDef, PlanId, PointGeom, PolyGeom, Site, Unit, UnitType } from './types';
+import type { Assignments, Booking, Building, ClientContact, DeskType, Floor, FloorplanCustomization, MarkerDef, PlanId, PointGeom, PolyGeom, Site, Unit, UnitType } from './types';
 
 /**
  * Sniffs a DWG/DXF/PDF signature off the file's own leading bytes — the fallback when no
@@ -141,8 +141,15 @@ export class FacilioApiDataSource implements FloorplanDataSource {
     throw new Error('facilio-api: assets come from the CMMS connector, not this tier');
   }
 
-  async getUnits(_floorId: string): Promise<Unit[]> {
-    throw new Error('facilio-api: unit placement (floorplanmarker/floorplanmarkedzone geometry) not wired — needs schema verification against a live org');
+  /**
+   * Real placed units for a floor, sourced from `v3/floorplan/viewerData` (see
+   * `viewerDataUnitsForFloor`). Empty is a legitimate answer (a real but empty floor) — the
+   * composite treats per-floor emptiness as an answer, not a miss, so it won't paint the local
+   * seed over a genuinely empty real floor.
+   */
+  async getUnits(floorId: string): Promise<Unit[]> {
+    this.assertConfigured();
+    return viewerDataUnitsForFloor(floorId);
   }
   async saveUnits(): Promise<void> {
     throw new Error('facilio-api: unit placement not wired');
@@ -152,8 +159,9 @@ export class FacilioApiDataSource implements FloorplanDataSource {
   async createUnit(): Promise<Unit> {
     throw new Error('facilio-api: space creation goes through the CMMS connector — not wired here');
   }
-  async getAssignments(): Promise<Assignments> {
-    throw new Error('facilio-api: assignments (Moves-derived) not wired');
+  async getAssignments(floorId: string): Promise<Assignments> {
+    this.assertConfigured();
+    return viewerDataAssignmentsForFloor(floorId);
   }
   async assignUnit(): Promise<void> {
     throw new Error('facilio-api: assignment writes go through Moves — not wired');
@@ -215,6 +223,199 @@ async function getFloorplanDetailsByType(floorId: string): Promise<Record<string
   const body = await customGet('v3/floorplan/getFloorplanDetailsByType', { floorId });
   if (body?.code !== 0) throw new Error(body?.message || `code ${body?.code ?? '?'}`);
   return body?.data?.indoorFloorPlans ?? {};
+}
+
+// ---------------------------------------------------------------------------
+// `v3/floorplan/viewerData` — the real floor-plan viewer feed (markers + zones + rendering rules),
+// the source the native Facilio web app renders from. This app uses it as the real source of a
+// floor's placed units (positions + type + desk metadata), replacing the local-JSON seed for
+// getUnits/getAssignments when a real backend is configured.
+// ---------------------------------------------------------------------------
+
+type ViewerMode = 'ASSIGNMENT' | 'BOOKING';
+
+interface ViewerDataOpts {
+  /** Booking-window epoch millis — only meaningful for BOOKING mode (availability). */
+  startTime?: number;
+  endTime?: number;
+  /** BOOKING mode: whether this is a brand-new booking (mirrors the web app's request). */
+  newBooking?: boolean;
+  /** Amenity-filter ids the web app passes under `floorplanFilters.amenities`. */
+  amenities?: Array<string | number>;
+}
+
+const UNIT_TYPE_BY_MARKER_MODULE: Record<string, UnitType> = {
+  desks: 'workstation',
+  lockers: 'locker',
+  parkingstall: 'parking',
+};
+
+/** `desks.deskType` numeric enum -> this app's DeskType (see types.ts DeskType). */
+const DESK_TYPE_BY_NUM: Record<number, DeskType> = { 1: 'ASSIGNED', 2: 'HOTEL', 3: 'HOT' };
+
+/**
+ * Short-lived memo so a single floor load's getUnits + getAssignments (both viewerData-backed)
+ * share ONE round trip per floorplan+mode instead of two. Keyed by the full request identity;
+ * TTL-bounded so a later reload re-fetches rather than serving a stale plan.
+ */
+const VIEWER_DATA_TTL_MS = 20_000;
+const viewerDataCache = new Map<string, { at: number; data: any }>();
+
+async function fetchViewerData(floorplanId: number, mode: ViewerMode, opts: ViewerDataOpts = {}): Promise<any> {
+  const key = `${floorplanId}:${mode}:${opts.startTime ?? ''}:${opts.endTime ?? ''}`;
+  const hit = viewerDataCache.get(key);
+  if (hit && Date.now() - hit.at < VIEWER_DATA_TTL_MS) return hit.data;
+
+  const body: Record<string, unknown> = {
+    floorplanId,
+    viewMode: mode,
+    floorplanFilters: { amenities: opts.amenities ?? [] },
+  };
+  if (mode === 'BOOKING') body.newBooking = opts.newBooking ?? true;
+  if (opts.startTime != null) body.startTime = opts.startTime;
+  if (opts.endTime != null) body.endTime = opts.endTime;
+
+  const res = await customPost('v3/floorplan/viewerData', body, { skipPermission: true });
+  if (res?.code !== 0) throw new Error(res?.message || `viewerData code ${res?.code ?? '?'}`);
+  const data = res.data ?? {};
+  viewerDataCache.set(key, { at: Date.now(), data });
+  return data;
+}
+
+interface ViewerMarkerFeature {
+  geometry?: { type?: string; coordinates?: [number, number] };
+  properties?: Record<string, any>;
+}
+
+function isPointFeature(f: ViewerMarkerFeature): boolean {
+  return f?.geometry?.type === 'Point' && Array.isArray(f.geometry.coordinates) && f.geometry.coordinates.length === 2;
+}
+
+/**
+ * Builds the [lng,lat] -> 0-1 image-fraction converter for one plan's marker set.
+ *
+ * viewerData's marker coordinates are NOT guaranteed to live in the same space as the plan's own
+ * stored `geometry` quad: markers this app itself wrote sit in that quad's synthetic lng/lat, but
+ * markers placed through Facilio's native editor come back in a separate local system anchored
+ * near [0,0] (confirmed from a live ASSIGNMENT capture — inverting the quad on those yields
+ * fractions in the tens-of-thousands). So: try the quad inverse first, and only trust it when every
+ * point lands in a sane band around [0,1]; otherwise fall back to normalizing the marker set
+ * against its own bounding box (with padding), which keeps desks in the right positions relative to
+ * each other even when there's no shared georeference to the raster. Latitude increases "up", so
+ * the y axis is flipped to the image convention (y=0 at top).
+ */
+function pointFractionMapper(features: ViewerMarkerFeature[], quad: GeoQuad | null): (coords: [number, number]) => [number, number] {
+  const pts = features.filter(isPointFeature).map((f) => f.geometry!.coordinates as [number, number]);
+
+  if (quad && pts.length) {
+    const inRange = pts.every(([lng, lat]) => {
+      const [x, y] = lngLatToFraction(quad, lng, lat);
+      return x > -0.5 && x < 1.5 && y > -0.5 && y < 1.5;
+    });
+    if (inRange) return ([lng, lat]) => lngLatToFraction(quad, lng, lat);
+  }
+
+  if (!pts.length) return () => [0.5, 0.5];
+  const xs = pts.map((p) => p[0]);
+  const ys = pts.map((p) => p[1]);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  const spanX = maxX - minX || 1;
+  const spanY = maxY - minY || 1;
+  const PAD = 0.08;
+  return ([lng, lat]) => [PAD + (1 - 2 * PAD) * ((lng - minX) / spanX), PAD + (1 - 2 * PAD) * ((maxY - lat) / spanY)];
+}
+
+/** viewerData tooltip title label, the fallback display name when a marker has no own `label`. */
+function tooltipTitleLabel(f: ViewerMarkerFeature): string | undefined {
+  const t = f?.properties?.tooltipData?.title?.label ?? f?.properties?.tooltipData?.content?.[0]?.label;
+  return typeof t === 'string' && t.trim() ? t.trim() : undefined;
+}
+
+function markerFeatureToUnit(
+  f: ViewerMarkerFeature,
+  floorId: string,
+  planId: PlanId,
+  toFraction: (coords: [number, number]) => [number, number],
+  index: number
+): Unit | null {
+  const p = f.properties ?? {};
+  const coords = f.geometry?.coordinates;
+  if (!Array.isArray(coords) || coords.length !== 2) return null;
+
+  const [x, y] = toFraction(coords as [number, number]);
+  const type = UNIT_TYPE_BY_MARKER_MODULE[p.markerModuleName] ?? 'amenity';
+  // Real assignable/bookable records join on their backing recordId/deskId; decorative markers
+  // (Camera, Fire extinguisher — no recordId) fall back to objectId just for a stable local key.
+  const recordId = p.recordId ?? p.deskId;
+  const id = String(recordId ?? p.objectId ?? `${planId}-${index}`);
+  const label = (typeof p.label === 'string' && p.label.trim()) || tooltipTitleLabel(f) || id;
+  const secondary = typeof p.secondaryLabel === 'string' && p.secondaryLabel.trim() ? p.secondaryLabel.trim() : undefined;
+
+  const unit: Unit = {
+    id,
+    type,
+    label,
+    secondary,
+    room: null,
+    geom: { kind: 'point', x, y },
+    floor: floorId,
+    plan: planId,
+  };
+  if (type === 'workstation' && DESK_TYPE_BY_NUM[p.deskType]) unit.deskType = DESK_TYPE_BY_NUM[p.deskType];
+  return unit;
+}
+
+/**
+ * All placed units on a floor, from viewerData — unioned across every plan type configured for the
+ * floor (workstations/lockers/parking each have their own `indoorfloorplan` record + viewerData
+ * feed). Positions/type/desk-metadata come straight from the feed; ASSIGNMENT mode is used since
+ * marker POSITIONS don't vary by view mode.
+ */
+async function viewerDataUnitsForFloor(floorId: string): Promise<Unit[]> {
+  const byType = await getFloorplanDetailsByType(floorId);
+  const units: Unit[] = [];
+  for (const [typeNum, summary] of Object.entries(byType)) {
+    const planId = PLAN_ID_BY_TYPE[Number(typeNum)];
+    if (!planId || !summary?.id) continue;
+    const data = await fetchViewerData(summary.id, 'ASSIGNMENT').catch((err) => {
+      // eslint-disable-next-line no-console
+      console.warn(`[facilio-api] viewerData fetch failed for plan ${summary.id} (floor ${floorId})`, err);
+      return null;
+    });
+    if (!data) continue;
+    const quad = geometryStringToQuad(data.indoorfloorplan?.geometry);
+    const features: ViewerMarkerFeature[] = (data.marker?.features ?? []).filter(isPointFeature);
+    const toFraction = pointFractionMapper(features, quad);
+    features.forEach((f, i) => {
+      const unit = markerFeatureToUnit(f, floorId, planId, toFraction, i);
+      if (unit) units.push(unit);
+    });
+  }
+  return units;
+}
+
+/**
+ * Desk/space -> assignee, from the same viewerData feed getUnits reads (ASSIGNMENT mode). Keyed by
+ * the unit id getUnits assigns (recordId/deskId) so the two line up. `employeeId` is the assigned
+ * party on the desk record; this app assigns CLIENT CONTACTS into that same field (see
+ * assignUnitReal), so it's read back here as the contact id — the symmetric assumption to the
+ * write path. Desks with no assignee (`employeeId` unset/-1) are omitted.
+ */
+async function viewerDataAssignmentsForFloor(floorId: string): Promise<Assignments> {
+  const byType = await getFloorplanDetailsByType(floorId);
+  const map: Assignments = {};
+  for (const [, summary] of Object.entries(byType)) {
+    if (!summary?.id) continue;
+    const data = await fetchViewerData(summary.id, 'ASSIGNMENT').catch(() => null);
+    for (const f of (data?.marker?.features ?? []) as ViewerMarkerFeature[]) {
+      const p = f.properties ?? {};
+      const recordId = p.recordId ?? p.deskId;
+      const employeeId = Number(p.employeeId);
+      if (recordId && Number.isFinite(employeeId) && employeeId > 0) map[String(recordId)] = String(employeeId);
+    }
+  }
+  return map;
 }
 
 export interface FloorPlanTypeSummary {
@@ -739,7 +940,11 @@ async function ensureRealSpaceRecord(unit: Unit): Promise<RealSpaceRef | null> {
   const record = await fetchIndoorFloorPlanRecord(summary.id);
   if (!record) return null;
   const markers: any[] = record.markers ?? [];
-  let marker = markers.find((m) => m.geoId === unit.id);
+  // Join by geoId (this app's own client-assigned marker id — set on markers this app wrote) OR by
+  // recordId (units sourced from viewerData carry the backend record id AS their unit id — see
+  // markerFeatureToUnit). Without the recordId match, a viewerData-sourced desk wouldn't find its
+  // existing marker and would wrongly create a duplicate record below.
+  let marker = markers.find((m) => m.geoId === unit.id) ?? markers.find((m) => m.recordId != null && String(m.recordId) === unit.id);
 
   if (!marker) {
     if (unit.geom.kind !== 'point') return null;
@@ -1047,18 +1252,15 @@ export async function findUnitIdForDeskRecord(floorId: string, deskRecordId: num
 
 /**
  * Assigns a client contact to a placed workstation/locker/parking-stall for real, confirmed
- * against a live org: for desks, creates a `moves` record (`to` + `employee`, `timeOfMove`
- * at-or-before now so the reassignment executes immediately — the backend auto-unassigns
- * whatever desk that employee previously held, per the org's documented Moves flow); for
- * lockers/parking stalls, a plain `employee` field update (no Moves involvement there).
+ * against a live org: for desks, creates a `moves` record (`to` + `clientcontact_moves`,
+ * `timeOfMove` at-or-before now so the reassignment executes immediately — the backend
+ * auto-unassigns whatever desk that client contact previously held, per the org's documented
+ * Moves flow); for lockers/parking stalls, a plain `employee` field update (no Moves involvement
+ * there — that module's assignee lookup is a separate, confirmed-real `employee` field).
  *
- * The moves payload mirrors the real web app's, captured from a live session:
- * `{to, timeOfMove, employee, scheduledTime: null, moveType: 1, siteId}`.
- *
- * NOTE: `to`/lockers/parkingstall's assignee lookup is still the real `employee` field — this app
- * now assigns CLIENT CONTACTS to these records, and whether that lookup accepts a client-contact
- * id (vs. requiring an actual employee record) is an open backend question (see plan follow-ups),
- * not something this app controls. Left as `employee` here since that's the real field name.
+ * The moves payload mirrors the real web app's: `{to, timeOfMove, clientcontact_moves,
+ * scheduledTime: null, moveType: 1, siteId}` — `clientcontact_moves` is the `moves` module's real
+ * field for the client contact being moved (not `employee`).
  */
 export async function assignUnitReal(unit: Unit, contactId: string): Promise<void> {
   if (!isFacilioApiConfigured) return;
@@ -1075,7 +1277,7 @@ export async function assignUnitReal(unit: Unit, contactId: string): Promise<voi
       data: {
         to: { id: ref.recordId },
         timeOfMove: Date.now(),
-        employee: { id },
+        clientcontact_moves: { id },
         scheduledTime: null,
         moveType: 1,
         ...(ref.siteId ? { siteId: ref.siteId } : {}),
@@ -1096,8 +1298,8 @@ export async function assignUnitReal(unit: Unit, contactId: string): Promise<voi
 
 /**
  * Vacates a placed workstation/locker/parking-stall for real — for desks, a `moves` record with
- * only `from` set (confirmed live: clears the desk's `employee` field); for lockers/parking
- * stalls, clears the `employee` field directly.
+ * only `from` set (confirmed live: clears the desk's assignee via `clientcontact_moves`); for
+ * lockers/parking stalls, clears the `employee` field directly.
  */
 export async function vacateUnitReal(unit: Unit, contactId: string): Promise<void> {
   if (!isFacilioApiConfigured) return;
@@ -1114,7 +1316,7 @@ export async function vacateUnitReal(unit: Unit, contactId: string): Promise<voi
       data: {
         from: { id: ref.recordId },
         timeOfMove: Date.now(),
-        employee: { id },
+        clientcontact_moves: { id },
         scheduledTime: null,
         moveType: 1,
         ...(ref.siteId ? { siteId: ref.siteId } : {}),
