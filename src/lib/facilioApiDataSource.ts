@@ -373,11 +373,19 @@ export async function uploadFloorplanFile(
 }
 
 /**
- * Syncs this app's placed units to the real `indoorfloorplan` record: point units (desks/
- * lockers/parking/amenities) into its embedded `markers` array, room polygons into its embedded
- * `markedZones` array — confirmed against a live capture of the real web app's own save (both are
- * plain fields on the record, not separate modules; `geoId` on each entry is this app's own unit
- * id, doubling as the idempotency key so re-saving updates in place instead of duplicating).
+ * Syncs this app's placed units to the real `indoorfloorplan` record for ONE plan type — the
+ * currently active tab (`planId`) only, not every plan type configured on the floor. Point units
+ * (desks/lockers/parking/amenities) go into its embedded `markers` array, room polygons into its
+ * embedded `markedZones` array — confirmed against a live capture of the real web app's own save
+ * (both are plain fields on the record, not separate modules; `geoId` on each entry is this app's
+ * own unit id, doubling as the idempotency key so re-saving updates in place instead of
+ * duplicating).
+ *
+ * A unit's OWN `plan` tag doesn't gate which record it belongs to here — rooms are tagged
+ * `'custom'` (not a real, separately-saved plan type; see `FLOOR_PLAN_TYPE`) but still belong to
+ * whichever record `'custom'` resolves to (the workstation one) — matching is done by resolved
+ * `FLOOR_PLAN_TYPE` number, not the raw `plan` string, so a room synced while viewing the
+ * Workstations tab is actually included.
  *
  * Only units that ALREADY have a matching real entry (by `geoId`, from some prior real save) are
  * synced — a brand-new room or amenity placed in this app (no matching entry yet) is skipped with
@@ -387,39 +395,28 @@ export async function uploadFloorplanFile(
  * amenity) looks like — it may vary by room category/marker type. New desks/lockers/parking
  * stalls are unaffected; those still create their backing record inline (see below).
  *
- * Skipped per plan-type when `indoorfloorplan.geometry` isn't set yet (no synthetic
- * geo-reference — see `geoReference.ts` — has been computed, e.g. a floor plan uploaded before
- * this existed): there's no sane lng/lat to convert a unit's 0-1 fraction position into, and
- * guessing would silently misplace it rather than fail loudly.
+ * Skipped when `indoorfloorplan.geometry` isn't set yet (no synthetic geo-reference — see
+ * `geoReference.ts` — has been computed, e.g. a floor plan uploaded before this existed): there's
+ * no sane lng/lat to convert a unit's 0-1 fraction position into, and guessing would silently
+ * misplace it rather than fail loudly.
  */
-export async function saveFloorplanMarkers(floorId: string, units: Unit[]): Promise<void> {
+export async function saveFloorplanMarkers(floorId: string, planId: PlanId, units: Unit[]): Promise<void> {
   if (!isFacilioApiConfigured) return;
+  const targetType = FLOOR_PLAN_TYPE[planId];
   const syncable = units.filter(
     (u) =>
-      (u.geom.kind === 'point' && (u.type === 'workstation' || u.type === 'locker' || u.type === 'parking' || u.type === 'amenity')) ||
-      (u.geom.kind === 'poly' && u.type === 'room')
+      FLOOR_PLAN_TYPE[u.plan] === targetType &&
+      ((u.geom.kind === 'point' && (u.type === 'workstation' || u.type === 'locker' || u.type === 'parking' || u.type === 'amenity')) ||
+        (u.geom.kind === 'poly' && u.type === 'room'))
   );
   const byType = await getFloorplanDetailsByType(floorId).catch(() => ({}) as Record<string, any>);
+  const summary = byType[String(targetType)];
+  if (!summary?.id) return;
 
-  const byPlan = new Map<PlanId, Unit[]>();
-  for (const u of syncable) {
-    const list = byPlan.get(u.plan) ?? [];
-    list.push(u);
-    byPlan.set(u.plan, list);
-  }
-  const configuredPlanIds = Object.keys(byType)
-    .map((t) => PLAN_ID_BY_TYPE[Number(t)])
-    .filter((p): p is PlanId => !!p);
-  const allPlanIds = new Set<PlanId>([...byPlan.keys(), ...configuredPlanIds]);
-
-  for (const planId of allPlanIds) {
-    const summary = byType[String(FLOOR_PLAN_TYPE[planId])];
-    if (!summary?.id) continue;
-    await syncMarkersForIndoorFloorPlan(summary.id, byPlan.get(planId) ?? []).catch((err) => {
-      // eslint-disable-next-line no-console
-      console.warn(`[facilio-api] marker sync failed for plan ${planId}`, err);
-    });
-  }
+  await syncMarkersForIndoorFloorPlan(summary.id, syncable).catch((err) => {
+    // eslint-disable-next-line no-console
+    console.warn(`[facilio-api] marker sync failed for plan ${planId}`, err);
+  });
 }
 
 /**

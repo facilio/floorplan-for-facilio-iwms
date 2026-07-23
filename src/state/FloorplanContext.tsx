@@ -58,11 +58,16 @@ function viewInsets(state: AppState) {
  * per configured plan type, on every single edit) with no benefit — the real backend only needs
  * to reflect the floor once the user is done editing, same mental model as the "unsaved changes"
  * bar itself. Best-effort: never blocks or throws into the local save it runs alongside.
+ *
+ * `planId` scopes the real sync to the CURRENTLY ACTIVE tab only — every other configured plan
+ * type's `indoorfloorplan` record is left untouched (previously all of them were re-saved on
+ * every "Save changes", which was needless extra writes and could surface an unrelated failure
+ * on a plan type the user never touched this session).
  */
-async function persistUnits(floorId: string, units: Unit[]): Promise<void> {
+async function persistUnits(floorId: string, planId: PlanId, units: Unit[]): Promise<void> {
   const local = dataSource.saveUnits(floorId, units);
   if (isFacilioApiConfigured) {
-    saveFloorplanMarkers(floorId, units).catch((err) => {
+    saveFloorplanMarkers(floorId, planId, units).catch((err) => {
       // eslint-disable-next-line no-console
       console.warn('[facilio-api] marker sync failed', err);
     });
@@ -298,7 +303,7 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       // saving must complete before the switch, unlike discard, which is instant.
       dispatch({ type: 'SET_SAVING', value: true });
       try {
-        await persistUnits(state.floorId, state.units);
+        await persistUnits(state.floorId, state.planId, state.units);
         dispatch({ type: 'MARK_SAVED' });
       } catch {
         showToast('Could not save changes');
@@ -321,7 +326,7 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       dispatch({ type: 'SET_PENDING_MODE_SWITCH', mode: null });
       // Auto-save already pushed the now-discarded edits per action — re-persist the reverted
       // snapshot in the background so the store matches what's shown.
-      void persistUnits(state.floorId, state.savedUnits).catch(() => {});
+      void persistUnits(state.floorId, state.planId, state.savedUnits).catch(() => {});
     },
     /**
      * In-place discard (the ✕ on the unsaved-changes bar): revert to the last-saved snapshot and
@@ -331,7 +336,7 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       dispatch({ type: 'DISCARD_CHANGES' });
       showToast('Changes discarded');
       // Background housekeeping, same as confirmDiscardAndSwitch.
-      void persistUnits(state.floorId, state.savedUnits).catch(() => {});
+      void persistUnits(state.floorId, state.planId, state.savedUnits).catch(() => {});
     },
     setTool: (tool: AppState['tool']) => dispatch({ type: 'SET_TOOL', tool }),
     /** Arm the amenity tool with a marker-library entry (built-in or custom). */
@@ -1125,7 +1130,7 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       const assignments = seedAssignments();
       const bookings = seedBookings(state.date);
       dispatch({ type: 'RESET_DEMO', units, assignments, bookings });
-      void persistUnits(state.floorId, units).catch(() => {});
+      void persistUnits(state.floorId, state.planId, units).catch(() => {});
       showToast('Demo data reset');
     },
 
@@ -1137,7 +1142,7 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
     saveChanges: async () => {
       dispatch({ type: 'SET_SAVING', value: true });
       try {
-        await persistUnits(state.floorId, state.units);
+        await persistUnits(state.floorId, state.planId, state.units);
         dispatch({ type: 'MARK_SAVED' });
         showToast('Changes saved');
       } catch (err) {

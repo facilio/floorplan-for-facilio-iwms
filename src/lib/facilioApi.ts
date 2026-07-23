@@ -343,55 +343,21 @@ export async function customGet(path: string, params?: Record<string, unknown>, 
 }
 
 /**
- * Best-effort interpretation of whatever string `invokeFacilioAPI` returns for a file-preview
- * request — the SDK docs say it returns strings only and don't document this specific endpoint's
- * shape, so several plausible forms are tried: already a data URL, a JSON envelope with the
- * base64/bytes under a common field name, or a bare base64 string. Returns null (caller falls
- * back to `toBase64`) if nothing recognizable is found.
- */
-function interpretFilePreviewResponse(raw: unknown): string | null {
-  if (typeof raw !== 'string' || !raw) return null;
-  if (raw.startsWith('data:')) return raw;
-  try {
-    const parsed = JSON.parse(raw);
-    const candidate = parsed?.data ?? parsed?.result ?? parsed?.base64 ?? parsed?.fileContent ?? parsed?.content ?? parsed?.image;
-    if (typeof candidate === 'string' && candidate) {
-      return candidate.startsWith('data:') ? candidate : `data:image/png;base64,${candidate}`;
-    }
-    return null;
-  } catch {
-    // Not JSON — a bare base64 string is plausible only if it looks like one (base64 alphabet,
-    // reasonably long); anything else is more likely an HTML error page or similar.
-    const looksLikeBase64 = raw.length > 100 && /^[A-Za-z0-9+/=\s]+$/.test(raw);
-    return looksLikeBase64 ? `data:image/png;base64,${raw}` : null;
-  }
-}
-
-/**
  * A stored file's bytes, for display. Dev mode returns the raw blob (as before — callers run it
  * through their own image/PDF/CAD rendering as needed).
  *
- * Connected mode tries `invokeFacilioAPI` first (per SDK guidance: use it for endpoints the Data
- * API doesn't cover) even though the docs say it returns strings only and don't confirm this
- * endpoint works through it at all — an experiment, verified live. Falls back to
- * `common.toBase64({fileId})`, the one endpoint the docs DO confirm returns image data, if the
- * response isn't recognizable. An earlier attempt at a direct preview URL was tried and
- * confirmed, live, to 404 (connected apps aren't same-origin with the org's backend) — this
- * differs from that: it goes through the SDK bridge rather than a raw browser request.
+ * Connected mode uses `common.toBase64({fileId})`, the endpoint the SDK docs confirm returns
+ * image data. An earlier `invokeFacilioAPI('v2/files/preview/...')` attempt (SDK guidance: use it
+ * for endpoints the Data API doesn't cover) was tried and confirmed, live, to be rejected by the
+ * SDK bridge itself with "Unsupported module" — `files` isn't in whatever allowlist
+ * `invokeFacilioAPI` checks, so that path can't ever work and was removed rather than left as a
+ * doomed attempt on every preview load. A separate, earlier attempt at a direct preview URL was
+ * also tried and confirmed, live, to 404 (connected apps aren't same-origin with the org's
+ * backend).
  */
 export async function fetchFilePreview(fileId: number, opts?: { original?: boolean }): Promise<{ dataUrl: string | null; blob?: Blob; contentType?: string }> {
   if (isConnectedApp) {
     const app = await facilioAppReady();
-    try {
-      const raw = await app.request.invokeFacilioAPI(`v2/files/preview/${fileId}${opts?.original ? '?fetchOriginal=true' : ''}`, { method: 'GET' });
-      const dataUrl = interpretFilePreviewResponse(raw);
-      if (dataUrl) return { dataUrl };
-      // eslint-disable-next-line no-console
-      console.warn('[facilio-api] invokeFacilioAPI file preview response not recognizable, falling back to toBase64');
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn('[facilio-api] invokeFacilioAPI file preview failed, falling back to toBase64', err);
-    }
     const base64 = await app.common.toBase64({ fileId });
     return { dataUrl: base64 ? `data:image/png;base64,${base64}` : null };
   }
