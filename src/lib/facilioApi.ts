@@ -344,7 +344,12 @@ export async function customGet(path: string, params?: Record<string, unknown>, 
 
 /**
  * A stored file's bytes, for display. Dev mode returns the raw blob (as before — callers run it
- * through their own image/PDF/CAD rendering as needed).
+ * through their own image/PDF/CAD rendering as needed): `opts.original` (needed for anything this
+ * app re-renders itself, e.g. CAD/PDF floor plans) goes through `v2/files/download/{fileId}`
+ * rather than `v2/files/preview/{fileId}?fetchOriginal=true` — a plain preview call, even with
+ * that flag, isn't guaranteed to be the untouched original (this is what a DWG floor plan not
+ * rendering traced back to). The plain (non-original) preview path is unaffected — that one
+ * deliberately wants Facilio's server-rendered raster image, not the source file.
  *
  * Connected mode uses `common.toBase64({fileId})`, the endpoint the SDK docs confirm returns
  * image data. An earlier `invokeFacilioAPI('v2/files/preview/...')` attempt (SDK guidance: use it
@@ -353,7 +358,9 @@ export async function customGet(path: string, params?: Record<string, unknown>, 
  * `invokeFacilioAPI` checks, so that path can't ever work and was removed rather than left as a
  * doomed attempt on every preview load. A separate, earlier attempt at a direct preview URL was
  * also tried and confirmed, live, to 404 (connected apps aren't same-origin with the org's
- * backend).
+ * backend). The SDK has no documented download-with-bytes primitive (`interface.triggerDownload`
+ * saves straight to the user's device — no Blob/bytes this app can hand to its own CAD renderer),
+ * so connected mode has no equivalent fix for `opts.original` yet.
  */
 export async function fetchFilePreview(fileId: number, opts?: { original?: boolean }): Promise<{ dataUrl: string | null; blob?: Blob; contentType?: string }> {
   if (isConnectedApp) {
@@ -361,10 +368,7 @@ export async function fetchFilePreview(fileId: number, opts?: { original?: boole
     const base64 = await app.common.toBase64({ fileId });
     return { dataUrl: base64 ? `data:image/png;base64,${base64}` : null };
   }
-  const res = await devInstance!.get(`v2/files/preview/${fileId}`, {
-    params: opts?.original ? { fetchOriginal: true } : undefined,
-    responseType: 'blob',
-  });
+  const res = await devInstance!.get(opts?.original ? `v2/files/download/${fileId}` : `v2/files/preview/${fileId}`, { responseType: 'blob' });
   const contentType = res.headers?.['content-type'];
   return { dataUrl: null, blob: res.data, contentType: typeof contentType === 'string' ? contentType : undefined };
 }

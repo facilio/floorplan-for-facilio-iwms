@@ -7,7 +7,8 @@ import type { Asset } from './assets';
 import type { Assignments, Booking, Building, ClientContact, Floor, FloorplanCustomization, MarkerDef, PlanId, PointGeom, PolyGeom, Site, Unit, UnitType } from './types';
 
 /**
- * `fetchOriginal=true` on `v2/files/preview` returns the ORIGINAL uploaded bytes — for a plain
+ * `fetchFilePreview(fileId, {original: true})` (dev mode: `v2/files/download/{fileId}` — see its
+ * doc comment for why not the preview endpoint) returns the ORIGINAL uploaded bytes — for a plain
  * raster image that's directly usable as an `<img>` source, but a floor's plan is often a DWG/
  * DXF/PDF source file (confirmed against a live org: `Content-Type: image/vnd.dwg`), which a
  * browser can't decode natively. Detect that from the response's real content-type (not the
