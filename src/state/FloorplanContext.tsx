@@ -1225,11 +1225,28 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
       const floorId = firstRealFloor ?? state.floorId;
       if (floorId !== state.floorId) dispatch({ type: 'SELECT_FLOOR_START', floorId });
 
+      // Individually caught (not a bare Promise.all) — same reasoning as loadFloor's per-call
+      // path: one failing tier must not strand the boot sequence with an uncaught rejection.
+      let bootFloorLoadFailed = false;
       const [units, assignments, bookings] = await Promise.all([
-        dataSource.getUnits(floorId),
-        dataSource.getAssignments(floorId),
-        dataSource.getBookings(floorId, state.date),
+        dataSource.getUnits(floorId).catch((err) => {
+          bootFloorLoadFailed = true;
+          // eslint-disable-next-line no-console
+          console.warn('[boot] units load failed', err);
+          return [] as Unit[];
+        }),
+        dataSource.getAssignments(floorId).catch((err) => {
+          // eslint-disable-next-line no-console
+          console.warn('[boot] assignments load failed', err);
+          return {} as Assignments;
+        }),
+        dataSource.getBookings(floorId, state.date).catch((err) => {
+          // eslint-disable-next-line no-console
+          console.warn('[boot] bookings load failed', err);
+          return [] as Booking[];
+        }),
       ]);
+      if (bootFloorLoadFailed) showToastVia(dispatch, "Couldn't load this floor's data");
       dispatch({ type: 'SELECT_FLOOR_DONE', floorId, units, assignments, bookings });
       loadFloorPlanTypesAndImage(dispatch, floorId, state.planId);
 
