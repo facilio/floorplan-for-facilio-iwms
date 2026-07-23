@@ -388,84 +388,76 @@ export async function saveFloorplanMarkers(floorId: string, units: Unit[]): Prom
   }
 }
 
+/**
+ * The indoorfloorplan record's own fields, including its embedded `markers` array — markers are
+ * NOT a separate related module (the old `floorplanmarker` relatedList approach didn't actually
+ * work): confirmed live, `v3/modules/data/update` for `indoorfloorplan` carries the FULL markers
+ * array as a field on the record itself, joined to this app's own units via each marker's
+ * `geoId` (a client-assigned id — this app's own unit id). Existing markers reference their
+ * backing desk/locker/parkingstall record by a bare `recordId`; only a brand-new marker (created
+ * inline together with its record) needs the record nested in full, which this app doesn't do —
+ * it creates the record separately first (see `ensureRealSpaceRecord`), then references it by id.
+ */
+async function fetchIndoorFloorPlanRecord(indoorFloorPlanId: number): Promise<any | null> {
+  const res = await facilioApi.fetchRecord<any>('indoorfloorplan', { id: indoorFloorPlanId });
+  if (res.error || !res.indoorfloorplan) return null;
+  return res.indoorfloorplan;
+}
+
 async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: (Unit & { geom: PointGeom })[]): Promise<void> {
-  // See the matching comment in uploadFloorplanFile — `fetchRecord` nests the record under
-  // `res[moduleName]` (`res.indoorfloorplan` here), not `res.data`.
-  const recordRes = await facilioApi.fetchRecord<any>('indoorfloorplan', { id: indoorFloorPlanId });
-  if (recordRes.error || !recordRes.indoorfloorplan) return;
-  const quad = geometryStringToQuad(recordRes.indoorfloorplan.geometry);
+  const record = await fetchIndoorFloorPlanRecord(indoorFloorPlanId);
+  if (!record) return;
+  const quad = geometryStringToQuad(record.geometry);
   if (!quad) return;
 
-  const existingRes = await facilioApi.fetchAllRelatedList<any>({
-    moduleName: 'indoorfloorplan',
-    id: indoorFloorPlanId,
-    relatedModuleName: 'floorplanmarker',
-    relatedFieldName: 'indoorfloorplan',
-  });
-  if (existingRes.error) {
-    // eslint-disable-next-line no-console
-    console.warn(`[facilio-api] fetching existing markers failed for plan ${indoorFloorPlanId}`, existingRes.error);
-    return; // bail rather than risk creating duplicates against a list we couldn't actually verify.
-  }
-  const existing = existingRes.list ?? [];
-  const existingByGeoId = new Map(existing.map((m) => [m.geoId, m]));
-  const seenGeoIds = new Set<string>();
+  const existing: any[] = record.markers ?? [];
+  const existingByGeoId = new Map(existing.filter((m) => m.geoId).map((m) => [m.geoId, m]));
+  const nextMarkers: any[] = [];
 
   for (const unit of units) {
     const [lng, lat] = quadToLngLat(quad, unit.geom.x, unit.geom.y);
     const geometry = JSON.stringify({ type: 'Point', coordinates: [lng, lat] });
     const properties = JSON.stringify({ unitType: unit.type, secondary: unit.secondary ?? null });
-    seenGeoIds.add(unit.id);
     const match = existingByGeoId.get(unit.id);
-    if (match) {
-      if (match.geometry !== geometry || match.label !== unit.label) {
-        // `facilioApi` resolves (doesn't reject) on a failed request — the failure shows up
-        // as `res.error`, not a rejected promise, so a bare `.catch()` here would never catch
-        // a real validation error; check `.error` explicitly and log it instead.
-        const res = await facilioApi.updateRecord('floorplanmarker', { id: match.id, data: { geometry, properties, label: unit.label, type: 'Point' } });
+    // Spread the existing entry first so anything it already carries (recordId, markerType,
+    // markerModuleId, etc.) survives the round-trip untouched — only geometry/label are ours to
+    // change. A brand-new entry just gets the minimal fields; no markerType is set for it since
+    // this app doesn't know which markertype id represents each unit type (unconfirmed).
+    nextMarkers.push({
+      ...(match ?? {}),
+      geoId: unit.id,
+      geometry,
+      properties,
+      type: 'Feature',
+      indoorfloorplan: { id: indoorFloorPlanId },
+      label: unit.label,
+    });
+
+    // Desk-specific fields go on the SEPARATE desks/lockers/parkingstall record, not the marker.
+    if (match?.recordId) {
+      const moduleName = REAL_SPACE_MODULE[unit.type];
+      const fields: Record<string, unknown> = {};
+      if (unit.type === 'workstation' && unit.deskType) fields.deskType = unit.deskType;
+      if (unit.secondary) fields.secondary = unit.secondary;
+      if (moduleName && Object.keys(fields).length > 0) {
+        const res = await facilioApi.updateRecord(moduleName, { id: match.recordId, data: fields });
         if (res.error) {
           // eslint-disable-next-line no-console
-          console.warn(`[facilio-api] marker update failed for unit ${unit.id}`, res.error);
+          console.warn(`[facilio-api] desk field sync failed for unit ${unit.id}`, res.error);
         }
-      }
-      // Also push desk-specific fields onto the real backing desks/lockers/parkingstall record,
-      // when one's already been resolved (assign/vacate/book creates it lazily — see
-      // ensureRealSpaceRecord below). Marker sync previously only touched the floorplanmarker's
-      // own geometry/label, never the space record's own fields. NOT verified against a live
-      // org: `deskType`/`secondary` as real field names are inferred from this app's own local
-      // naming, matching the pattern the rest of this file uses for its confirmed real writes —
-      // worth double-checking against a live org before trusting this.
-      if (match.recordId) {
-        const moduleName = REAL_SPACE_MODULE[unit.type];
-        const fields: Record<string, unknown> = {};
-        if (unit.type === 'workstation' && unit.deskType) fields.deskType = unit.deskType;
-        if (unit.secondary) fields.secondary = unit.secondary;
-        if (moduleName && Object.keys(fields).length > 0) {
-          const res = await facilioApi.updateRecord(moduleName, { id: match.recordId, data: fields });
-          if (res.error) {
-            // eslint-disable-next-line no-console
-            console.warn(`[facilio-api] desk field sync failed for unit ${unit.id}`, res.error);
-          }
-        }
-      }
-    } else {
-      const res = await facilioApi.createRecord('floorplanmarker', {
-        data: { geoId: unit.id, geometry, properties, type: 'Point', label: unit.label, indoorfloorplan: { id: indoorFloorPlanId } },
-      });
-      if (res.error) {
-        // eslint-disable-next-line no-console
-        console.warn(`[facilio-api] marker create failed for unit ${unit.id}`, res.error);
       }
     }
   }
+  // Markers this app doesn't own (no geoId — amenities/decorative markers placed by other
+  // tools) are preserved untouched; a geoId-tagged marker whose unit is gone gets dropped.
   for (const m of existing) {
-    if (m.geoId && !seenGeoIds.has(m.geoId)) {
-      const res = await facilioApi.deleteRecord('floorplanmarker', m.id);
-      if (res.error) {
-        // eslint-disable-next-line no-console
-        console.warn(`[facilio-api] marker delete failed for id ${m.id}`, res.error);
-      }
-    }
+    if (!m.geoId) nextMarkers.push(m);
+  }
+
+  const res = await facilioApi.updateRecord('indoorfloorplan', { id: indoorFloorPlanId, data: { markers: nextMarkers } });
+  if (res.error) {
+    // eslint-disable-next-line no-console
+    console.warn(`[facilio-api] marker sync failed for plan ${indoorFloorPlanId}`, res.error);
   }
 }
 
@@ -518,37 +510,30 @@ async function ensureRealSpaceRecord(unit: Unit): Promise<RealSpaceRef | null> {
     return null;
   }
 
-  const markersRes = await facilioApi.fetchAllRelatedList<any>({
-    moduleName: 'indoorfloorplan',
-    id: summary.id,
-    relatedModuleName: 'floorplanmarker',
-    relatedFieldName: 'indoorfloorplan',
-  });
-  if (markersRes.error) return null;
-  let marker = (markersRes.list ?? []).find((m) => m.geoId === unit.id);
+  const record = await fetchIndoorFloorPlanRecord(summary.id);
+  if (!record) return null;
+  const markers: any[] = record.markers ?? [];
+  let marker = markers.find((m) => m.geoId === unit.id);
 
   if (!marker) {
     if (unit.geom.kind !== 'point') return null;
-    const recordRes = await facilioApi.fetchRecord<any>('indoorfloorplan', { id: summary.id });
-    const quad = geometryStringToQuad(recordRes.indoorfloorplan?.geometry);
+    const quad = geometryStringToQuad(record.geometry);
     if (!quad) {
       // eslint-disable-next-line no-console
       console.warn(`[facilio-api] floor plan ${summary.id} has no geo-reference — assignment for unit ${unit.id} not persisted to backend`);
       return null;
     }
     const [lng, lat] = quadToLngLat(quad, unit.geom.x, unit.geom.y);
-    const createMarkerRes = await facilioApi.createRecord<any>('floorplanmarker', {
-      data: {
-        geoId: unit.id,
-        geometry: JSON.stringify({ type: 'Point', coordinates: [lng, lat] }),
-        properties: JSON.stringify({ unitType: unit.type, secondary: unit.secondary ?? null }),
-        type: 'Point',
-        label: unit.label,
-        indoorfloorplan: { id: summary.id },
-      },
-    });
-    if (createMarkerRes.error || !createMarkerRes.floorplanmarker?.id) return null;
-    marker = createMarkerRes.floorplanmarker;
+    marker = {
+      geoId: unit.id,
+      geometry: JSON.stringify({ type: 'Point', coordinates: [lng, lat] }),
+      properties: JSON.stringify({ unitType: unit.type, secondary: unit.secondary ?? null }),
+      type: 'Feature',
+      indoorfloorplan: { id: summary.id },
+      label: unit.label,
+    };
+    const createRes = await facilioApi.updateRecord('indoorfloorplan', { id: summary.id, data: { markers: [...markers, marker] } });
+    if (createRes.error) return null;
   }
 
   const floorRes = await facilioApi.fetchRecord<any>('floor', { id: unit.floor });
@@ -567,7 +552,13 @@ async function ensureRealSpaceRecord(unit: Unit): Promise<RealSpaceRef | null> {
   });
   if (createRes.error || !createRes[moduleName]?.id) return null;
   const recordId = createRes[moduleName].id;
-  await facilioApi.updateRecord('floorplanmarker', { id: marker.id, data: { recordId } }).catch(() => {});
+  // Link the new record id back onto the marker within the embedded array — re-fetch fresh
+  // rather than reusing what's in scope, in case the array changed since it was last read.
+  const latest = await fetchIndoorFloorPlanRecord(summary.id);
+  if (latest) {
+    const latestMarkers: any[] = (latest.markers ?? []).map((m: any) => (m.geoId === unit.id ? { ...m, recordId } : m));
+    await facilioApi.updateRecord('indoorfloorplan', { id: summary.id, data: { markers: latestMarkers } }).catch(() => {});
+  }
   const ref = { recordId, siteId };
   realSpaceRecordCache.set(unit.id, ref);
   return ref;
@@ -590,14 +581,8 @@ export async function fetchUnitModuleState(unit: Unit): Promise<string | null> {
     const byType = await getFloorplanDetailsByType(unit.floor).catch(() => ({}) as Record<string, any>);
     const summary = byType[String(FLOOR_PLAN_TYPE[unit.plan])];
     if (!summary?.id) return null;
-    const markersRes = await facilioApi.fetchAllRelatedList<any>({
-      moduleName: 'indoorfloorplan',
-      id: summary.id,
-      relatedModuleName: 'floorplanmarker',
-      relatedFieldName: 'indoorfloorplan',
-    });
-    if (markersRes.error) return null;
-    const marker = (markersRes.list ?? []).find((m) => m.geoId === unit.id);
+    const record = await fetchIndoorFloorPlanRecord(summary.id);
+    const marker = record?.markers?.find((m: any) => m.geoId === unit.id);
     if (!marker?.recordId) return null;
     recordId = marker.recordId;
   }
@@ -741,14 +726,8 @@ export async function findUnitIdForDeskRecord(floorId: string, deskRecordId: num
   const byType = await getFloorplanDetailsByType(floorId).catch(() => ({}) as Record<string, any>);
   const summary = byType[String(FLOOR_PLAN_TYPE.workstation)];
   if (!summary?.id) return null;
-  const markersRes = await facilioApi.fetchAllRelatedList<any>({
-    moduleName: 'indoorfloorplan',
-    id: summary.id,
-    relatedModuleName: 'floorplanmarker',
-    relatedFieldName: 'indoorfloorplan',
-  });
-  if (markersRes.error) return null;
-  const marker = (markersRes.list ?? []).find((m) => m.recordId === deskRecordId);
+  const record = await fetchIndoorFloorPlanRecord(summary.id);
+  const marker = record?.markers?.find((m: any) => m.recordId === deskRecordId);
   return marker?.geoId ?? null;
 }
 
