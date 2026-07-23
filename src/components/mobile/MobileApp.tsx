@@ -34,9 +34,6 @@ export function MobileApp({ mode, onClose }: MobileAppProps) {
   const hasPlan = !!meta?.floor.hasPlan || !!state.floorsWithPlans[state.floorId] || !!state.floorImages[floorImageKey(state.floorId, state.planId)];
   // Memoized like the web canvas: a full assignments scan per pan/zoom frame is wasted work.
   const myUnit = useMemo(() => myAssignedUnit(state), [state.assignments, state.bookBy, state.units]); // eslint-disable-line react-hooks/exhaustive-deps
-  // One synthetic palette-state per render (mode synced to the mobile tab), not one spread per
-  // marker per frame — same object markerStyle reads either way.
-  const paletteState = { ...state, mode: state.mobileTab } as typeof state;
   const [qrOpen, setQrOpen] = useState(false);
   const [spacesOpen, setSpacesOpen] = useState(false);
   const [myBookingsOpen, setMyBookingsOpen] = useState(false);
@@ -218,6 +215,9 @@ function MobileMap({
   onOpenSpaces: () => void;
 }) {
   const { state, actions } = useFloorplan();
+  // One synthetic palette-state per render (mode synced to the mobile tab), not one spread per
+  // marker per frame — same object markerStyle reads either way.
+  const paletteState = { ...state, mode: state.mobileTab } as typeof state;
   const wrapRef = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<ViewTransform | null>(null);
   const viewRef = useRef<ViewTransform | null>(null);
