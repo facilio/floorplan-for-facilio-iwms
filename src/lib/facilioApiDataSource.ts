@@ -1,10 +1,10 @@
-import { apiOrigin, customGet, customPost, facilioApi, fetchFilePreview, isFacilioApiConfigured } from './facilioApi';
+import { apiOrigin, customGet, facilioApi, fetchFilePreview, isFacilioApiConfigured } from './facilioApi';
 import { renderCadToDataUrl } from './cadPreview';
 import { renderPdfToDataUrl } from './pdfPreview';
 import { computeSyntheticGeometry, geometryStringToQuad, quadToGeometryString, quadToLngLat } from './geoReference';
 import type { FloorplanDataSource } from './dataSource';
 import type { Asset } from './assets';
-import type { Assignments, Booking, ClientContact, PlanId, PointGeom, Site, Unit, UnitType } from './types';
+import type { Assignments, Booking, Building, ClientContact, Floor, PlanId, PointGeom, Site, Unit, UnitType } from './types';
 
 /**
  * `fetchOriginal=true` on `v2/files/preview` returns the ORIGINAL uploaded bytes — for a plain
@@ -64,42 +64,35 @@ export class FacilioApiDataSource implements FloorplanDataSource {
     if (!isFacilioApiConfigured) throw new Error('facilio-api: not configured (VITE_DEV_MODE / base URL / token)');
   }
 
+  /**
+   * Sites only — buildings/floors are fetched lazily as the portfolio switcher expands each node
+   * (`getBuildingsForSite`/`getFloorsForBuilding`), rather than fan-out-fetching the whole org's
+   * tree (every building and every floor, across every site) up front.
+   */
   async getPortfolio(): Promise<Site[]> {
     this.assertConfigured();
-    const [sitesRes, buildingsRes, floorsRes] = await Promise.all([
-      facilioApi.fetchAll('site'),
-      facilioApi.fetchAll('building'),
-      facilioApi.fetchAll('floor'),
-    ]);
-    const err = sitesRes.error || buildingsRes.error || floorsRes.error;
-    if (err) {
-      throw new Error(`facilio-api: portfolio fetch failed (${err.code ?? '?'} ${err.message ?? ''})`.trim());
-    }
-    const sites = sitesRes.list ?? [];
-    const buildings = buildingsRes.list ?? [];
-    const floors = floorsRes.list ?? [];
+    const res = await facilioApi.fetchAll('site');
+    if (res.error) throw new Error(`facilio-api: portfolio fetch failed (${res.error.code ?? '?'} ${res.error.message ?? ''})`.trim());
+    return (res.list ?? []).map((s: any) => ({ id: String(s.id), name: s.name, buildings: [] }));
+  }
 
-    // Deliberately NOT calling getFloorplanDetailsByType here for every floor — that's an
-    // N-request fan-out across the whole portfolio for data only the *currently selected*
-    // floor needs. See `getFloorPlanSummary` below, called lazily on floor selection instead.
-    return sites.map((s: any) => ({
-      id: String(s.id),
-      name: s.name,
-      buildings: buildings
-        .filter((b: any) => String(lookupId(b, 'site')) === String(s.id))
-        .map((b: any) => ({
-          id: String(b.id),
-          name: b.name,
-          floors: floors
-            .filter((f: any) => String(lookupId(f, 'building')) === String(b.id))
-            .map((f: any) => ({
-              id: String(f.id),
-              name: f.name,
-              // Unknown until getFloorPlanSummary runs for this floor; true is the safer
-              // default so the canvas isn't hidden behind "No floorplan yet" pre-emptively.
-              hasPlan: true,
-            })),
-        })),
+  async getBuildingsForSite(siteId: string): Promise<Building[]> {
+    this.assertConfigured();
+    const res = await facilioApi.fetchAll('building', { filters: JSON.stringify({ site: { operatorId: 36, value: [siteId] } }) });
+    if (res.error) throw new Error(`facilio-api: buildings fetch failed (${res.error.code ?? '?'} ${res.error.message ?? ''})`.trim());
+    return (res.list ?? []).map((b: any) => ({ id: String(b.id), name: b.name, floors: [] }));
+  }
+
+  async getFloorsForBuilding(buildingId: string): Promise<Floor[]> {
+    this.assertConfigured();
+    const res = await facilioApi.fetchAll('floor', { filters: JSON.stringify({ building: { operatorId: 36, value: [buildingId] } }) });
+    if (res.error) throw new Error(`facilio-api: floors fetch failed (${res.error.code ?? '?'} ${res.error.message ?? ''})`.trim());
+    return (res.list ?? []).map((f: any) => ({
+      id: String(f.id),
+      name: f.name,
+      // Unknown until getFloorPlanSummary runs for this floor; true is the safer default so the
+      // canvas isn't hidden behind "No floorplan yet" pre-emptively.
+      hasPlan: true,
     }));
   }
 
@@ -196,32 +189,22 @@ export async function getFloorPlanSummary(floorId: string): Promise<FloorPlanTyp
 }
 
 /**
- * The uploaded image for a floor+plan-type, fetched via `POST .../v3/floorplan/viewerData`
- * (confirmed against a live org — returns `{indoorfloorplan: {fileId, ...}, marker, spaceZone,
- * floorplanlayers, floorplanMappedmodules}`; only `fileId` is used here).
- *
- * Requested as an ABSOLUTE URL off `apiOrigin` (in dev mode) rather than a path relative to the
- * configured axios baseURL — that baseURL already carries a `/api` suffix (for the generic
- * `v3/modules/...` calls), and this route lives directly off the bare origin, not nested under
- * `/api` — a relative path here doubles into `/api/maintenance/api/...` and 404s. Connected-app
- * mode doesn't need this: `customPost` resolves the path itself via the SDK bridge.
- *
- * `marker`/`spaceZone` in the same response are the real per-unit geometry this app's
- * `getUnits` still declines to render (see the class doc comment) — worth revisiting now that
- * a live shape is confirmed, but out of scope for this change (which only needed the file).
+ * The uploaded image for a floor+plan-type. `getFloorplanDetailsByType` gives the
+ * `indoorfloorplan` record id for this floor+type but omits `fileId` (its projection is geared
+ * at plan customization, not the file), so this re-fetches that record via the generic
+ * `fetchRecord('indoorfloorplan', {id})` module read to get `fileId` — works identically in
+ * connected-app mode and dev mode, and matches the pattern already used everywhere else in this
+ * file (`uploadFloorplanFile`, `syncMarkersForIndoorFloorPlan`, `ensureRealSpaceRecord`).
  */
 export async function fetchFloorplanImage(floorId: string, planId: PlanId): Promise<string | null> {
-  if (!isFacilioApiConfigured || !apiOrigin) return null;
+  if (!isFacilioApiConfigured) return null;
   const byType = await getFloorplanDetailsByType(floorId);
   const summary = byType[String(FLOOR_PLAN_TYPE[planId])];
   if (!summary?.id) return null;
 
-  const viewerBody = await customPost(
-    'v3/floorplan/viewerData',
-    { floorplanId: summary.id, viewMode: 'ASSIGNMENT' },
-    { devAbsoluteUrl: `${apiOrigin}/maintenance/api/v3/floorplan/viewerData` }
-  );
-  const fileId = viewerBody?.data?.indoorfloorplan?.fileId;
+  const recordRes = await facilioApi.fetchRecord<any>('indoorfloorplan', { id: summary.id });
+  if (recordRes.error || !recordRes.indoorfloorplan) return null;
+  const fileId = recordRes.indoorfloorplan.fileId;
   if (!fileId) return null;
 
   const preview = await fetchFilePreview(fileId, { original: true });
@@ -431,6 +414,26 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: (
           console.warn(`[facilio-api] marker update failed for unit ${unit.id}`, res.error);
         }
       }
+      // Also push desk-specific fields onto the real backing desks/lockers/parkingstall record,
+      // when one's already been resolved (assign/vacate/book creates it lazily — see
+      // ensureRealSpaceRecord below). Marker sync previously only touched the floorplanmarker's
+      // own geometry/label, never the space record's own fields. NOT verified against a live
+      // org: `deskType`/`secondary` as real field names are inferred from this app's own local
+      // naming, matching the pattern the rest of this file uses for its confirmed real writes —
+      // worth double-checking against a live org before trusting this.
+      if (match.recordId) {
+        const moduleName = REAL_SPACE_MODULE[unit.type];
+        const fields: Record<string, unknown> = {};
+        if (unit.type === 'workstation' && unit.deskType) fields.deskType = unit.deskType;
+        if (unit.secondary) fields.secondary = unit.secondary;
+        if (moduleName && Object.keys(fields).length > 0) {
+          const res = await facilioApi.updateRecord(moduleName, { id: match.recordId, data: fields });
+          if (res.error) {
+            // eslint-disable-next-line no-console
+            console.warn(`[facilio-api] desk field sync failed for unit ${unit.id}`, res.error);
+          }
+        }
+      }
     } else {
       const res = await facilioApi.createRecord('floorplanmarker', {
         data: { geoId: unit.id, geometry, properties, type: 'Point', label: unit.label, indoorfloorplan: { id: indoorFloorPlanId } },
@@ -554,6 +557,41 @@ async function ensureRealSpaceRecord(unit: Unit): Promise<RealSpaceRef | null> {
   const ref = { recordId, siteId };
   realSpaceRecordCache.set(unit.id, ref);
   return ref;
+}
+
+/**
+ * A placed unit's real backend record status, read-only — unlike `ensureRealSpaceRecord`, this
+ * never creates anything: returns null for a unit that's never been assigned/vacated/booked (no
+ * real space record exists yet), not just when the fetch fails. NOT verified against a live org:
+ * `moduleState` as the real field name is taken from what was reported directly off a live API
+ * response, not independently confirmed here.
+ */
+export async function fetchUnitModuleState(unit: Unit): Promise<string | null> {
+  if (!isFacilioApiConfigured) return null;
+  const moduleName = REAL_SPACE_MODULE[unit.type];
+  if (!moduleName) return null;
+
+  let recordId = realSpaceRecordCache.get(unit.id)?.recordId;
+  if (!recordId) {
+    const byType = await getFloorplanDetailsByType(unit.floor).catch(() => ({}) as Record<string, any>);
+    const summary = byType[String(FLOOR_PLAN_TYPE[unit.plan])];
+    if (!summary?.id) return null;
+    const markersRes = await facilioApi.fetchAllRelatedList<any>({
+      moduleName: 'indoorfloorplan',
+      id: summary.id,
+      relatedModuleName: 'floorplanmarker',
+      relatedFieldName: 'indoorfloorplan',
+    });
+    if (markersRes.error) return null;
+    const marker = (markersRes.list ?? []).find((m) => m.geoId === unit.id);
+    if (!marker?.recordId) return null;
+    recordId = marker.recordId;
+  }
+  if (!recordId) return null;
+
+  const res = await facilioApi.fetchRecord<any>(moduleName, { id: recordId });
+  if (res.error || !res[moduleName]) return null;
+  return res[moduleName].moduleState ?? null;
 }
 
 export interface MyDeskInfo {

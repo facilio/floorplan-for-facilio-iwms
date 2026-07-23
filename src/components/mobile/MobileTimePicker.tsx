@@ -2,9 +2,6 @@ import { useFloorplan } from '../../state/FloorplanContext';
 import { useSheetDrag } from './useSheetDrag';
 import styles from './MobileTimePicker.module.css';
 
-// Minutes step in 30-min increments (bookings snap to :00 / :30).
-const STEP = 30;
-
 function clampMinutes(v: number) {
   return Math.max(0, Math.min(1439, v));
 }
@@ -14,6 +11,8 @@ export function MobileTimePicker() {
   const sheetRef = useSheetDrag(() => actions.setMobTimePick(null), !!state.mobTimePick);
   if (!state.mobTimePick) return null;
 
+  // Step by the configured slot-granularity setting (Settings → 15m/30m/1h/2h), not a fixed 30.
+  const step = state.slotGranularity;
   const current = state.mobTimePick === 'end' ? state.end : state.start;
   const hourLabel = String((Math.floor(current / 60) % 12) || 12);
   const minLabel = String(current % 60).padStart(2, '0');
@@ -25,10 +24,10 @@ export function MobileTimePicker() {
     const cur = editingStart ? state.start : state.end;
     const next = clampMinutes(cur + delta);
     if (editingStart) {
-      const dur = Math.max(STEP, state.end - state.start);
+      const dur = Math.max(step, state.end - state.start);
       actions.setTimeRange(next, Math.min(1439, next + dur));
     } else {
-      actions.setTimeRange(state.start, Math.max(state.start + STEP, next));
+      actions.setTimeRange(state.start, Math.max(state.start + step, next));
     }
   }
 
@@ -44,7 +43,7 @@ export function MobileTimePicker() {
         <div className={styles.row}>
           <Stepper label={hourLabel} onUp={() => adjustPick(60)} onDown={() => adjustPick(-60)} />
           <span className={styles.colon}>:</span>
-          <Stepper label={minLabel} onUp={() => adjustPick(STEP)} onDown={() => adjustPick(-STEP)} />
+          <Stepper label={minLabel} onUp={() => adjustPick(step)} onDown={() => adjustPick(-step)} />
           <button className={styles.ampm} onClick={toggleAmpm}>
             {ampm}
           </button>

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { DragEvent as ReactDragEvent, ReactNode } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
 import { unitById } from '../../state/selectors';
@@ -8,6 +8,8 @@ import type { EditTool, MarkerDef } from '../../lib/types';
 import { MARKER_ICONS } from '../canvas/markerIcons';
 import { Button } from '../primitives/Button';
 import { Picklist } from '../fds/Picklist';
+import { isFacilioApiConfigured } from '../../lib/facilioApi';
+import { fetchUnitModuleState } from '../../lib/facilioApiDataSource';
 import card from './Card.module.css';
 import styles from './EditPanel.module.css';
 
@@ -356,6 +358,22 @@ function Inspector() {
   const sel = unitById(state, state.selected);
   const multi = state.multiSelected;
 
+  // The real backend record's own status field, fetched read-only (no record is ever created
+  // just to check this — a unit that's never been assigned/vacated/booked has no real record
+  // yet, and fetchUnitModuleState returns null rather than creating one).
+  const [moduleState, setModuleState] = useState<string | null>(null);
+  useEffect(() => {
+    setModuleState(null);
+    if (!sel || !isFacilioApiConfigured) return;
+    let cancelled = false;
+    fetchUnitModuleState(sel).then((v) => {
+      if (!cancelled) setModuleState(v);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [sel?.id]);
+
   if (multi.length > 1) {
     return (
       <div className={card.card}>
@@ -420,6 +438,12 @@ function Inspector() {
           <span className={card.statLabel}>Type</span>
           <span className={card.statValue}>{TYPE_META[sel.type].name}</span>
         </div>
+        {moduleState && (
+          <div className={card.statRow}>
+            <span className={card.statLabel}>Status</span>
+            <span className={card.statValue}>{moduleState}</span>
+          </div>
+        )}
         {sel.type === 'room' && (
           <div className={card.statRow}>
             <span className={card.statLabel}>Is Reservable</span>

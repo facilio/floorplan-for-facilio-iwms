@@ -143,17 +143,40 @@ async function devUploadSingleFile(file: File): Promise<{ fileId: number } | { e
 // same as `@facilio/api` before it.
 // ---------------------------------------------------------------------------
 const FACILIO_SDK_URL = 'https://static.facilio.com/apps-sdk/beta/facilio_apps_sdk.min.js';
+/**
+ * Hard ceiling on waiting for "app.loaded" — without this, if the SDK is ever slow to fire that
+ * event (or never does: wrong embedding context, version mismatch, etc.), EVERY real-backend
+ * call hangs forever (they all await this same promise), which looks like the whole app being
+ * stuck. Rejecting after this deadline lets every caller's existing fallback chain
+ * (CompositeDataSource -> LocalJsonDataSource) kick in instead, so the app degrades to the
+ * local/mock tier rather than never resolving at all.
+ */
+const FACILIO_SDK_READY_TIMEOUT_MS = 15000;
 
 let sdkReady: Promise<any> | null = null;
 function facilioAppReady(): Promise<any> {
   if (sdkReady) return sdkReady;
   sdkReady = new Promise((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(new Error(`facilio-api: FacilioAppSDK never fired "app.loaded" within ${FACILIO_SDK_READY_TIMEOUT_MS}ms`));
+    }, FACILIO_SDK_READY_TIMEOUT_MS);
     const start = () => {
       try {
         const app = (window as any).FacilioAppSDK.init();
         (window as any).facilioApp = app;
-        app.on('app.loaded', () => resolve(app));
+        app.on('app.loaded', () => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          resolve(app);
+        });
       } catch (err) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
         reject(err);
       }
     };
@@ -165,7 +188,12 @@ function facilioAppReady(): Promise<any> {
     script.src = FACILIO_SDK_URL;
     script.async = true;
     script.onload = start;
-    script.onerror = () => reject(new Error('facilio-api: failed to load FacilioAppSDK from CDN'));
+    script.onerror = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(new Error('facilio-api: failed to load FacilioAppSDK from CDN'));
+    };
     document.head.appendChild(script);
   });
   return sdkReady;
@@ -290,31 +318,40 @@ export async function customGet(path: string, params?: Record<string, unknown>, 
   return res.data;
 }
 
-/** POST version of `customGet` — same verbatim-body contract and the same caveats. */
-export async function customPost(path: string, data?: Record<string, unknown>, opts?: { devAbsoluteUrl?: string }): Promise<any> {
-  if (isConnectedApp) {
-    const app = await facilioAppReady();
-    const raw = await app.api.invokeFacilioAPI(path, { method: 'POST', data });
-    return typeof raw === 'string' ? JSON.parse(raw) : raw;
-  }
-  const res = await devInstance!.post(opts?.devAbsoluteUrl ?? path, data);
-  return res.data;
+/**
+ * Tests whether a URL actually loads as an image, by trying to load it — the only reliable way
+ * to know from the browser's side, since a failed cross-origin/auth request to an `<img>` src
+ * fails silently (no exception, just a broken image).
+ */
+function urlLoadsAsImage(url: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(true);
+    img.onerror = () => resolve(false);
+    img.src = url;
+  });
 }
 
 /**
  * A stored file's bytes, for display. Dev mode returns the raw blob (as before — callers run it
- * through their own image/PDF/CAD rendering as needed). Connected mode has no blob/binary
- * access at all (per the SDK docs) — only `common.toBase64({fileId})`, which returns a bare
- * base64 string documented for "displaying attachments and signatures" without specifying the
- * underlying image format, so callers get a ready-to-use data URL back instead of a blob.
+ * through their own image/PDF/CAD rendering as needed).
  *
- * NOT verified against a live org: `toBase64` collapses the old original-vs-server-rendered
- * distinction (`fetchOriginal` had no equivalent found in the SDK docs) — a DWG/DXF/PDF
- * uploaded in connected-app mode gets whatever single representation `toBase64` returns, which
- * may differ from the previously separate "original bytes" vs "server-rasterized" behavior.
+ * Connected mode first TRIES a direct preview URL (mirroring dev mode's `v2/files/preview/
+ * {fileId}` endpoint off `apiOrigin`) and actually test-loads it as an `<img>` before trusting
+ * it — NOT verified against a live org: the SDK docs found no documented public/signed URL for
+ * files, and connected apps generally aren't same-origin with the org's backend (that's the
+ * whole reason the SDK bridge exists), so this is very likely to fail and fall through. It's
+ * also very likely to be pointed at the wrong host entirely unless `VITE_FACILIO_API_BASE_URL`
+ * is set for the production build — `.env.production` ships it blank, so `apiOrigin` defaults to
+ * this app's OWN origin, not the org's. Falls back to `common.toBase64({fileId})` (a bare base64
+ * string, no documented original-vs-server-rendered distinction) when the direct URL fails.
  */
 export async function fetchFilePreview(fileId: number, opts?: { original?: boolean }): Promise<{ dataUrl: string | null; blob?: Blob; contentType?: string }> {
   if (isConnectedApp) {
+    const candidateUrl = apiOrigin ? `${apiOrigin}/v2/files/preview/${fileId}${opts?.original ? '?fetchOriginal=true' : ''}` : null;
+    if (candidateUrl && (await urlLoadsAsImage(candidateUrl))) {
+      return { dataUrl: candidateUrl };
+    }
     const app = await facilioAppReady();
     const base64 = await app.common.toBase64({ fileId });
     return { dataUrl: base64 ? `data:image/png;base64,${base64}` : null };

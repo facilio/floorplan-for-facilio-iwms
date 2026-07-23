@@ -1,6 +1,6 @@
 import { FacilioApiDataSource } from './facilioApiDataSource';
 import type { Asset } from './assets';
-import type { Assignments, Booking, ClientContact, Site, Unit } from './types';
+import type { Assignments, Booking, Building, ClientContact, Floor, Site, Unit } from './types';
 
 // Local dev data lives as editable JSON in src/data/*.json — change a file and the app uses it
 // (Vite picks the JSON up on save). This is the seed the LocalJsonDataSource serves; session edits
@@ -22,7 +22,16 @@ import bookingsJson from '../data/bookings.json';
  */
 export interface FloorplanDataSource {
   readonly name: string;
+  /**
+   * Sites only — the portfolio switcher fetches buildings/floors lazily (see
+   * `getBuildingsForSite`/`getFloorsForBuilding`) as the user expands each node, rather than
+   * fan-out-fetching the whole org's tree up front.
+   */
   getPortfolio(): Promise<Site[]>;
+  /** Lazy: called when a site node is expanded in the portfolio switcher. */
+  getBuildingsForSite(siteId: string): Promise<Building[]>;
+  /** Lazy: called when a building node is expanded in the portfolio switcher. */
+  getFloorsForBuilding(buildingId: string): Promise<Floor[]>;
   getClientContacts(): Promise<ClientContact[]>;
   /** Catalog of assets that can be dropped onto a plan (Edit mode asset picker). */
   getAssets(): Promise<Asset[]>;
@@ -111,6 +120,20 @@ export class LocalJsonDataSource implements FloorplanDataSource {
 
   async getPortfolio(): Promise<Site[]> {
     return SEED_PORTFOLIO;
+  }
+
+  // The seed is already fully nested in memory — no real laziness benefit here, these just slice
+  // out of it so the portfolio switcher's lazy-expand flow works the same in local/mock mode.
+  async getBuildingsForSite(siteId: string): Promise<Building[]> {
+    return SEED_PORTFOLIO.find((s) => s.id === siteId)?.buildings ?? [];
+  }
+
+  async getFloorsForBuilding(buildingId: string): Promise<Floor[]> {
+    for (const site of SEED_PORTFOLIO) {
+      const building = site.buildings.find((b) => b.id === buildingId);
+      if (building) return building.floors;
+    }
+    return [];
   }
 
   async getClientContacts(): Promise<ClientContact[]> {
@@ -254,6 +277,12 @@ export class CompositeDataSource implements FloorplanDataSource {
    */
   getPortfolio(): Promise<Site[]> {
     return this.run('getPortfolio');
+  }
+  getBuildingsForSite(siteId: string) {
+    return this.run('getBuildingsForSite', siteId);
+  }
+  getFloorsForBuilding(buildingId: string) {
+    return this.run('getFloorsForBuilding', buildingId);
   }
   getClientContacts() {
     return this.run('getClientContacts');

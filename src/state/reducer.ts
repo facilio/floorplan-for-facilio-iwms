@@ -1,5 +1,5 @@
 import { DEFAULT_PERMS, floorImageKey } from '../lib/types';
-import type { Booking, MarkerDef, PlanId, Site, Unit } from '../lib/types';
+import type { Booking, Building, Floor, MarkerDef, PlanId, Site, Unit } from '../lib/types';
 import { clamp, fitView } from '../lib/geometry';
 import { seedBookings } from '../lib/mockData';
 import { viewFromLocation } from '../lib/routes';
@@ -149,6 +149,8 @@ export type Action =
   | { type: 'TOGGLE_NAV' }
   | { type: 'SET_NAV_VIEW'; view: AppState['navView'] }
   | { type: 'TOGGLE_NODE'; id: string }
+  | { type: 'SITE_BUILDINGS_LOADED'; siteId: string; buildings: Building[] }
+  | { type: 'BUILDING_FLOORS_LOADED'; siteId: string; buildingId: string; floors: Floor[] }
   | { type: 'SELECT_FLOOR_START'; floorId: string }
   | { type: 'SELECT_FLOOR_DONE'; floorId: string; units: Unit[]; assignments: AppState['assignments']; bookings: Booking[] }
   | { type: 'SET_PLAN'; planId: AppState['planId'] }
@@ -162,6 +164,7 @@ export type Action =
   | { type: 'HIGHLIGHT_UNIT'; id: string | null }
   | { type: 'ADD_UNIT'; unit: Unit }
   | { type: 'ADD_UNITS'; units: Unit[] }
+  | { type: 'APPLY_AUTOMAP'; created: Unit[]; placedFromPool: Unit[] }
   | { type: 'UPDATE_UNIT'; id: string; patch: Partial<Unit> }
   | { type: 'UPDATE_UNITS'; updates: { id: string; patch: Partial<Unit> }[] }
   | { type: 'DELETE_UNIT'; id: string }
@@ -253,7 +256,9 @@ export function reducer(state: AppState, action: Action): AppState {
       if (!target || target.geom.kind !== 'point' || target.type === 'room') return state;
       const dragged = state.unplacedUnits.find((u) => u.id === action.unitId) ?? state.units.find((u) => u.id === action.unitId);
       if (!dragged || dragged.id === target.id) return state;
-      const placedDragged: Unit = { ...dragged, geom: { ...target.geom }, room: target.room, floor: state.floorId };
+      // Tag to the currently-active plan tab, not whatever `plan` the dragged record carried
+      // before — same reasoning as PLACE_EXISTING_UNIT above.
+      const placedDragged: Unit = { ...dragged, geom: { ...target.geom }, room: target.room, floor: state.floorId, plan: state.planId };
       const units = state.units.filter((u) => u.id !== action.targetId && u.id !== action.unitId).concat(placedDragged);
       const unplacedUnits = [...state.unplacedUnits.filter((u) => u.id !== action.unitId), target];
       return {
@@ -272,6 +277,20 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, navView: action.view };
     case 'TOGGLE_NODE':
       return { ...state, expanded: { ...state.expanded, [action.id]: !state.expanded[action.id] } };
+    case 'SITE_BUILDINGS_LOADED':
+      return {
+        ...state,
+        portfolio: state.portfolio.map((s) => (s.id === action.siteId ? { ...s, buildings: action.buildings } : s)),
+      };
+    case 'BUILDING_FLOORS_LOADED':
+      return {
+        ...state,
+        portfolio: state.portfolio.map((s) =>
+          s.id === action.siteId
+            ? { ...s, buildings: s.buildings.map((b) => (b.id === action.buildingId ? { ...b, floors: action.floors } : b)) }
+            : s
+        ),
+      };
     case 'SELECT_FLOOR_START':
       if (action.floorId === state.floorId) return state;
       return {
@@ -316,6 +335,16 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'ADD_UNITS': {
       const units = [...state.units, ...action.units];
       return { ...state, units, unsavedChanges: countUnsavedChanges(units, state.savedUnits) };
+    }
+    case 'APPLY_AUTOMAP': {
+      const units = [...state.units, ...action.created, ...action.placedFromPool];
+      const placedIds = new Set(action.placedFromPool.map((u) => u.id));
+      return {
+        ...state,
+        units,
+        unplacedUnits: state.unplacedUnits.filter((u) => !placedIds.has(u.id)),
+        unsavedChanges: countUnsavedChanges(units, state.savedUnits),
+      };
     }
     case 'UPDATE_UNIT': {
       const units = state.units.map((u) => (u.id === action.id ? { ...u, ...action.patch } : u));
@@ -370,7 +399,9 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'PLACE_EXISTING_UNIT': {
       const pooled = state.unplacedUnits.find((u) => u.id === action.unitId);
       if (!pooled) return state;
-      const placed: Unit = { ...pooled, geom: action.geom, room: action.room, floor: state.floorId };
+      // Tag to the currently-active plan tab, not whatever `plan` the pooled record happened to
+      // carry — the drop coordinates only make sense relative to the tab it's being placed on.
+      const placed: Unit = { ...pooled, geom: action.geom, room: action.room, floor: state.floorId, plan: state.planId };
       const units = [...state.units, placed];
       return {
         ...state,

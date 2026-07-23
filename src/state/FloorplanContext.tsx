@@ -77,11 +77,38 @@ function resolveSpaceLoc(portfolio: Site[], floorId: string): CreateSpaceLoc {
   return { siteId: null, buildingId: null, floorId };
 }
 
-/** First floor found anywhere in the tree — sites/buildings can be empty shells, so this can't assume `portfolio[0].buildings[0].floors[0]`. */
-function firstFloorId(portfolio: Site[]): string | undefined {
+/**
+ * Races a promise against a hard deadline — used so a boot-time walk across many sites/buildings
+ * (or a single slow/stuck call somewhere in it) can never leave the app stuck loading forever;
+ * it just falls back to `fallback` instead.
+ */
+function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return Promise.race([p, new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms))]);
+}
+
+/**
+ * First floor found anywhere in the org, fetched only as-needed (site by site, building by
+ * building) rather than assuming the whole tree is already loaded — buildings/floors are now
+ * lazy (see `getBuildingsForSite`/`getFloorsForBuilding`), so this walk doubles as the boot-time
+ * resolution AND populates `state.portfolio` along the way via the same actions manually
+ * expanding the tree would dispatch, avoiding a redundant re-fetch if the user later expands
+ * that same site/building themselves. Callers should wrap this in `withTimeout` — an org with
+ * many empty sites/buildings before the first real floor means many sequential round-trips.
+ */
+async function firstFloorId(portfolio: Site[], dispatch: Dispatch<Action>): Promise<string | undefined> {
   for (const site of portfolio) {
-    for (const building of site.buildings) {
-      if (building.floors[0]) return building.floors[0].id;
+    let buildings = site.buildings;
+    if (buildings.length === 0) {
+      buildings = await dataSource.getBuildingsForSite(site.id).catch(() => []);
+      dispatch({ type: 'SITE_BUILDINGS_LOADED', siteId: site.id, buildings });
+    }
+    for (const building of buildings) {
+      let floors = building.floors;
+      if (floors.length === 0) {
+        floors = await dataSource.getFloorsForBuilding(building.id).catch(() => []);
+        dispatch({ type: 'BUILDING_FLOORS_LOADED', siteId: site.id, buildingId: building.id, floors });
+      }
+      if (floors[0]) return floors[0].id;
     }
   }
   return undefined;
@@ -304,7 +331,43 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
     setPlacingUnit: (id: string | null) => dispatch({ type: 'SET_PLACING_UNIT', id }),
     toggleNav: () => dispatch({ type: 'TOGGLE_NAV' }),
     setNavView: (view: AppState['navView']) => dispatch({ type: 'SET_NAV_VIEW', view }),
-    toggleNode: (id: string) => dispatch({ type: 'TOGGLE_NODE', id }),
+    /**
+     * Expanding a site/building node lazily fetches its children (buildings/floors) instead of
+     * the whole org's tree being fetched up front — skipped when already loaded (buildings/
+     * floors already populated) or when collapsing.
+     */
+    toggleNode: (id: string) => {
+      const wasExpanded = !!state.expanded[id];
+      dispatch({ type: 'TOGGLE_NODE', id });
+      if (wasExpanded) return;
+
+      const site = state.portfolio.find((s) => s.id === id);
+      if (site) {
+        if (site.buildings.length > 0) return;
+        dataSource
+          .getBuildingsForSite(id)
+          .then((buildings) => dispatch({ type: 'SITE_BUILDINGS_LOADED', siteId: id, buildings }))
+          .catch((err) => {
+            // eslint-disable-next-line no-console
+            console.warn(`[portfolio] buildings fetch failed for site ${id}`, err);
+          });
+        return;
+      }
+      for (const s of state.portfolio) {
+        const building = s.buildings.find((b) => b.id === id);
+        if (building) {
+          if (building.floors.length > 0) return;
+          dataSource
+            .getFloorsForBuilding(id)
+            .then((floors) => dispatch({ type: 'BUILDING_FLOORS_LOADED', siteId: s.id, buildingId: id, floors }))
+            .catch((err) => {
+              // eslint-disable-next-line no-console
+              console.warn(`[portfolio] floors fetch failed for building ${id}`, err);
+            });
+          return;
+        }
+      }
+    },
 
     selectFloor: (floorId: string) => {
       if (floorId === state.floorId) return;
@@ -465,15 +528,25 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       );
       showToast(`${dragged.label} replaced ${target.label} — it moved to Available`);
     },
-    /** Map dialog: place an EXISTING unplaced record at the pending spot. */
+    /** Map dialog: place an EXISTING record — unplaced, or already placed elsewhere on this floor — at the pending spot. */
     confirmPlacementExisting: (unitId: string) => {
       const spot = state.pendingPlacement;
-      const pooled = state.unplacedUnits.find((u) => u.id === unitId);
-      if (!spot || !pooled) return;
+      if (!spot) return;
       const room = roomLabelAt(state, spot.x, spot.y);
-      dispatch({ type: 'PLACE_EXISTING_UNIT', unitId, geom: { kind: 'point', x: spot.x, y: spot.y }, room });
-      dataSource.saveUnits(state.floorId, [...state.units, { ...pooled, geom: { kind: 'point', x: spot.x, y: spot.y }, room, floor: state.floorId }]);
-      showToast(`${pooled.label} placed`);
+      const pooled = state.unplacedUnits.find((u) => u.id === unitId);
+      if (pooled) {
+        dispatch({ type: 'PLACE_EXISTING_UNIT', unitId, geom: { kind: 'point', x: spot.x, y: spot.y }, room });
+        dataSource.saveUnits(state.floorId, [...state.units, { ...pooled, geom: { kind: 'point', x: spot.x, y: spot.y }, room, floor: state.floorId }]);
+        showToast(`${pooled.label} placed`);
+        return;
+      }
+      // Already placed elsewhere on this floor — move it to the new spot instead of creating one.
+      const placed = state.units.find((u) => u.id === unitId);
+      if (!placed || placed.geom.kind !== 'point') return;
+      dispatch({ type: 'SET_PENDING_PLACEMENT', placement: null });
+      dispatch({ type: 'UPDATE_UNIT', id: unitId, patch: { geom: { kind: 'point', x: spot.x, y: spot.y }, room } });
+      dataSource.saveUnits(state.floorId, state.units.map((u) => (u.id === unitId ? { ...u, geom: { kind: 'point', x: spot.x, y: spot.y }, room } : u)));
+      showToast(`${placed.label} moved`);
     },
     /**
      * Map dialog: explicitly create a NEW auto-numbered record at the pending spot. This is a REAL
@@ -495,7 +568,11 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
         room: roomLabelAt(state, x, y),
         geom: { kind: 'point', x, y },
         floor: state.floorId,
-        plan: type,
+        // Tag to the plan tab actually being viewed when placed (not the unit's own type) —
+        // same reasoning as placeMarker below: the click coordinates only make sense relative
+        // to whatever plan/background was showing, and the canvas only renders a unit when its
+        // `plan` matches the active tab.
+        plan: state.planId,
         // New desks start ASSIGNED (the backend default) — switch to HOT/HOTEL in the
         // Selection panel to make them bookable instead of assignable.
         ...(type === 'workstation' ? { deskType: 'ASSIGNED' as const } : {}),
@@ -556,6 +633,12 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
      * Materialize the auto-map modal's choices into units. Rooms are created
      * first so point units (desks/lockers/parking) can be containment-tagged
      * with the room they fall inside — same rule as manual placePoint.
+     *
+     * Point-type positions prefer an EXISTING unplaced record of that type over fabricating a
+     * brand-new one — the CAD shape becomes a marker position that a real desk/locker/parking
+     * stall gets placed onto, same as manual placement already offers (MapDeskModal's "place an
+     * existing record here"). Falls back to creating a new auto-numbered record only once that
+     * type's unplaced pool is exhausted.
      */
     applyAutoMap: (mapping: Record<string, UnitType | 'ignore'>) => {
       const groups = state.autoMapGroups ?? [];
@@ -568,7 +651,11 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       };
       const pad = (n: number) => String(n).padStart(2, '0');
       const created: Unit[] = [];
+      const placedFromPool: Unit[] = [];
       let idSeq = Date.now();
+
+      const pool: Partial<Record<UnitType, Unit[]>> = {};
+      for (const u of state.unplacedUnits) (pool[u.type] ??= []).push(u);
 
       const ordered = [...groups].sort(
         (a, b) => (mapping[b.key] === 'room' ? 1 : 0) - (mapping[a.key] === 'room' ? 1 : 0),
@@ -592,31 +679,39 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
           } else {
             if (!item.point) continue;
             const [x, y] = item.point;
-            counters[type] += 1;
             const rooms = [...state.units, ...created].filter((u) => u.type === 'room');
             const room = rooms.find((r) => r.geom.kind === 'poly' && pointInPoly({ x, y }, r.geom.pts));
-            created.push({
-              id: 'u' + idSeq++,
-              type,
-              label: `${TYPE_META[type].prefix}-${pad(counters[type])}`,
-              secondary: group.blockName ? `CAD block · ${group.blockName}` : `CAD layer · ${group.layer}`,
-              room: room ? room.label : null,
-              geom: { kind: 'point', x, y },
-              floor: state.floorId,
-              plan: type === 'workstation' || type === 'locker' || type === 'parking' ? type : 'custom',
-            });
+            // Tag to the ACTIVE plan tab (matching manual placement), not the unit's own type —
+            // the canvas only renders a unit when its `plan` matches the currently-viewed tab.
+            const fromPool = pool[type]?.shift();
+            if (fromPool) {
+              placedFromPool.push({ ...fromPool, room: room ? room.label : null, geom: { kind: 'point', x, y }, floor: state.floorId, plan: state.planId });
+            } else {
+              counters[type] += 1;
+              created.push({
+                id: 'u' + idSeq++,
+                type,
+                label: `${TYPE_META[type].prefix}-${pad(counters[type])}`,
+                secondary: group.blockName ? `CAD block · ${group.blockName}` : `CAD layer · ${group.layer}`,
+                room: room ? room.label : null,
+                geom: { kind: 'point', x, y },
+                floor: state.floorId,
+                plan: state.planId,
+              });
+            }
           }
         }
       }
 
-      if (created.length > 0) {
-        dispatch({ type: 'ADD_UNITS', units: created });
-        dataSource.saveUnits(state.floorId, [...state.units, ...created]);
+      const totalMapped = created.length + placedFromPool.length;
+      if (totalMapped > 0) {
+        dispatch({ type: 'APPLY_AUTOMAP', created, placedFromPool });
+        dataSource.saveUnits(state.floorId, [...state.units, ...created, ...placedFromPool]);
       }
       dispatch({ type: 'SET_AUTOMAP_GROUPS', groups: null });
       showToast(
-        created.length > 0
-          ? `${created.length} units mapped from CAD metadata — review and Save changes`
+        totalMapped > 0
+          ? `${totalMapped} units mapped from CAD metadata (${placedFromPool.length} existing, ${created.length} new) — review and Save changes`
           : 'Nothing was mapped',
       );
     },
@@ -683,12 +778,22 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       await dataSource.assignUnit(unitId, contactId);
       // Best-effort real assignment (Moves for desks, a plain field update for lockers/parking)
       // — never blocks or throws into the local assignment flow above, which is already the
-      // source of truth for this app's own read-path.
+      // source of truth for this app's own read-path. When this unit is being REASSIGNED (it
+      // already had an occupant), vacate that previous occupant as its own move first — so a
+      // reassignment is captured as a departure move plus an arrival move, rather than silently
+      // overwriting who's assigned with no record of the vacate.
       if (isFacilioApiConfigured) {
-        assignUnitReal(target, contactId).catch((err) => {
-          // eslint-disable-next-line no-console
-          console.warn('[facilio-api] real assignment failed', err);
-        });
+        (prevContactId ? vacateUnitReal(target, prevContactId) : Promise.resolve())
+          .catch((err) => {
+            // eslint-disable-next-line no-console
+            console.warn('[facilio-api] real vacate (on reassign) failed', err);
+          })
+          .then(() =>
+            assignUnitReal(target, contactId).catch((err) => {
+              // eslint-disable-next-line no-console
+              console.warn('[facilio-api] real assignment failed', err);
+            })
+          );
       }
       const contactName = MOCK_CONTACTS.find((c) => c.id === contactId)?.name ?? contactId;
       const prevName = prevContactId ? MOCK_CONTACTS.find((c) => c.id === prevContactId)?.name : null;
@@ -1074,7 +1179,7 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
       // The mock default floorId ('hqA3') isn't a real floor against the live backend —
       // sending it to per-floor endpoints (getFloorplanDetailsByType) just 500s. Start on the
       // real portfolio's actual first floor instead, when one's available.
-      const firstRealFloor = isFacilioApiConfigured ? firstFloorId(portfolio) : undefined;
+      const firstRealFloor = isFacilioApiConfigured ? await withTimeout(firstFloorId(portfolio, dispatch), 12000, undefined) : undefined;
       const floorId = firstRealFloor ?? state.floorId;
       if (floorId !== state.floorId) dispatch({ type: 'SELECT_FLOOR_START', floorId });
 
