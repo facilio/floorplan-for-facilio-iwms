@@ -7,6 +7,7 @@ import { BUILTIN_MARKERS, DESK_TYPES, floorImageKey, TYPE_META } from '../../lib
 import type { EditTool, MarkerDef } from '../../lib/types';
 import { MARKER_ICONS } from '../canvas/markerIcons';
 import { Button } from '../primitives/Button';
+import { ButtonSpinner } from '../primitives/ButtonSpinner';
 import { Picklist } from '../fds/Picklist';
 import { Select } from '../primitives/Select';
 import { isFacilioApiConfigured } from '../../lib/facilioApi';
@@ -260,14 +261,19 @@ function MarkersTab() {
   const [nmColor, setNmColor] = useState('#607796');
   const [saving, setSaving] = useState(false);
   const [moduleOptions, setModuleOptions] = useState<{ value: string; label: string }[]>([]);
+  const [modulesLoading, setModulesLoading] = useState(isFacilioApiConfigured);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // The org's real module list, for the "Select Module" dropdown (markertype.recordModuleId).
+  // `modulesLoading` is tracked separately from moduleOptions.length so a fetch that resolves
+  // with zero modules reads as "no modules found", not stuck forever on "Loading modules…".
   useEffect(() => {
     if (!isFacilioApiConfigured) return;
-    getAllModules().then((modules) => {
-      setModuleOptions(modules.map((m) => ({ value: String(m.id), label: m.displayName })));
-    });
+    getAllModules()
+      .then((modules) => {
+        setModuleOptions(modules.map((m) => ({ value: String(m.id), label: m.displayName })));
+      })
+      .finally(() => setModulesLoading(false));
   }, []);
 
   // Real custom marker types (markertype module) fetched once when configured — built-ins keep
@@ -400,9 +406,9 @@ function MarkersTab() {
               value={nmModuleId || null}
               options={moduleOptions}
               onChange={setNmModuleId}
-              placeholder={moduleOptions.length ? 'Select Module' : 'Loading modules…'}
+              placeholder={modulesLoading ? 'Loading modules…' : moduleOptions.length ? 'Select Module' : 'No modules found'}
               fullWidth
-              disabled={moduleOptions.length === 0}
+              disabled={modulesLoading || moduleOptions.length === 0}
               aria-label="Module"
             />
             <label className={card.label} style={{ marginTop: 10 }}>
@@ -462,6 +468,7 @@ function MarkersTab() {
                 Cancel
               </Button>
               <Button variant="primary" fullWidth disabled={saving} onClick={saveNewMarker}>
+                {saving && <ButtonSpinner />}
                 {saving ? 'Saving…' : 'Add marker'}
               </Button>
             </div>
