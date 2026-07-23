@@ -169,14 +169,53 @@ export class FacilioApiDataSource implements FloorplanDataSource {
   async vacateUnit(): Promise<void> {
     throw new Error('facilio-api: assignment writes go through Moves — not wired');
   }
-  async getBookings(): Promise<Booking[]> {
-    throw new Error('facilio-api: spacebooking not wired');
+  /**
+   * Real spacebooking records for one day, mapped to this app's Booking shape. Day window filter:
+   * `bookingStartTime BETWEEN [midnight, midnight+24h)` (operatorId 20 — Facilio's BETWEEN). The
+   * booked resource lookup (desk/space/parkingStall) maps to `unitId`, which matches
+   * viewerData-sourced unit ids (both are the backing record id). Throws on error so the
+   * composite falls back to the locally-stored bookings, same as before this was wired.
+   */
+  async getBookings(floorId: string, date: string): Promise<Booking[]> {
+    this.assertConfigured();
+    const dayStart = epochAt(date, 0);
+    const dayEnd = epochAt(date, 24 * 60);
+    const res = await facilioApi.fetchAll('spacebooking', {
+      filters: JSON.stringify({ bookingStartTime: { operatorId: 20, value: [String(dayStart), String(dayEnd - 1)] } }),
+    });
+    if (res.error) throw new Error(`facilio-api: spacebooking fetch failed (${res.error.code ?? '?'} ${res.error.message ?? ''})`.trim());
+    const toMinutes = (t: number) => Math.max(0, Math.min(24 * 60, Math.round((t - dayStart) / 60_000)));
+    return (res.list ?? [])
+      .map((b: any): Booking | null => {
+        const unitId = b.desk?.id ?? b.space?.id ?? b.parkingStall?.id;
+        if (!unitId || !Number.isFinite(b.bookingStartTime)) return null;
+        return {
+          id: String(b.id),
+          unitId: String(unitId),
+          floorId,
+          date,
+          start: toMinutes(b.bookingStartTime),
+          end: toMinutes(b.bookingEndTime ?? b.bookingStartTime),
+          by: b.reservedBy?.id != null ? String(b.reservedBy.id) : '',
+          purpose: b.name ?? '',
+          module: 'space',
+          name: b.name ?? '',
+        };
+      })
+      .filter((b: Booking | null): b is Booking => b !== null);
   }
+  // Booking WRITES stay on their existing paths: creation goes through createRealBooking (the
+  // org-form-aware create), with the local tier's copy as the interim store — so this tier's
+  // createBooking still throws to fall through.
   async createBooking(): Promise<Booking> {
-    throw new Error('facilio-api: spacebooking not wired');
+    throw new Error('facilio-api: booking creation goes through createRealBooking — local tier stores the interim copy');
   }
-  async cancelBooking(): Promise<void> {
-    throw new Error('facilio-api: spacebooking not wired');
+  /** Real cancel for backend bookings (numeric ids); locally-minted ids ("b...") fall through to the local tier. */
+  async cancelBooking(id: string): Promise<void> {
+    this.assertConfigured();
+    if (!/^\d+$/.test(id)) throw new Error('facilio-api: not a backend booking id');
+    const res = await facilioApi.deleteRecord('spacebooking', Number(id));
+    if (res.error) throw new Error(`facilio-api: spacebooking delete failed (${res.error.code ?? '?'} ${res.error.message ?? ''})`.trim());
   }
 }
 

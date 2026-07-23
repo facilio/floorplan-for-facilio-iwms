@@ -127,6 +127,30 @@ function BookingsSettingsTab() {
         Currently active: <b>{BOOKING_MODULES.find((m) => m.id === state.bookingModule)?.name}</b>. Bookings are also saved locally for now — real{' '}
         {state.bookingModule === 'space' ? 'spacebooking' : 'facilitybooking'} records are written when the backend is reachable.
       </div>
+      <div className={styles.cardHead} style={{ marginTop: 18 }}>
+        <div>
+          <h3 className={styles.cardTitle}>This is me</h3>
+          <p className={styles.cardDesc}>
+            Which client contact you are — drives “My bookings”, the “Your desk” badge and booking defaults. There’s no backend mapping from your login
+            to a client contact yet, so pick yourself here once per device.
+          </p>
+        </div>
+      </div>
+      <select
+        value={state.clientContacts.some((c) => c.id === state.bookBy) ? state.bookBy : ''}
+        onChange={(e) => actions.setBookField('bookBy', e.target.value)}
+        style={{ padding: '10px 12px', borderRadius: 8, border: '1.5px solid var(--ink-200)', font: '500 13.5px var(--font-sans)', color: 'var(--ink-900)', background: '#fff', maxWidth: 360 }}
+      >
+        <option value="" disabled>
+          Select your client contact…
+        </option>
+        {state.clientContacts.map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.name}
+            {c.client ? ` — ${c.client}` : ''}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }

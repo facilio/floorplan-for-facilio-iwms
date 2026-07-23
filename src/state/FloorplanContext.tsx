@@ -624,13 +624,16 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
         showToast(`${pooled.label} placed`);
         return;
       }
-      // Already placed elsewhere on this floor — move it to the new spot instead of creating one.
+      // Already in state.units — either an org record with no position yet (`unplaced`: first
+      // placement, gets the active plan since the coords are relative to it) or a placed one
+      // being moved to the new spot.
       const placed = state.units.find((u) => u.id === unitId);
       if (!placed || placed.geom.kind !== 'point') return;
+      const patch = { geom: { kind: 'point' as const, x: spot.x, y: spot.y }, room, ...(placed.unplaced ? { unplaced: false, plan: state.planId } : {}) };
       dispatch({ type: 'SET_PENDING_PLACEMENT', placement: null });
-      dispatch({ type: 'UPDATE_UNIT', id: unitId, patch: { geom: { kind: 'point', x: spot.x, y: spot.y }, room } });
-      saveUnitsBestEffort(state.floorId, state.units.map((u) => (u.id === unitId ? { ...u, geom: { kind: 'point', x: spot.x, y: spot.y }, room } : u)));
-      showToast(`${placed.label} moved`);
+      dispatch({ type: 'UPDATE_UNIT', id: unitId, patch });
+      saveUnitsBestEffort(state.floorId, state.units.map((u) => (u.id === unitId ? { ...u, ...patch } : u)));
+      showToast(`${placed.label} ${placed.unplaced ? 'placed' : 'moved'}`);
     },
     /**
      * Map dialog: explicitly create a NEW auto-numbered record at the pending spot. This is a REAL
@@ -682,9 +685,11 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       }
       const placed = state.units.find((u) => u.id === unitId);
       if (!placed || placed.geom.kind !== 'point') return;
-      dispatch({ type: 'UPDATE_UNIT', id: unitId, patch: { geom: { kind: 'point', x, y }, room } });
-      saveUnitsBestEffort(state.floorId, state.units.map((u) => (u.id === unitId ? { ...u, geom: { kind: 'point', x, y }, room } : u)));
-      showToast(`${placed.label} moved`);
+      // Same unplaced-first-placement handling as confirmPlacementExisting above.
+      const patch = { geom: { kind: 'point' as const, x, y }, room, ...(placed.unplaced ? { unplaced: false, plan: state.planId } : {}) };
+      dispatch({ type: 'UPDATE_UNIT', id: unitId, patch });
+      saveUnitsBestEffort(state.floorId, state.units.map((u) => (u.id === unitId ? { ...u, ...patch } : u)));
+      showToast(`${placed.label} ${placed.unplaced ? 'placed' : 'moved'}`);
     },
     pushDraftPoint: (pt: [number, number]) => dispatch({ type: 'PUSH_DRAFT_POINT', pt }),
     closeDraft: async () => {

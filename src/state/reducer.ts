@@ -481,6 +481,7 @@ export function reducer(state: AppState, action: Action): AppState {
         bookingModule: c.bookingModule ?? state.bookingModule,
         customMarkers: c.customMarkers ?? state.customMarkers,
         allowLocalFallback: c.allowLocalFallback ?? state.allowLocalFallback,
+        bookBy: c.bookBy ?? state.bookBy,
       };
     }
     case 'ADD_BOOKING':

@@ -17,6 +17,12 @@ export interface SettingsConfig {
   customMarkers?: MarkerDef[];
   /** When false, a real-org data failure shows an error instead of silently falling back to local/seed data. */
   allowLocalFallback?: boolean;
+  /**
+   * The client contact this device's user IS (Settings › Bookings › "This is me") — drives
+   * "My bookings", the "Your desk" badge, and booking defaults. There's no confirmed backend
+   * mapping from the logged-in session to a clientcontact record, so it's user-picked.
+   */
+  bookBy?: string;
 }
 
 const LS_KEY = 'facilio_floorplan_settings_v1';
@@ -30,6 +36,7 @@ export function settingsFromState(state: AppState): SettingsConfig {
     bookingModule: state.bookingModule,
     customMarkers: state.customMarkers,
     allowLocalFallback: state.allowLocalFallback,
+    bookBy: state.bookBy,
   };
 }
 

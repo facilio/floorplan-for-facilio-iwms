@@ -46,9 +46,12 @@ function setTypeDragImage(e: ReactDragEvent, unit: Unit) {
 export function SpacesList() {
   const { state, actions } = useFloorplan();
   const isEdit = state.mode === 'edit';
-  // Edit mode is about PLACING: only the non-marked (unplaced) records are available in the
-  // list — everything already placed is visible (and draggable) on the canvas itself.
-  const units = isEdit ? state.unplacedUnits : state.units;
+  // Edit mode is about PLACING: only the non-marked records are available in the list —
+  // everything already placed is visible (and draggable) on the canvas itself. That's the
+  // session pool (markers deleted this session) PLUS org records that exist with no on-plan
+  // position yet (`unplaced` — e.g. connector spaces), which were previously listed in the
+  // assign/book sidebar but unreachable here.
+  const units = isEdit ? [...state.unplacedUnits, ...state.units.filter((u) => u.unplaced)] : state.units;
 
   const counts: Record<string, number> = { all: units.length };
   for (const u of units) counts[u.type] = (counts[u.type] || 0) + 1;
