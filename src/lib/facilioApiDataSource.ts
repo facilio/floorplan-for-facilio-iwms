@@ -375,22 +375,39 @@ function markerFeatureToUnit(
 async function viewerDataUnitsForFloor(floorId: string): Promise<Unit[]> {
   const byType = await getFloorplanDetailsByType(floorId);
   const units: Unit[] = [];
+  let attempted = 0;
+  let failed = 0;
   for (const [typeNum, summary] of Object.entries(byType)) {
     const planId = PLAN_ID_BY_TYPE[Number(typeNum)];
     if (!planId || !summary?.id) continue;
+    attempted += 1;
     const data = await fetchViewerData(summary.id, 'ASSIGNMENT').catch((err) => {
+      failed += 1;
       // eslint-disable-next-line no-console
-      console.warn(`[facilio-api] viewerData fetch failed for plan ${summary.id} (floor ${floorId})`, err);
+      console.warn(`[facilio-api] viewerData fetch failed for plan ${summary.id} (${planId}, floor ${floorId})`, err);
       return null;
     });
     if (!data) continue;
     const quad = geometryStringToQuad(data.indoorfloorplan?.geometry);
     const features: ViewerMarkerFeature[] = (data.marker?.features ?? []).filter(isPointFeature);
     const toFraction = pointFractionMapper(features, quad);
+    let added = 0;
     features.forEach((f, i) => {
       const unit = markerFeatureToUnit(f, floorId, planId, toFraction, i);
-      if (unit) units.push(unit);
+      if (unit) {
+        units.push(unit);
+        added += 1;
+      }
     });
+    // eslint-disable-next-line no-console
+    console.debug(`[facilio-api] viewerData ${planId} plan ${summary.id}: ${features.length} markers -> ${added} units`);
+  }
+  // A floor with configured plans where EVERY viewerData call failed is a real error, not an empty
+  // floor — throw so the composite falls back to the local tier (keeps the sidebar populated)
+  // rather than returning [] (which the composite treats as a valid "empty floor" answer, no
+  // fallback). A genuinely empty floor (calls succeeded, zero markers) still returns [].
+  if (attempted > 0 && failed === attempted) {
+    throw new Error(`facilio-api: viewerData failed for all ${attempted} plan type(s) on floor ${floorId}`);
   }
   return units;
 }
