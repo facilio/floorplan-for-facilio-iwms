@@ -8,7 +8,7 @@ import type { AmenityIcon, Assignments, Booking, ClientContact, MarkerDef, PlanI
 import type { CadGroup } from '../lib/cadAnalyze';
 import type { Asset } from '../lib/assets';
 import { isFacilioApiConfigured } from '../lib/facilioApi';
-import { assignUnitReal, createRealBooking, fetchFloorplanCustomization, fetchFloorplanImage, fetchMyDesk, findUnitIdForDeskRecord, getAnyFloor, getFloorPlanSummary, saveFloorplanMarkers, vacateUnitReal } from '../lib/facilioApiDataSource';
+import { assignUnitReal, createRealBooking, fetchFloorplanCustomization, fetchFloorplanImage, fetchMyDesk, findFloorParents, findUnitIdForDeskRecord, getAnyFloor, getFloorPlanSummary, saveFloorplanMarkers, vacateUnitReal } from '../lib/facilioApiDataSource';
 import { listFloorplanFloorIds, loadFloorplanFile, persistFloorplanFile } from '../lib/floorplanFileStore';
 import { loadSettings, saveSettings, settingsFromState } from '../lib/settingsStore';
 import { pathForView, viewFromLocation } from '../lib/routes';
@@ -73,6 +73,25 @@ async function persistUnits(floorId: string, planId: PlanId, units: Unit[]): Pro
     });
   }
   await local;
+}
+
+/**
+ * Auto-reveals a floor in the (lazily-loaded) portfolio tree: expanding a site/building only
+ * fetches ITS OWN children (see `toggleNode`), so the boot-resolved floor (from `fetchMyDesk`/
+ * `getAnyFloor`) otherwise sits active-but-invisible under two collapsed nodes the user has to
+ * hunt for manually — this walks up from the floor to find them and expands both, same as if the
+ * user had clicked through site → building themselves. Best-effort: a failure just leaves the
+ * tree collapsed, same as before this existed.
+ */
+async function revealFloorInPortfolio(dispatch: Dispatch<Action>, floorId: string) {
+  const parents = await findFloorParents(floorId).catch(() => null);
+  if (!parents) return;
+  dispatch({ type: 'EXPAND_NODE', id: parents.siteId });
+  const buildings = await dataSource.getBuildingsForSite(parents.siteId).catch(() => null);
+  if (buildings) dispatch({ type: 'SITE_BUILDINGS_LOADED', siteId: parents.siteId, buildings });
+  dispatch({ type: 'EXPAND_NODE', id: parents.buildingId });
+  const floors = await dataSource.getFloorsForBuilding(parents.buildingId).catch(() => null);
+  if (floors) dispatch({ type: 'BUILDING_FLOORS_LOADED', siteId: parents.siteId, buildingId: parents.buildingId, floors });
 }
 
 /** Walk the portfolio tree to find which site/building a floor belongs to — create-space needs the
@@ -1268,6 +1287,7 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
       }
       const floorId = firstRealFloor ?? state.floorId;
       if (floorId !== state.floorId) dispatch({ type: 'SELECT_FLOOR_START', floorId });
+      if (firstRealFloor) void revealFloorInPortfolio(dispatch, firstRealFloor);
 
       // Individually caught (not a bare Promise.all) — same reasoning as loadFloor's per-call
       // path: one failing tier must not strand the boot sequence with an uncaught rejection.

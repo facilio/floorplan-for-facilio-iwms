@@ -152,6 +152,7 @@ export type Action =
   | { type: 'TOGGLE_NAV' }
   | { type: 'SET_NAV_VIEW'; view: AppState['navView'] }
   | { type: 'TOGGLE_NODE'; id: string }
+  | { type: 'EXPAND_NODE'; id: string }
   | { type: 'SITE_BUILDINGS_LOADED'; siteId: string; buildings: Building[] }
   | { type: 'BUILDING_FLOORS_LOADED'; siteId: string; buildingId: string; floors: Floor[] }
   | { type: 'SELECT_FLOOR_START'; floorId: string }
@@ -284,6 +285,8 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, navView: action.view };
     case 'TOGGLE_NODE':
       return { ...state, expanded: { ...state.expanded, [action.id]: !state.expanded[action.id] } };
+    case 'EXPAND_NODE':
+      return { ...state, expanded: { ...state.expanded, [action.id]: true } };
     case 'SITE_BUILDINGS_LOADED':
       return {
         ...state,

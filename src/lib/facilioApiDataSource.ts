@@ -177,6 +177,28 @@ function lookupId(record: any, key: string): unknown {
   return record?.[key]?.id ?? record?.[`${key}Id`] ?? record?.[key];
 }
 
+export interface FloorParents {
+  siteId: string;
+  buildingId: string;
+}
+
+/**
+ * A floor's parent site/building ids — the portfolio tree only fetches a site/building's OWN
+ * children when it's expanded (see `getBuildingsForSite`/`getFloorsForBuilding`); it never walks
+ * UP from a floor to find its ancestors. Used to auto-reveal the boot-resolved floor (from
+ * `fetchMyDesk`/`getAnyFloor`) in the tree, so a refresh doesn't leave the active floor buried
+ * under two collapsed, unexpanded nodes the user has to hunt for manually.
+ */
+export async function findFloorParents(floorId: string): Promise<FloorParents | null> {
+  if (!isFacilioApiConfigured) return null;
+  const res = await facilioApi.fetchRecord<any>('floor', { id: floorId });
+  if (res.error || !res.floor) return null;
+  const siteId = lookupId(res.floor, 'site');
+  const buildingId = lookupId(res.floor, 'building');
+  if (!siteId || !buildingId) return null;
+  return { siteId: String(siteId), buildingId: String(buildingId) };
+}
+
 /**
  * `GET v3/floorplan/getFloorplanDetailsByType` — the real FloorplanAction endpoint, confirmed
  * against a live org. Takes only `floorId` (no `floorPlanType` filter — passing one doesn't
@@ -457,6 +479,37 @@ async function fetchIndoorFloorPlanRecord(indoorFloorPlanId: number): Promise<an
   return res.indoorfloorplan;
 }
 
+/**
+ * `unit.type` -> the real org's auto-provisioned "Static" markertype name for it — confirmed live
+ * for workstation only (`v3/floorplan/viewerData`'s marker features: `markerType: {name: "desk",
+ * isAutoCreate: true, recordModuleId: <desks module id>, type: 1 (Static)}`). Locker/parking
+ * stall's equivalent auto-markertype names aren't confirmed, so they're left unset — omitting
+ * `markerType` only affects how FACILIO'S OWN native UI icons a marker; this app's own rendering
+ * doesn't read it.
+ */
+const AUTO_MARKER_TYPE_NAME: Partial<Record<Unit['type'], string>> = {
+  workstation: 'desk',
+};
+
+/** Real org's `markertype` records, name (lowercased) -> numeric id. Session-lifetime cache — this list doesn't change during a session. */
+let markerTypeIdByNameCache: Promise<Map<string, number>> | null = null;
+async function markerTypeIdByName(name: string): Promise<number | null> {
+  if (!markerTypeIdByNameCache) {
+    markerTypeIdByNameCache = facilioApi
+      .fetchAll('markertype')
+      .then((res) => {
+        const map = new Map<string, number>();
+        for (const m of res.list ?? []) {
+          if (m?.name && typeof m.id === 'number') map.set(String(m.name).toLowerCase(), m.id);
+        }
+        return map;
+      })
+      .catch(() => new Map<string, number>());
+  }
+  const map = await markerTypeIdByNameCache;
+  return map.get(name.toLowerCase()) ?? null;
+}
+
 async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: Unit[]): Promise<void> {
   const record = await fetchIndoorFloorPlanRecord(indoorFloorPlanId);
   if (!record) return;
@@ -484,13 +537,21 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
     const [lng, lat] = quadToLngLat(quad, unit.geom.x, unit.geom.y);
     const geometry = JSON.stringify({ type: 'Point', coordinates: [lng, lat] });
     const properties = JSON.stringify({ unitType: unit.type, secondary: unit.secondary ?? null });
+    // A brand-new entry's markerType — only resolvable for workstation right now (see
+    // AUTO_MARKER_TYPE_NAME); an existing match's own markerType (spread below) is never
+    // overridden by this.
+    let newMarkerType: { id: number } | undefined;
+    if (!match) {
+      const autoName = AUTO_MARKER_TYPE_NAME[unit.type];
+      const id = autoName ? await markerTypeIdByName(autoName) : null;
+      if (id) newMarkerType = { id };
+    }
     // Spread the existing entry first so anything it already carries (recordId, markerType,
     // markerModuleId, etc.) survives the round-trip untouched — only geometry/label are ours to
-    // change. A brand-new (desk/locker/parking) entry just gets the minimal fields; no markerType
-    // is set for it since this app doesn't know which markertype id represents each unit type
-    // (unconfirmed).
+    // change.
     nextMarkers.push({
       ...(match ?? {}),
+      ...(newMarkerType ? { markerType: newMarkerType } : {}),
       geoId: unit.id,
       geometry,
       properties,
@@ -679,6 +740,8 @@ async function ensureRealSpaceRecord(unit: Unit): Promise<RealSpaceRef | null> {
       return null;
     }
     const [lng, lat] = quadToLngLat(quad, unit.geom.x, unit.geom.y);
+    const autoName = AUTO_MARKER_TYPE_NAME[unit.type];
+    const markerTypeId = autoName ? await markerTypeIdByName(autoName) : null;
     marker = {
       geoId: unit.id,
       geometry: JSON.stringify({ type: 'Point', coordinates: [lng, lat] }),
@@ -686,6 +749,7 @@ async function ensureRealSpaceRecord(unit: Unit): Promise<RealSpaceRef | null> {
       type: 'Feature',
       indoorfloorplan: { id: summary.id },
       label: unit.label,
+      ...(markerTypeId ? { markerType: { id: markerTypeId } } : {}),
     };
     // Round-trip the whole record (not just {markers}) — see the matching comment in
     // syncMarkersForIndoorFloorPlan for why a partial patch risks wiping other fields.
