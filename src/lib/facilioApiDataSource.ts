@@ -925,12 +925,13 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
     // AUTO_MARKER_TYPE_NAME); an existing match's own markerType (spread below) is never
     // overridden by this.
     let newMarkerType: { id: number } | undefined;
-    // Brand-new desk/locker/parking: nest the FULL backing record inside the marker object, so
-    // this indoorfloorplan update creates the real desk record inline — a brand-new entry is
-    // created together with its nested record (the org's own save works this way), instead of a
-    // marker with no record behind it (which previously deferred record creation to the first
-    // assignment). All the record's required fields ride here: name, site/building/floor
-    // lookups, plus deskType for desks (string enum, matching the confirmed field-sync write).
+    // Brand-new desk/locker/parking: nest the FULL backing record inside the marker object under
+    // `desk` (confirmed field name), so this indoorfloorplan update creates the real desk record
+    // inline — a brand-new entry is created together with its nested record (the org's own save
+    // works this way), instead of a marker with no record behind it (which previously deferred
+    // record creation to the first assignment). All the record's required fields ride here:
+    // name, site/building/floor lookups, plus deskType for desks (string enum, matching the
+    // confirmed field-sync write).
     let newRecord: Record<string, unknown> | undefined;
     if (!match) {
       const autoName = AUTO_MARKER_TYPE_NAME[unit.type];
@@ -953,7 +954,7 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
     nextMarkers.push({
       ...(match ?? {}),
       ...(newMarkerType ? { markerType: newMarkerType } : {}),
-      ...(newRecord ? { record: newRecord } : {}),
+      ...(newRecord ? { desk: newRecord } : {}),
       geoId: unit.id,
       geometry,
       properties,
