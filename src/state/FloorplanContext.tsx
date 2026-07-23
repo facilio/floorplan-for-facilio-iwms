@@ -111,9 +111,15 @@ async function toStorableDataUrl(url: string): Promise<string | null> {
  * connector/@facilio when available, and (3) write that fetch back to the cache so the next load
  * is instant and works offline. The cache write is deployed-only (persistFloorplanFile no-ops in
  * dev), and only real (@facilio/connector) fetches populate it — so it stays equal to the source.
+ *
+ * `allowLocalFallback` (Settings › Local data) gates the cache entirely — read AND write — once a
+ * real backend is configured: with it off, the local copy is never shown (a stale/local image is
+ * exactly the kind of "silently falling back to local data" that setting promises not to do), and
+ * nothing gets written to it either, so there's no local residue for it to read back later.
  */
-async function loadFloorPlanTypesAndImage(dispatch: Dispatch<Action>, floorId: string, currentPlanId: PlanId) {
+async function loadFloorPlanTypesAndImage(dispatch: Dispatch<Action>, floorId: string, currentPlanId: PlanId, allowLocalFallback: boolean) {
   dispatch({ type: 'SET_FLOOR_IMAGE_LOADING', value: true });
+  const useLocalCache = !(isFacilioApiConfigured && !allowLocalFallback);
   try {
     let resolvedPlanId = currentPlanId;
     if (isFacilioApiConfigured) {
@@ -126,7 +132,7 @@ async function loadFloorPlanTypesAndImage(dispatch: Dispatch<Action>, floorId: s
     }
 
     // 1) Vibe-DB cache first — instant display of the stored image if present.
-    const cached = await loadFloorplanFile(floorId, resolvedPlanId).catch(() => null);
+    const cached = useLocalCache ? await loadFloorplanFile(floorId, resolvedPlanId).catch(() => null) : null;
     if (cached?.dataUrl) dispatch({ type: 'SET_FLOOR_IMAGE', floorId, planId: resolvedPlanId, dataUrl: cached.dataUrl });
 
     // 2) Refresh from the source (connector/@facilio), and 3) cache the fetch back to the Vibe DB.
@@ -134,9 +140,11 @@ async function loadFloorPlanTypesAndImage(dispatch: Dispatch<Action>, floorId: s
       const imageUrl = await fetchFloorplanImage(floorId, resolvedPlanId).catch(() => null);
       if (imageUrl) {
         dispatch({ type: 'SET_FLOOR_IMAGE', floorId, planId: resolvedPlanId, dataUrl: imageUrl });
-        const storable = await toStorableDataUrl(imageUrl);
-        if (storable && storable !== cached?.dataUrl) {
-          void persistFloorplanFile(floorId, resolvedPlanId, { dataUrl: storable }).catch(() => {});
+        if (useLocalCache) {
+          const storable = await toStorableDataUrl(imageUrl);
+          if (storable && storable !== cached?.dataUrl) {
+            void persistFloorplanFile(floorId, resolvedPlanId, { dataUrl: storable }).catch(() => {});
+          }
         }
       }
       const customization = await fetchFloorplanCustomization(floorId, resolvedPlanId).catch(() => null);
@@ -152,11 +160,13 @@ async function loadFloorPlanTypesAndImage(dispatch: Dispatch<Action>, floorId: s
  * cached in `state.floorImages` — the case hit when the user flips the plan-type switcher to a
  * type other than whichever one `loadFloorPlanTypesAndImage` auto-resolved on floor load.
  */
-async function ensureFloorplanImage(dispatch: Dispatch<Action>, floorId: string, planId: PlanId) {
+async function ensureFloorplanImage(dispatch: Dispatch<Action>, floorId: string, planId: PlanId, allowLocalFallback: boolean) {
   dispatch({ type: 'SET_FLOOR_IMAGE_LOADING', value: true });
   try {
     let imageUrl = isFacilioApiConfigured ? await fetchFloorplanImage(floorId, planId).catch(() => null) : null;
-    if (!imageUrl) {
+    // Same local-fallback gate as loadFloorPlanTypesAndImage — a real backend configured with
+    // local fallback off means "no image" (error state) beats a stale local copy.
+    if (!imageUrl && !(isFacilioApiConfigured && !allowLocalFallback)) {
       // Deployed / no real backend for this plan: fall back to the Vibe DB copy (no-op in dev).
       const stored = await loadFloorplanFile(floorId, planId).catch(() => null);
       imageUrl = stored?.dataUrl ?? null;
@@ -254,7 +264,7 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
     ]);
     if (floorLoadFailed) showToast("Couldn't load this floor's data");
     dispatch({ type: 'SELECT_FLOOR_DONE', floorId, units, assignments, bookings });
-    loadFloorPlanTypesAndImage(dispatch, floorId, state.planId);
+    loadFloorPlanTypesAndImage(dispatch, floorId, state.planId, state.allowLocalFallback);
     return units;
   }
 
@@ -385,7 +395,7 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       // case — loadFloorPlanTypesAndImage only auto-fetches whichever type it resolves to on
       // floor load) needs its own fetch, not just the state flip.
       if (!state.floorImages[floorImageKey(state.floorId, planId)]) {
-        ensureFloorplanImage(dispatch, state.floorId, planId);
+        ensureFloorplanImage(dispatch, state.floorId, planId, state.allowLocalFallback);
       }
     },
 
@@ -881,8 +891,13 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
     updateBookForm: (patch: Partial<{ unitId: string; date: string; start: number; end: number }>) => dispatch({ type: 'UPDATE_BOOK_FORM', patch }),
     closeBookingForm: () => dispatch({ type: 'SET_BOOK_FORM', form: null }),
     /**
-     * Submits the booking form. Saves locally (survives reload) AND best-effort creates the real
-     * backend booking routed by `state.bookingModule` (space -> spacebooking; facility -> TODO).
+     * Submits the booking form. Saves locally (survives reload) AND creates the real backend
+     * booking routed by `state.bookingModule` (space -> spacebooking; facility -> TODO) — AWAITED
+     * before reporting success, so the user sees exactly one toast reflecting what actually
+     * happened, never an immediate "booked" that a later, easy-to-miss failure toast contradicts.
+     * With Settings › local fallback OFF, a failed real booking rolls the local copy back and
+     * reports failure outright, consistent with that setting's "no silent local-only data" intent;
+     * with it on, the local copy still stands as a best-effort fallback (current behavior).
      *
      * LOCAL-BOOKING-FALLBACK: the `dataSource.createBooking` + ADD_BOOKING path below is the
      * interim local store. Once real spacebooking/facilitybooking is the source of truth for
@@ -944,30 +959,38 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       // --- end LOCAL-BOOKING-FALLBACK ---
 
       if (isFacilioApiConfigured) {
-        createRealBooking(unit, form.date, form.start, form.end, {
-          module: state.bookingModule,
-          name: form.name,
-          description: form.description,
-          host: form.host,
-          reservedBy: form.reservedBy,
-          noOfAttendees: form.noOfAttendees,
-          internalAttendees: form.internalAttendees,
-          externalAttendees: form.externalAttendees,
-          formId: form.formId,
-          extras: form.extras,
-        })
-          .then((res) => {
-            if (!res.ok) {
-              showToast(`Saved locally, but the real booking failed: ${res.reason ?? 'unknown error'}`);
-              // eslint-disable-next-line no-console
-              console.warn(`[facilio-api] real ${state.bookingModule} booking skipped/failed: ${res.reason}`);
-            }
-          })
-          .catch((err) => {
-            showToast(`Saved locally, but the real booking failed: ${(err as Error).message ?? 'unknown error'}`);
-            // eslint-disable-next-line no-console
-            console.warn('[facilio-api] real booking error', err);
+        let failureReason: string | null = null;
+        try {
+          const res = await createRealBooking(unit, form.date, form.start, form.end, {
+            module: state.bookingModule,
+            name: form.name,
+            description: form.description,
+            host: form.host,
+            reservedBy: form.reservedBy,
+            noOfAttendees: form.noOfAttendees,
+            internalAttendees: form.internalAttendees,
+            externalAttendees: form.externalAttendees,
+            formId: form.formId,
+            extras: form.extras,
           });
+          if (!res.ok) failureReason = res.reason ?? 'unknown error';
+        } catch (err) {
+          failureReason = (err as Error).message || 'unknown error';
+        }
+        if (failureReason) {
+          // eslint-disable-next-line no-console
+          console.warn(`[facilio-api] real ${state.bookingModule} booking failed: ${failureReason}`);
+          if (!state.allowLocalFallback) {
+            // Local fallback is off — a local-only booking isn't acceptable data; roll it back and
+            // report the failure outright rather than a misleading "booked".
+            await dataSource.cancelBooking(saved.id).catch(() => {});
+            dispatch({ type: 'CANCEL_BOOKING', id: saved.id });
+            showToast(`Couldn't create the booking: ${failureReason}`);
+            return false;
+          }
+          showToast(`Saved locally, but the real booking failed: ${failureReason}`);
+          return true;
+        }
       }
 
       showToast(`${unit.label} booked`);
@@ -1153,18 +1176,28 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
 
   // Which floors have a stored floorplan (vibe-db, deployed only) — flags the portfolio tree
   // so an uploaded floor stops reading "no plan" after a refresh, without fetching any blobs.
+  // Skipped once a real backend is configured with local fallback off — same reasoning as the
+  // image cache itself: this app's local storage shouldn't be a source for org data at all then.
   useEffect(() => {
+    if (isFacilioApiConfigured && !state.allowLocalFallback) return;
     listFloorplanFloorIds().then((floorIds) => {
       if (floorIds.length) dispatch({ type: 'SET_FLOORS_WITH_PLANS', floorIds });
     });
-  }, []);
+  }, [state.allowLocalFallback]);
 
   // Load persisted settings (vibe-db when deployed, else localStorage) once on mount.
   useEffect(() => {
     loadSettings()
       .then((cfg) => {
         if (cfg) {
-          dispatch({ type: 'APPLY_SETTINGS', config: cfg });
+          // `customMarkers` is real org data (the markertype module) with its own real fetch
+          // (EditPanel's getCustomMarkerTypes effect) — don't pre-seed it from local storage when
+          // a real backend is configured and local fallback is off, same reasoning as the
+          // floorplan image cache. Every other settings field here (role/perms, moduleColors,
+          // bookingModule, slotGranularity, allowLocalFallback itself) is a genuine local app
+          // preference with no real-API equivalent, so those always apply.
+          const skipLocalCustomMarkers = isFacilioApiConfigured && cfg.allowLocalFallback === false;
+          dispatch({ type: 'APPLY_SETTINGS', config: skipLocalCustomMarkers ? { ...cfg, customMarkers: undefined } : cfg });
           // dataSource.ts can't read React state directly — keep its module-level flag in sync
           // with whatever the persisted setting says.
           if (cfg.allowLocalFallback !== undefined) dataSourceSetAllowLocalFallback(cfg.allowLocalFallback);
@@ -1254,7 +1287,7 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
       ]);
       if (bootFloorLoadFailed) showToastVia(dispatch, "Couldn't load this floor's data");
       dispatch({ type: 'SELECT_FLOOR_DONE', floorId, units, assignments, bookings });
-      loadFloorPlanTypesAndImage(dispatch, floorId, state.planId);
+      loadFloorPlanTypesAndImage(dispatch, floorId, state.planId, state.allowLocalFallback);
 
       // The logged-in user's real assigned/booked desk, for the "My desk" button — already
       // resolved above (reused, not re-fetched) when configured.
