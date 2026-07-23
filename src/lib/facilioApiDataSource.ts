@@ -219,10 +219,41 @@ export async function findFloorParents(floorId: string): Promise<FloorParents | 
  * projection is geared at plan customization, not the file) — use `id` from here with
  * `fetchRecord('indoorfloorplan', {id})` if the fileId is needed.
  */
-async function getFloorplanDetailsByType(floorId: string): Promise<Record<string, any>> {
-  const body = await customGet('v3/floorplan/getFloorplanDetailsByType', { floorId });
-  if (body?.code !== 0) throw new Error(body?.message || `code ${body?.code ?? '?'}`);
-  return body?.data?.indoorFloorPlans ?? {};
+/**
+ * Short-lived promise cache — getUnits and getAssignments both need this, and loadFloor runs them
+ * concurrently, so caching the in-flight PROMISE (not the resolved value) collapses the two into
+ * one request. TTL-bounded so a later reload re-fetches; evicted on failure so a retry isn't stuck
+ * replaying a rejection. Plan-type summaries don't change on marker edits, so this can't go stale
+ * against the write paths.
+ */
+/**
+ * Drops entries older than `ttl` from a request cache. Called on every write so the cache only ever
+ * holds entries from roughly the current interaction (bounded by how many distinct floors/plans are
+ * touched within one TTL window) rather than growing for every floor visited all session — keeps
+ * the memory footprint flat, not proportional to session length.
+ */
+function pruneExpired<T extends { at: number }>(cache: Map<string, T>, ttl: number): void {
+  const now = Date.now();
+  for (const [k, v] of cache) if (now - v.at >= ttl) cache.delete(k);
+}
+
+const FLOORPLAN_DETAILS_TTL_MS = 20_000;
+const floorplanDetailsCache = new Map<string, { at: number; promise: Promise<Record<string, any>> }>();
+
+function getFloorplanDetailsByType(floorId: string): Promise<Record<string, any>> {
+  const hit = floorplanDetailsCache.get(floorId);
+  if (hit && Date.now() - hit.at < FLOORPLAN_DETAILS_TTL_MS) return hit.promise;
+  const promise = (async () => {
+    const body = await customGet('v3/floorplan/getFloorplanDetailsByType', { floorId });
+    if (body?.code !== 0) throw new Error(body?.message || `code ${body?.code ?? '?'}`);
+    return body?.data?.indoorFloorPlans ?? {};
+  })();
+  promise.catch(() => {
+    if (floorplanDetailsCache.get(floorId)?.promise === promise) floorplanDetailsCache.delete(floorId);
+  });
+  pruneExpired(floorplanDetailsCache, FLOORPLAN_DETAILS_TTL_MS);
+  floorplanDetailsCache.set(floorId, { at: Date.now(), promise });
+  return promise;
 }
 
 // ---------------------------------------------------------------------------
@@ -254,37 +285,65 @@ const UNIT_TYPE_BY_MARKER_MODULE: Record<string, UnitType> = {
 const DESK_TYPE_BY_NUM: Record<number, DeskType> = { 1: 'ASSIGNED', 2: 'HOTEL', 3: 'HOT' };
 
 /**
- * Short-lived memo so a single floor load's getUnits + getAssignments (both viewerData-backed)
- * share ONE round trip per floorplan+mode instead of two. Keyed by the full request identity;
- * TTL-bounded so a later reload re-fetches rather than serving a stale plan.
+ * Short-lived promise cache so a single floor load's getUnits + getAssignments (both
+ * viewerData-backed, run CONCURRENTLY by loadFloor) share ONE round trip per floorplan+mode instead
+ * of each firing its own. Caching the in-flight PROMISE (not the resolved value) is what dedupes the
+ * concurrent case — a resolved-value cache is only ever populated after the request returns, so two
+ * parallel callers both miss it. Keyed by the full request identity; TTL-bounded so a later reload
+ * re-fetches; evicted on failure so a retry isn't stuck replaying a rejection.
  */
 const VIEWER_DATA_TTL_MS = 20_000;
-const viewerDataCache = new Map<string, { at: number; data: any }>();
+const viewerDataCache = new Map<string, { at: number; promise: Promise<any> }>();
 
-async function fetchViewerData(floorplanId: number, mode: ViewerMode, opts: ViewerDataOpts = {}): Promise<any> {
+function fetchViewerData(floorplanId: number, mode: ViewerMode, opts: ViewerDataOpts = {}): Promise<any> {
   const key = `${floorplanId}:${mode}:${opts.startTime ?? ''}:${opts.endTime ?? ''}`;
   const hit = viewerDataCache.get(key);
-  if (hit && Date.now() - hit.at < VIEWER_DATA_TTL_MS) return hit.data;
+  if (hit && Date.now() - hit.at < VIEWER_DATA_TTL_MS) return hit.promise;
 
-  const body: Record<string, unknown> = {
-    floorplanId,
-    viewMode: mode,
-    floorplanFilters: { amenities: opts.amenities ?? [] },
-  };
-  if (mode === 'BOOKING') body.newBooking = opts.newBooking ?? true;
-  if (opts.startTime != null) body.startTime = opts.startTime;
-  if (opts.endTime != null) body.endTime = opts.endTime;
+  const promise = (async () => {
+    const body: Record<string, unknown> = {
+      floorplanId,
+      viewMode: mode,
+      floorplanFilters: { amenities: opts.amenities ?? [] },
+    };
+    if (mode === 'BOOKING') body.newBooking = opts.newBooking ?? true;
+    if (opts.startTime != null) body.startTime = opts.startTime;
+    if (opts.endTime != null) body.endTime = opts.endTime;
 
-  const res = await customPost('v3/floorplan/viewerData', body, { skipPermission: true });
-  if (res?.code !== 0) throw new Error(res?.message || `viewerData code ${res?.code ?? '?'}`);
-  const data = res.data ?? {};
-  viewerDataCache.set(key, { at: Date.now(), data });
-  return data;
+    const res = await customPost('v3/floorplan/viewerData', body, { skipPermission: true });
+    if (res?.code !== 0) throw new Error(res?.message || `viewerData code ${res?.code ?? '?'}`);
+    return res.data ?? {};
+  })();
+  promise.catch(() => {
+    if (viewerDataCache.get(key)?.promise === promise) viewerDataCache.delete(key);
+  });
+  pruneExpired(viewerDataCache, VIEWER_DATA_TTL_MS);
+  viewerDataCache.set(key, { at: Date.now(), promise });
+  return promise;
 }
 
 interface ViewerMarkerFeature {
   geometry?: { type?: string; coordinates?: any };
   properties?: Record<string, any>;
+  markerType?: { name?: string; recordModuleId?: number; [k: string]: any };
+}
+
+/**
+ * A marker's unit type, from every signal viewerData carries — not `markerModuleName` alone.
+ * `markerModuleName` is the cleanest when present, but a desk placed as a marker can come through
+ * without it; those still carry a `deskId`/`deskType`, a `desk`-named markerType/markerId, or a
+ * `desk*` normalClass. Falls back to `amenity` only when nothing identifies it as a space record.
+ */
+function unitTypeForMarker(f: ViewerMarkerFeature): UnitType {
+  const p = f.properties ?? {};
+  const byModule = UNIT_TYPE_BY_MARKER_MODULE[p.markerModuleName];
+  if (byModule) return byModule;
+  if (p.deskId != null || p.deskType != null) return 'workstation';
+  const names = [p.markerId, p.iconName, p.normalClass, f.markerType?.name].map((v) => String(v ?? '').toLowerCase());
+  if (names.some((n) => n.includes('desk'))) return 'workstation';
+  if (names.some((n) => n.includes('locker'))) return 'locker';
+  if (names.some((n) => n.includes('parking'))) return 'parking';
+  return 'amenity';
 }
 
 function isPointFeature(f: ViewerMarkerFeature): boolean {
@@ -355,7 +414,7 @@ function markerFeatureToUnit(
   if (!Array.isArray(coords) || coords.length !== 2) return null;
 
   const [x, y] = toFraction(coords as [number, number]);
-  const type = UNIT_TYPE_BY_MARKER_MODULE[p.markerModuleName] ?? 'amenity';
+  const type = unitTypeForMarker(f);
   // Real assignable/bookable records join on their backing recordId/deskId; decorative markers
   // (Camera, Fire extinguisher — no recordId) fall back to objectId just for a stable local key.
   const recordId = p.recordId ?? p.deskId;
