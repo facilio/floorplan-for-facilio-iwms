@@ -378,6 +378,21 @@
   padding: 0;
   cursor: pointer;
   transform-origin: center center;
+  /* Kill the browser's default tap flash — it paints a SQUARE over the button's rectangular
+     hit area, which reads as a glitch on a round dot. Feedback comes from the :active scale
+     below (round, matching the dot) instead. */
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.marker:focus {
+  outline: none;
+}
+.marker:focus-visible .markerDot {
+  /* Keyboard focus keeps a visible (round) ring — only the touch flash is suppressed. */
+  box-shadow: 0 0 0 3px rgba(0, 89, 214, 0.35);
+}
+.marker:active .markerDot {
+  transform: scale(0.9);
 }
 .markerDot {
   width: 22px;
@@ -387,6 +402,8 @@
   justify-content: center;
   font: 700 8.5px/1 var(--font-sans);
   letter-spacing: 0.02em;
+  /* Springy press feedback for the :active scale above. */
+  transition: transform 120ms ease;
 }
 .markerLabel {
   display: flex;
