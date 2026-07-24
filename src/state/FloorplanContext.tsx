@@ -542,7 +542,11 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
     placePoint: (type: 'workstation' | 'locker' | 'parking', x: number, y: number) => {
       dispatch({ type: 'SET_PENDING_PLACEMENT', placement: { type, x, y } });
     },
-    cancelPlacement: () => dispatch({ type: 'SET_PENDING_PLACEMENT', placement: null }),
+    cancelPlacement: () => {
+      // A cancelled room placement also drops its drawn outline — it only existed for the dialog.
+      if (state.pendingPlacement?.type === 'room') dispatch({ type: 'CLEAR_DRAFT' });
+      dispatch({ type: 'SET_PENDING_PLACEMENT', placement: null });
+    },
     /** Place a marker linked to a catalog asset (drag from the Edit asset list). */
     placeAssetAt: (assetId: string, x: number, y: number) => {
       const asset = state.assets.find((a) => a.id === assetId);
@@ -616,6 +620,20 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
     confirmPlacementExisting: (unitId: string) => {
       const spot = state.pendingPlacement;
       if (!spot) return;
+      // Rooms: apply the drawn outline to the chosen existing room record (same dialog flow as
+      // desks; see closeDraft). Pool rooms don't exist (deleting a room never pools it), so the
+      // candidates are units — typically `unplaced` org rooms getting their first outline.
+      if (spot.type === 'room') {
+        const target = state.units.find((u) => u.id === unitId && u.type === 'room');
+        if (!target) return;
+        const patch = { geom: { kind: 'poly' as const, pts: spot.pts }, ...(target.unplaced ? { unplaced: false } : {}) };
+        dispatch({ type: 'SET_PENDING_PLACEMENT', placement: null });
+        dispatch({ type: 'CLEAR_DRAFT' });
+        dispatch({ type: 'UPDATE_UNIT', id: unitId, patch });
+        saveUnitsBestEffort(state.floorId, state.units.map((u) => (u.id === unitId ? { ...u, ...patch } : u)));
+        showToast(`${target.label} ${target.unplaced ? 'placed' : 'reshaped'}`);
+        return;
+      }
       const room = roomLabelAt(state, spot.x, spot.y);
       const pooled = state.unplacedUnits.find((u) => u.id === unitId);
       if (pooled) {
@@ -645,6 +663,27 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
     confirmPlacementCreate: async () => {
       const spot = state.pendingPlacement;
       if (!spot) return;
+      // Rooms: mint the record for the drawn outline (the pre-dialog closeDraft behavior).
+      if (spot.type === 'room') {
+        const label = nextLabel(state, 'room', 'RM');
+        const base: Unit = {
+          id: 'u' + Date.now(),
+          type: 'room',
+          label,
+          room: null,
+          geom: { kind: 'poly', pts: spot.pts },
+          floor: state.floorId,
+          plan: 'custom',
+        };
+        dispatch({ type: 'SET_PENDING_PLACEMENT', placement: null });
+        // A drawn room is a real space too — create it on the connector (category "Room"), then
+        // persist its polygon locally. Falls back to the local record if the connector isn't there.
+        const unit = await dataSource.createUnit(resolveSpaceLoc(state.portfolio, state.floorId), base).catch(() => base);
+        dispatch({ type: 'CLOSE_DRAFT', unit });
+        saveUnitsBestEffort(state.floorId, [...state.units, unit]);
+        showToast(`${label} created — rename it in the Selection panel`);
+        return;
+      }
       const { type, x, y } = spot;
       const label = nextLabel(state, type, TYPE_META[type].prefix);
       const base: Unit = {
@@ -694,22 +733,10 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
     pushDraftPoint: (pt: [number, number]) => dispatch({ type: 'PUSH_DRAFT_POINT', pt }),
     closeDraft: async () => {
       if (state.draft.length < 3) return;
-      const label = nextLabel(state, 'room', 'RM');
-      const base: Unit = {
-        id: 'u' + Date.now(),
-        type: 'room',
-        label,
-        room: null,
-        geom: { kind: 'poly', pts: state.draft },
-        floor: state.floorId,
-        plan: 'custom',
-      };
-      // A drawn room is a real space too — create it on the connector (category "Room"), then
-      // persist its polygon locally. Falls back to the local record if the connector isn't there.
-      const unit = await dataSource.createUnit(resolveSpaceLoc(state.portfolio, state.floorId), base).catch(() => base);
-      dispatch({ type: 'CLOSE_DRAFT', unit });
-      saveUnitsBestEffort(state.floorId, [...state.units, unit]);
-      showToast(`${label} created — rename it in the Selection panel`);
+      // Same flow as desk placing: the outline opens the placement dialog (pick an existing
+      // room record, or create a new one) instead of silently minting a record. The draft stays
+      // rendered under the dialog until it resolves.
+      dispatch({ type: 'SET_PENDING_PLACEMENT', placement: { type: 'room', pts: state.draft } });
     },
     clearDraft: () => dispatch({ type: 'CLEAR_DRAFT' }),
 

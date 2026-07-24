@@ -51,9 +51,14 @@ export function SpacesList() {
   // everything already placed is visible (and draggable) on the canvas itself. That's the
   // session pool (markers deleted this session) PLUS org records that exist with no on-plan
   // position yet (`unplaced` — e.g. connector spaces), which were previously listed in the
-  // assign/book sidebar but unreachable here.
+  // assign/book sidebar but unreachable here. Amenity/library markers are excluded: the edit
+  // list is for the floor's REAL spaces (desks/lockers/rooms/stalls) only — markers place from
+  // the Markers tab, not from here.
   const units = useMemo(
-    () => (isEdit ? [...state.unplacedUnits, ...state.units.filter((u) => u.unplaced)] : state.units),
+    () =>
+      isEdit
+        ? [...state.unplacedUnits, ...state.units.filter((u) => u.unplaced)].filter((u) => u.type !== 'amenity')
+        : state.units,
     [isEdit, state.unplacedUnits, state.units]
   );
 

@@ -1054,10 +1054,22 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
     // markerModuleId, etc.) survives the round-trip untouched — only geometry/label are ours to
     // change.
     const newModuleId = !match && recordKey ? moduleIdByName.get(REAL_SPACE_MODULE[unit.type] ?? '') : undefined;
+    // Record-field changes (deskType/secondary/name) ride INSIDE the marker's nested record in
+    // this same indoorfloorplan update — the backend syncs them to the desks/lockers/parkingstall
+    // record from there (matching the native app's payload, which nests the full record on every
+    // marker). This replaced one separate updateRecord PATCH per desk per save.
+    let matchedRecordPatch: Record<string, unknown> | undefined;
+    if (match && recordKey && (match[recordKey] || match.recordId)) {
+      const fields: Record<string, unknown> = { name: unit.label };
+      if (unit.type === 'workstation' && unit.deskType) fields.deskType = DESK_TYPE_NUM[unit.deskType];
+      if (unit.secondary) fields.secondary = unit.secondary;
+      matchedRecordPatch = { ...(match[recordKey] ?? { id: match.recordId }), ...fields };
+    }
     nextMarkers.push({
       ...(match ?? {}),
       ...(newMarkerType ? { markerType: newMarkerType } : {}),
       ...(newRecord && recordKey ? { [recordKey]: newRecord } : {}),
+      ...(matchedRecordPatch && recordKey ? { [recordKey]: matchedRecordPatch } : {}),
       ...(newModuleId ? { markerModuleId: newModuleId } : {}),
       geoId: unit.id,
       geometry,
@@ -1066,21 +1078,6 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
       indoorfloorplan: { id: indoorFloorPlanId },
       label: unit.label,
     });
-
-    // Desk-specific fields go on the SEPARATE desks/lockers/parkingstall record, not the marker.
-    if (match?.recordId) {
-      const moduleName = REAL_SPACE_MODULE[unit.type];
-      const fields: Record<string, unknown> = {};
-      if (unit.type === 'workstation' && unit.deskType) fields.deskType = DESK_TYPE_NUM[unit.deskType];
-      if (unit.secondary) fields.secondary = unit.secondary;
-      if (moduleName && Object.keys(fields).length > 0) {
-        const res = await facilioApi.updateRecord(moduleName, { id: match.recordId, data: fields });
-        if (res.error) {
-          // eslint-disable-next-line no-console
-          console.warn(`[facilio-api] desk field sync failed for unit ${unit.id}`, res.error);
-        }
-      }
-    }
   }
   // Unconsumed markers: a geoId-tagged one whose unit is gone was deleted in this app — drop it.
   // One with no geoId that ALSO matched no unit is preserved untouched (defensive: if the floor's

@@ -118,9 +118,7 @@ export function AssignPanel() {
                 draggable
                 onDragStart={(e) => onDragStart(e, contact.id, contact.name)}
                 onDragEnd={onDragEnd}
-                onClick={() => canOpen && openRecordSummary('clientcontact', contact.id, { newTab: true })}
-                style={{ opacity: dragId === contact.id ? 0.45 : 1, cursor: canOpen ? 'pointer' : 'grab' }}
-                title={canOpen ? 'Open client contact record' : undefined}
+                style={{ opacity: dragId === contact.id ? 0.45 : 1, cursor: 'grab' }}
               >
                 <span className={styles.avatar}>{initials(contact.name)}</span>
                 <div className={styles.personText}>
@@ -128,11 +126,24 @@ export function AssignPanel() {
                   <div className={styles.personDept}>{contact.client}</div>
                 </div>
                 {held.length > 0 && <span className={styles.heldBadge}>{held.join(', ')}</span>}
+                {/* Record summary opens ONLY from this icon — a whole-row click used to redirect,
+                    which made selecting/dragging a person too easy to misfire into a navigation. */}
                 {canOpen && (
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={styles.openIcon}>
-                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                    <path d="M15 3h6v6M10 14L21 3" />
-                  </svg>
+                  <button
+                    type="button"
+                    title="Open client contact record"
+                    aria-label={`Open ${contact.name}'s record`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openRecordSummary('clientcontact', contact.id, { newTab: true });
+                    }}
+                    style={{ background: 'none', border: 'none', padding: 2, cursor: 'pointer', color: 'inherit', display: 'inline-flex' }}
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={styles.openIcon}>
+                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                      <path d="M15 3h6v6M10 14L21 3" />
+                    </svg>
+                  </button>
                 )}
               </div>
             );

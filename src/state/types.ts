@@ -48,7 +48,12 @@ export interface AppState {
    */
   unplacedUnits: Unit[];
   /** A click-to-place spot awaiting the "which desk goes here?" map dialog (edit mode). */
-  pendingPlacement: { type: 'workstation' | 'locker' | 'parking'; x: number; y: number } | null;
+  /**
+   * Point types carry the click spot; a room carries its just-drawn outline (the draft stays
+   * rendered until the dialog resolves). Both flows land in the same MapDeskModal: pick an
+   * existing record via the select, or create a new one.
+   */
+  pendingPlacement: { type: 'workstation' | 'locker' | 'parking'; x: number; y: number } | { type: 'room'; pts: [number, number][] } | null;
   /** Snapshot of `units` as of the last explicit save (floor load, "Save changes", or a resolved discard) — the revert target for "Discard changes". */
   savedUnits: Unit[];
   /**
