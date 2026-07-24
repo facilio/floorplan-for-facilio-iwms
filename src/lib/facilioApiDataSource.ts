@@ -1,5 +1,6 @@
 import { apiOrigin, customGet, customPost, facilioApi, fetchFilePreview, isFacilioApiConfigured } from './facilioApi';
 import { executeStateTransition, fetchAvailableStates, findCancelTransition, isPendingApprovalName, stateName } from './stateflowApi';
+import { loadSettings } from './settingsStore';
 import { renderCadToDataUrl } from './cadPreview';
 import { renderPdfToDataUrl } from './pdfPreview';
 import { computeSyntheticGeometry, geometryStringToQuad, lngLatToFraction, quadToGeometryString, quadToLngLat, type GeoQuad } from './geoReference';
@@ -1553,14 +1554,40 @@ export interface MyDeskInfo {
 }
 
 /**
- * The logged-in user's assigned (or booked) desk, via the employee portal's own home endpoint:
- * `GET maintenance/api/v2/servicePortalHome?fetchOnlyDesk=true&count=1[&recordId={employeeId}]`
- * (captured from a live portal session). Without `recordId` the backend resolves the employee
- * from the session user. Returns null when the user has no desk or the endpoint isn't
- * accessible for the current token.
+ * The current user's assigned desk. Primary path (client-portal style): a direct `desks` list
+ * fetch, one row (page 1 / perPage 1), filtered on the desk module's `clientContact_desk` lookup
+ * to the user's client-contact id (Settings › Bookings › "This is me"), archived records
+ * excluded (`isArchived: false`). The lookup filter uses operatorId 36 — the same lookup-"is"
+ * operator every other list filter in this file uses.
+ *
+ * Fallback (no contact id picked yet): the employee portal's home endpoint
+ * `GET maintenance/api/v2/servicePortalHome?fetchOnlyDesk=true&count=1[&recordId={employeeId}]`,
+ * which resolves the employee from the session. Returns null when neither path finds a desk.
  */
 export async function fetchMyDesk(employeeId?: number): Promise<MyDeskInfo | null> {
-  if (!isFacilioApiConfigured || !apiOrigin) return null;
+  if (!isFacilioApiConfigured) return null;
+
+  const cfg = await loadSettings().catch(() => null);
+  const contactId = Number(cfg?.bookBy);
+  if (Number.isFinite(contactId) && contactId > 0) {
+    const res = await facilioApi.fetchAll('desks', {
+      page: 1,
+      perPage: 1,
+      isArchived: false,
+      filters: JSON.stringify({ clientContact_desk: { operatorId: 36, value: [String(contactId)] } }),
+    });
+    const desk = res.list?.[0];
+    if (!res.error && desk?.id) {
+      const floorId = lookupId(desk, 'floor');
+      return { recordId: desk.id, name: desk.name ?? 'Your desk', floorId: floorId != null ? String(floorId) : null, booked: false };
+    }
+    if (res.error) {
+      // eslint-disable-next-line no-console
+      console.warn('[facilio-api] clientContact_desk filter fetch failed — falling back to servicePortalHome', res.error);
+    }
+  }
+
+  if (!apiOrigin) return null;
   const body = await customGet(
     'v2/servicePortalHome',
     { fetchOnlyDesk: true, count: 1, ...(employeeId ? { recordId: employeeId } : {}) },
