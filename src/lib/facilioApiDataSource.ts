@@ -196,7 +196,11 @@ export class FacilioApiDataSource implements FloorplanDataSource {
         // are dropped below so a cancel-by-transition doesn't resurrect on refetch (best-effort —
         // list projections that omit moduleState keep the row).
         const approvalStatusName = stateName(b.approvalStatus);
-        const approvalPending = b.approvalFlowId != null && b.approvalFlowId !== -1 && b.approvalStatus != null && (approvalStatusName === null || isPendingApprovalName(approvalStatusName));
+        // approvalStatus must be a real LOOKUP OBJECT — Facilio's unset sentinel is -1 (a
+        // number), which `!= null` alone would treat as approval-enabled and mark every plain
+        // booking pending.
+        const approvalEnabled = b.approvalFlowId != null && b.approvalFlowId !== -1 && b.approvalStatus != null && typeof b.approvalStatus === 'object';
+        const approvalPending = approvalEnabled && (approvalStatusName === null || isPendingApprovalName(approvalStatusName));
         const recordStateName = stateName(b.moduleState);
         if (recordStateName && /cancel|reject/i.test(recordStateName)) return null;
         return {
@@ -354,8 +358,13 @@ const UNIT_TYPE_BY_MARKER_MODULE: Record<string, UnitType> = {
   parkingstall: 'parking',
 };
 
-/** `desks.deskType` numeric enum -> this app's DeskType (see types.ts DeskType). */
-const DESK_TYPE_BY_NUM: Record<number, DeskType> = { 1: 'ASSIGNED', 2: 'HOTEL', 3: 'HOT' };
+/**
+ * `desks.deskType` numeric enum <-> this app's DeskType. Confirmed mapping:
+ * ASSIGNED = 1, HOT = 2, HOTEL = 3. The backend field is an INTEGER — every write must go
+ * through DESK_TYPE_NUM (sending the string enum name doesn't stick).
+ */
+const DESK_TYPE_BY_NUM: Record<number, DeskType> = { 1: 'ASSIGNED', 2: 'HOT', 3: 'HOTEL' };
+const DESK_TYPE_NUM: Record<DeskType, number> = { ASSIGNED: 1, HOT: 2, HOTEL: 3 };
 
 /**
  * Short-lived promise cache so a single floor load's getUnits + getAssignments (both
@@ -1014,7 +1023,7 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
     // record inline — a brand-new entry is created together with its nested record (the org's
     // own save works this way), instead of a marker with no record behind it (which previously
     // deferred record creation to the first assignment). All the record's required fields ride
-    // here: name, site/building/floor lookups, plus deskType for desks (string enum, matching
+    // here: name, site/building/floor lookups, plus deskType for desks (INTEGER enum, matching
     // the confirmed field-sync write).
     let newRecord: Record<string, unknown> | undefined;
     const recordKey = MARKER_RECORD_KEY[unit.type];
@@ -1028,7 +1037,7 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
           ...(parentSiteId ? { site: { id: parentSiteId } } : {}),
           ...(parentBuildingId ? { building: { id: parentBuildingId } } : {}),
           floor: { id: parentFloorId ?? unit.floor },
-          ...(unit.type === 'workstation' ? { deskType: unit.deskType ?? 'ASSIGNED' } : {}),
+          ...(unit.type === 'workstation' ? { deskType: DESK_TYPE_NUM[unit.deskType ?? 'ASSIGNED'] } : {}),
           ...(unit.secondary ? { secondary: unit.secondary } : {}),
         };
       }
@@ -1052,7 +1061,7 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
     if (match?.recordId) {
       const moduleName = REAL_SPACE_MODULE[unit.type];
       const fields: Record<string, unknown> = {};
-      if (unit.type === 'workstation' && unit.deskType) fields.deskType = unit.deskType;
+      if (unit.type === 'workstation' && unit.deskType) fields.deskType = DESK_TYPE_NUM[unit.deskType];
       if (unit.secondary) fields.secondary = unit.secondary;
       if (moduleName && Object.keys(fields).length > 0) {
         const res = await facilioApi.updateRecord(moduleName, { id: match.recordId, data: fields });
@@ -1292,7 +1301,14 @@ async function ensureRealSpaceRecord(unit: Unit): Promise<RealSpaceRef | null> {
   }
 
   const createRes = await facilioApi.createRecord<any>(moduleName, {
-    data: { name: unit.label, site: { id: siteId }, building: { id: buildingId }, floor: { id: unit.floor } },
+    data: {
+      name: unit.label,
+      site: { id: siteId },
+      building: { id: buildingId },
+      floor: { id: unit.floor },
+      // Same integer enum as the marker-nested create path (ASSIGNED=1/HOT=2/HOTEL=3).
+      ...(unit.type === 'workstation' ? { deskType: DESK_TYPE_NUM[unit.deskType ?? 'ASSIGNED'] } : {}),
+    },
   });
   if (createRes.error || !createRes[moduleName]?.id) return null;
   const recordId = createRes[moduleName].id;

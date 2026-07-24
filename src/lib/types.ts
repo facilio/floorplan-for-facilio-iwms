@@ -106,10 +106,11 @@ export interface PolyGeom {
 export type UnitGeom = PointGeom | PolyGeom;
 
 /**
- * Real Facilio desk typing (`V3DeskContext.DeskType`, see Context/Workplace_spaceModules.md):
- * ASSIGNED(1) / HOTEL(2) / HOT(3). ASSIGNED desks are permanently assignable and NOT bookable;
+ * Real Facilio desk typing (`V3DeskContext.DeskType`), confirmed integer enum:
+ * ASSIGNED(1) / HOT(2) / HOTEL(3). ASSIGNED desks are permanently assignable and NOT bookable;
  * HOT and HOTEL desks are bookable (the backend auto-provisions a Facility for HOT) and NOT
- * assignable. An absent deskType is treated as ASSIGNED (the backend default).
+ * assignable. An absent deskType is treated as ASSIGNED (the backend default). The backend field
+ * is the INTEGER — writes go through DESK_TYPE_NUM in facilioApiDataSource.
  */
 export type DeskType = 'ASSIGNED' | 'HOTEL' | 'HOT';
 export const DESK_TYPES: { id: DeskType; name: string }[] = [
