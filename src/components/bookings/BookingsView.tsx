@@ -533,9 +533,11 @@ function CalendarGrid({ dates, bookingsFor, myId, snap, onCreate, onCancel, cont
                     <div
                       key={b.id}
                       className={[styles.block, mine ? styles.blockMine : styles.blockOther].join(' ')}
-                      style={{ top, height }}
+                      // Pending-approval bookings render amber (matching the plan markers) so a
+                      // request reads differently from a confirmed reservation.
+                      style={{ top, height, ...(b.approvalPending ? { background: 'var(--warning-050)', borderColor: 'var(--warning-700)', color: 'var(--warning-700)' } : {}) }}
                       onMouseDown={(e) => e.stopPropagation()}
-                      title={mine ? 'Your booking' : `Booked by ${contactNameOf(b.by) || 'someone'}`}
+                      title={(mine ? 'Your booking' : `Booked by ${contactNameOf(b.by) || 'someone'}`) + (b.approvalPending ? ' · pending approval' : '')}
                     >
                       {/* Cancelling is an explicit button, never a bare click on the block —
                           clicking a booking to inspect it used to silently cancel it. */}

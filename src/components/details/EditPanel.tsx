@@ -11,7 +11,8 @@ import { ButtonSpinner } from '../primitives/ButtonSpinner';
 import { Picklist } from '../fds/Picklist';
 import { Select } from '../primitives/Select';
 import { isFacilioApiConfigured } from '../../lib/facilioApi';
-import { createMarkerType, fetchMarkerIconUrl, fetchUnitModuleState, getAllModules, getCustomMarkerTypes, uploadMarkerIcon } from '../../lib/facilioApiDataSource';
+import { createMarkerType, fetchMarkerIconUrl, getAllModules, getCustomMarkerTypes, uploadMarkerIcon } from '../../lib/facilioApiDataSource';
+import { UnitStateflowSection } from './StateflowActions';
 import card from './Card.module.css';
 import styles from './EditPanel.module.css';
 
@@ -491,21 +492,6 @@ function Inspector() {
   const sel = unitById(state, state.selected);
   const multi = state.multiSelected;
 
-  // The real backend record's own status field, fetched read-only (no record is ever created
-  // just to check this — a unit that's never been assigned/vacated/booked has no real record
-  // yet, and fetchUnitModuleState returns null rather than creating one).
-  const [moduleState, setModuleState] = useState<string | null>(null);
-  useEffect(() => {
-    setModuleState(null);
-    if (!sel || !isFacilioApiConfigured) return;
-    let cancelled = false;
-    fetchUnitModuleState(sel).then((v) => {
-      if (!cancelled) setModuleState(v);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [sel?.id]);
 
   if (multi.length > 1) {
     return (
@@ -571,12 +557,10 @@ function Inspector() {
           <span className={card.statLabel}>Type</span>
           <span className={card.statValue}>{TYPE_META[sel.type].name}</span>
         </div>
-        {moduleState && (
-          <div className={card.statRow}>
-            <span className={card.statLabel}>Status</span>
-            <span className={card.statValue}>{moduleState}</span>
-          </div>
-        )}
+        {/* Real backend record status + approval state, read-only (no record is created just to
+            check — units with no backing record render nothing here). */}
+        <UnitStateflowSection unit={sel} readOnly />
+
         {sel.type === 'room' && (
           <div className={card.statRow}>
             <span className={card.statLabel}>Is Reservable</span>

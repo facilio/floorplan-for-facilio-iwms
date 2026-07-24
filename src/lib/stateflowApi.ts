@@ -1,0 +1,126 @@
+import { customGet, customPatch, customPost, facilioApi, isConnectedApp, isFacilioApiConfigured } from './facilioApi';
+
+/**
+ * Module-agnostic stateflow + approval-flow client, mirroring the real Facilio web client
+ * (clientV2)'s mechanics — the same endpoints drive EVERY module (spacebooking, desks, lockers,
+ * parkingstall, space), with the module name in the path/params:
+ *
+ *  - stateflow list:    GET  v2/statetransition/getAvailableState {moduleName, id}
+ *  - stateflow execute: PATCH v3/action/{moduleName}/{recordId}/transition {id, stateTransitionId, data}
+ *  - approval list:     POST v2/approval/availableTransitions {moduleName, id}
+ *  - approval execute:  PATCH v3/approval/action/{moduleName}/{recordId}/approval {id, approvalTransitionId, data}
+ *
+ * Envelopes differ by family: v2 answers `{responseCode: 0, result}`, v3 answers `{code: 0, data}`
+ * — `unwrap` handles both.
+ *
+ * V1 SIMPLIFICATIONS (deliberate, vs clientV2's full TransitionButtonMixin):
+ *  - Transitions carrying forms (`formId`/`dialogType === 2`) execute with empty `data`; if the
+ *    backend's form rules reject that, the error surfaces verbatim as a toast.
+ *  - The confirmation-dialog step (`v2/statetransition/confirmationDialogs`) is not called.
+ *  - `commentRequired` is collected via a plain prompt upstream and travels as
+ *    `data.transitionCommentData = {body, bodyHTML}` (the shape clientV2 sends).
+ */
+
+export interface TransitionOption {
+  id: number;
+  name: string;
+  commentRequired?: boolean;
+  formId?: number | null;
+  dialogType?: number | null;
+}
+
+export interface FlowState {
+  /** Display name of the record's current state (null when the flow isn't enabled/resolvable). */
+  currentStateName: string | null;
+  transitions: TransitionOption[];
+}
+
+/** `moduleState`/`approvalStatus`/transition-state objects -> a printable label (never render the raw object). */
+export function stateName(state: any): string | null {
+  if (state == null) return null;
+  if (typeof state === 'string') return state.trim() || null;
+  const n = state.displayName ?? state.status ?? state.name;
+  return typeof n === 'string' && n.trim() ? n.trim() : null;
+}
+
+/** Heuristic for "awaiting approval" state labels — clientV2 resolves this server-side; we approximate by name. */
+export function isPendingApprovalName(name: string | null | undefined): boolean {
+  return !!name && /pending|requested|waiting/i.test(name);
+}
+
+export function findCancelTransition(transitions: TransitionOption[]): TransitionOption | null {
+  return transitions.find((t) => /cancel/i.test(t.name)) ?? null;
+}
+
+function assertConfigured(): void {
+  if (!isFacilioApiConfigured) throw new Error('facilio-api: not configured');
+}
+
+/** v2 bodies nest under `result` (responseCode), v3 under `data` (code) — accept either. */
+function unwrap(body: any): any {
+  if (body == null) return null;
+  if (body.responseCode !== undefined && body.responseCode !== 0) throw new Error(body.message || `responseCode ${body.responseCode}`);
+  if (body.code !== undefined && body.code !== 0) throw new Error(body.message || `code ${body.code}`);
+  return body.result ?? body.data ?? body;
+}
+
+function toTransitionOptions(states: any[]): TransitionOption[] {
+  return (states ?? [])
+    .filter((s) => s && !s.isOffline && typeof s.id === 'number')
+    .map((s) => ({
+      id: s.id,
+      name: String(s.name ?? s.displayName ?? `Transition ${s.id}`),
+      commentRequired: !!s.commentRequired,
+      formId: s.formId ?? null,
+      dialogType: s.dialogType ?? null,
+    }));
+}
+
+/** Available state transitions for a record — empty transitions when the module/record has no stateflow. */
+export async function fetchAvailableStates(moduleName: string, recordId: number): Promise<FlowState> {
+  assertConfigured();
+  const body = await customGet('v2/statetransition/getAvailableState', { moduleName, id: recordId });
+  const res = unwrap(body);
+  return { currentStateName: stateName(res?.currentState), transitions: toTransitionOptions(res?.states) };
+}
+
+/**
+ * Executes one state transition. Primary path is the real client's PATCH; in connected mode,
+ * where the SDK bridge's PATCH support is unverified, a thrown transport error falls back to a
+ * plain module update carrying `stateTransitionId` — the exact payload clientV2's own permalink
+ * transition page sends via updateRecord, so the server-side behavior is proven.
+ */
+export async function executeStateTransition(moduleName: string, recordId: number, transitionId: number, data?: Record<string, unknown>): Promise<void> {
+  assertConfigured();
+  const payload = { id: recordId, stateTransitionId: transitionId, data: data ?? {} };
+  try {
+    const body = await customPatch(`v3/action/${moduleName}/${recordId}/transition`, payload);
+    unwrap(body);
+    return;
+  } catch (err) {
+    if (!isConnectedApp) throw err;
+    // eslint-disable-next-line no-console
+    console.warn(`[stateflow] PATCH transition failed in connected mode — falling back to updateRecord`, err);
+  }
+  const res = await facilioApi.updateRecord(moduleName, { id: recordId, data: data ?? {}, stateTransitionId: transitionId } as any);
+  if (res.error) throw new Error(res.error.message || `transition failed (code ${res.error.code ?? '?'})`);
+}
+
+/** Available approval actions (Approve/Reject/Cancel/...) — empty when the record isn't under an approval flow. */
+export async function fetchApprovalTransitions(moduleName: string, recordId: number): Promise<FlowState> {
+  assertConfigured();
+  const body = await customPost('v2/approval/availableTransitions', { moduleName, id: recordId });
+  const res = unwrap(body);
+  return { currentStateName: stateName(res?.currentState), transitions: toTransitionOptions(res?.states) };
+}
+
+/** Executes one approval action. No non-PATCH fallback exists in clientV2 — a transport failure surfaces to the caller. */
+export async function executeApprovalTransition(moduleName: string, recordId: number, approvalTransitionId: number, data?: Record<string, unknown>): Promise<void> {
+  assertConfigured();
+  const body = await customPatch(`v3/approval/action/${moduleName}/${recordId}/approval`, {
+    id: recordId,
+    approvalTransitionId,
+    data: data ?? {},
+  });
+  unwrap(body);
+}

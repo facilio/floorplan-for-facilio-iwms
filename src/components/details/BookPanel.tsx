@@ -6,6 +6,8 @@ import { fmtTime } from '../../lib/geometry';
 import { Select } from '../primitives/Select';
 import { Button } from '../primitives/Button';
 import { SkeletonRows } from '../primitives/Skeleton';
+import { StatusPill } from '../primitives/StatusPill';
+import { StateflowActions, UnitStateflowSection } from './StateflowActions';
 import card from './Card.module.css';
 import styles from './BookPanel.module.css';
 
@@ -79,6 +81,7 @@ export function BookPanel() {
           </div>
           <div className={card.cardBody}>
             {state.schedView === 'list' ? <ScheduleList unitId={sel.id} /> : <DayTimeline unitId={sel.id} />}
+            <UnitStateflowSection unit={sel} />
             {!bookedUnitIds(state).has(sel.id) || conflictsFor(state.bookings, sel.id, state.date, state.start, state.end).length === 0 ? (
               <Button variant="primary" fullWidth style={{ marginTop: 12 }} onClick={() => actions.openBookingForm({ unitId: sel.id, date: state.date, start: state.start, end: state.end })}>
                 New booking
@@ -115,17 +118,26 @@ function ScheduleList({ unitId }: { unitId: string }) {
   return (
     <div className={styles.list}>
       {dayBookings.map((b) => (
-        <div key={b.id} className={styles.listRow}>
-          <div className={styles.listTime}>
-            {fmtTime(b.start)}–{fmtTime(b.end)}
+        <div key={b.id}>
+          <div className={styles.listRow}>
+            <div className={styles.listTime}>
+              {fmtTime(b.start)}–{fmtTime(b.end)}
+            </div>
+            <div className={styles.listMeta}>
+              <div className={styles.listBy}>{contactName(state, b.by)}</div>
+              {b.purpose && <div className={styles.listPurpose}>{b.purpose}</div>}
+              {b.approvalPending && <StatusPill label={b.approvalStatusName ?? 'Pending approval'} bg="var(--warning-050)" fg="var(--warning-700)" />}
+            </div>
+            <button className={styles.cancelLink} onClick={() => actions.cancelBooking(b.id)}>
+              Cancel
+            </button>
           </div>
-          <div className={styles.listMeta}>
-            <div className={styles.listBy}>{contactName(state, b.by)}</div>
-            {b.purpose && <div className={styles.listPurpose}>{b.purpose}</div>}
-          </div>
-          <button className={styles.cancelLink} onClick={() => actions.cancelBooking(b.id)}>
-            Cancel
-          </button>
+          {/* Pending real bookings get the approval actions inline (Approve/Reject fire the
+              approval transition API). Gated on pending + a real backend id, so this never
+              fans out a request per ordinary booking row. */}
+          {b.approvalPending && /^\d+$/.test(b.id) && (
+            <StateflowActions moduleName="spacebooking" recordId={Number(b.id)} showStatusRow={false} onChanged={() => actions.refreshBookings()} />
+          )}
         </div>
       ))}
     </div>

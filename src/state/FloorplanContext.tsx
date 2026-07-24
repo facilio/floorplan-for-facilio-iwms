@@ -923,6 +923,14 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       });
       dispatch({ type: 'SET_DATE', value, bookings });
     },
+    /**
+     * Re-pulls the current floor+date's bookings (e.g. after an approval/state transition changed
+     * a spacebooking record backend-side) — reuses SET_DATE's reducer path with the same date.
+     */
+    refreshBookings: async () => {
+      const bookings = await dataSource.getBookings(state.floorId, state.date).catch(() => null);
+      if (bookings) dispatch({ type: 'SET_DATE', value: state.date, bookings });
+    },
     setTimeRange: (start: number, end: number) => dispatch({ type: 'SET_TIME_RANGE', start, end }),
     openBookModal: () => dispatch({ type: 'SET_BOOK_MODAL', open: true }),
     closeBookModal: () => dispatch({ type: 'SET_BOOK_MODAL', open: false }),

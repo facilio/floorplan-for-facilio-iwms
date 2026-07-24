@@ -1,4 +1,5 @@
 import { apiOrigin, customGet, customPost, facilioApi, fetchFilePreview, isFacilioApiConfigured } from './facilioApi';
+import { executeStateTransition, fetchAvailableStates, findCancelTransition, isPendingApprovalName, stateName } from './stateflowApi';
 import { renderCadToDataUrl } from './cadPreview';
 import { renderPdfToDataUrl } from './pdfPreview';
 import { computeSyntheticGeometry, geometryStringToQuad, lngLatToFraction, quadToGeometryString, quadToLngLat, type GeoQuad } from './geoReference';
@@ -189,6 +190,15 @@ export class FacilioApiDataSource implements FloorplanDataSource {
       .map((b: any): Booking | null => {
         const unitId = b.desk?.id ?? b.space?.id ?? b.parkingStall?.id;
         if (!unitId || !Number.isFinite(b.bookingStartTime)) return null;
+        // Stateflow/approval read-side: pending when the record is approval-enabled
+        // (approvalFlowId + approvalStatus, same gate the real client uses) and its status label
+        // is unresolvable or reads pending/requested/waiting. Transition-cancelled/rejected rows
+        // are dropped below so a cancel-by-transition doesn't resurrect on refetch (best-effort —
+        // list projections that omit moduleState keep the row).
+        const approvalStatusName = stateName(b.approvalStatus);
+        const approvalPending = b.approvalFlowId != null && b.approvalFlowId !== -1 && b.approvalStatus != null && (approvalStatusName === null || isPendingApprovalName(approvalStatusName));
+        const recordStateName = stateName(b.moduleState);
+        if (recordStateName && /cancel|reject/i.test(recordStateName)) return null;
         return {
           id: String(b.id),
           unitId: String(unitId),
@@ -200,6 +210,9 @@ export class FacilioApiDataSource implements FloorplanDataSource {
           purpose: b.name ?? '',
           module: 'space',
           name: b.name ?? '',
+          approvalPending,
+          approvalStatusName,
+          stateName: recordStateName,
         };
       })
       .filter((b: Booking | null): b is Booking => b !== null);
@@ -210,10 +223,26 @@ export class FacilioApiDataSource implements FloorplanDataSource {
   async createBooking(): Promise<Booking> {
     throw new Error('facilio-api: booking creation goes through createRealBooking — local tier stores the interim copy');
   }
-  /** Real cancel for backend bookings (numeric ids); locally-minted ids ("b...") fall through to the local tier. */
+  /**
+   * Real cancel for backend bookings (numeric ids); locally-minted ids ("b...") fall through to
+   * the local tier. Stateflow-aware: when the spacebooking module has a Cancel transition, use it
+   * (the record stays visible as Cancelled in the real client, with its state history) — only a
+   * module with no such transition falls back to the hard delete.
+   */
   async cancelBooking(id: string): Promise<void> {
     this.assertConfigured();
     if (!/^\d+$/.test(id)) throw new Error('facilio-api: not a backend booking id');
+    try {
+      const { transitions } = await fetchAvailableStates('spacebooking', Number(id));
+      const cancel = findCancelTransition(transitions);
+      if (cancel) {
+        await executeStateTransition('spacebooking', Number(id), cancel.id);
+        return;
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[facilio-api] cancel-transition lookup failed — falling back to delete', err);
+    }
     const res = await facilioApi.deleteRecord('spacebooking', Number(id));
     if (res.error) throw new Error(`facilio-api: spacebooking delete failed (${res.error.code ?? '?'} ${res.error.message ?? ''})`.trim());
   }
@@ -1341,32 +1370,49 @@ async function ensureRealZoneRecord(unit: Unit): Promise<RealSpaceRef | null> {
 }
 
 /**
- * A placed unit's real backend record status, read-only — unlike `ensureRealSpaceRecord`, this
- * never creates anything: returns null for a unit that's never been assigned/vacated/booked (no
- * real space record exists yet), not just when the fetch fails. NOT verified against a live org:
- * `moduleState` as the real field name is taken from what was reported directly off a live API
- * response, not independently confirmed here.
+ * READ-ONLY resolution of the real backend record backing a placed unit — unlike
+ * `ensureRealSpaceRecord`, never creates anything: null for a unit with no real record yet.
+ * Resolution order: session cache -> numeric unit id (viewerData-sourced units carry the backing
+ * record id AS their unit id) -> indoorfloorplan marker/zone join by geoId OR recordId. Rooms
+ * resolve to the `space` module via their zone entry; amenities have no stateful record -> null.
+ * Powers the stateflow/approval UI (see StateflowActions), which must never mint records just to
+ * show state.
  */
-export async function fetchUnitModuleState(unit: Unit): Promise<string | null> {
+export async function resolveUnitRecordRef(unit: Unit): Promise<{ moduleName: string; recordId: number } | null> {
   if (!isFacilioApiConfigured) return null;
-  const moduleName = REAL_SPACE_MODULE[unit.type];
+  const moduleName = unit.type === 'room' ? ROOM_SPACE_MODULE : REAL_SPACE_MODULE[unit.type];
   if (!moduleName) return null;
 
-  let recordId = realSpaceRecordCache.get(unit.id)?.recordId;
-  if (!recordId) {
-    const byType = await getFloorplanDetailsByType(unit.floor).catch(() => ({}) as Record<string, any>);
-    const summary = byType[String(FLOOR_PLAN_TYPE[unit.plan])];
-    if (!summary?.id) return null;
-    const record = await fetchIndoorFloorPlanRecord(summary.id);
-    const marker = record?.markers?.find((m: any) => m.geoId === unit.id);
-    if (!marker?.recordId) return null;
-    recordId = marker.recordId;
-  }
-  if (!recordId) return null;
+  const cached = realSpaceRecordCache.get(unit.id)?.recordId;
+  if (cached) return { moduleName, recordId: cached };
+  // viewerData-sourced units: the unit id IS the backend record id.
+  if (/^\d+$/.test(unit.id)) return { moduleName, recordId: Number(unit.id) };
 
-  const res = await facilioApi.fetchRecord<any>(moduleName, { id: recordId });
-  if (res.error || !res[moduleName]) return null;
-  return res[moduleName].moduleState ?? null;
+  const byType = await getFloorplanDetailsByType(unit.floor).catch(() => ({}) as Record<string, any>);
+  const summary = byType[String(FLOOR_PLAN_TYPE[unit.plan])];
+  if (!summary?.id) return null;
+  const record = await fetchIndoorFloorPlanRecord(summary.id);
+  if (!record) return null;
+  if (unit.type === 'room') {
+    const zone = (record.markedZones ?? []).find((z: any) => z.geoId === unit.id || String(z.recordId ?? z.space?.id) === unit.id);
+    const recordId = zone?.recordId ?? zone?.space?.id;
+    return recordId ? { moduleName, recordId: Number(recordId) } : null;
+  }
+  const marker = (record.markers ?? []).find((m: any) => m.geoId === unit.id || String(m.recordId) === unit.id);
+  return marker?.recordId ? { moduleName, recordId: Number(marker.recordId) } : null;
+}
+
+/**
+ * A placed unit's real backend record status label, read-only. Returns a printable string only
+ * (`stateName` unwraps the `moduleState` LOOKUP OBJECT — rendering the raw field crashed JSX on
+ * live orgs where moduleState is `{id, displayName, ...}`).
+ */
+export async function fetchUnitModuleState(unit: Unit): Promise<string | null> {
+  const ref = await resolveUnitRecordRef(unit);
+  if (!ref) return null;
+  const res = await facilioApi.fetchRecord<any>(ref.moduleName, { id: ref.recordId });
+  if (res.error || !res[ref.moduleName]) return null;
+  return stateName(res[ref.moduleName].moduleState);
 }
 
 export interface ModuleSummary {

@@ -394,6 +394,28 @@ export async function customPost(
   return res.data;
 }
 
+/**
+ * PATCH sibling of `customPost` — needed by the stateflow/approval execute endpoints
+ * (`v3/action/.../transition`, `v3/approval/action/.../approval`), which are PATCH in the real
+ * web client. Connected-mode `invokeFacilioAPI` with PATCH is NOT verified live (same caveat as
+ * POST); stateflow callers carry their own fallback (updateRecord + stateTransitionId — see
+ * stateflowApi.ts) for when the bridge rejects it.
+ */
+export async function customPatch(
+  path: string,
+  body?: unknown,
+  params?: Record<string, unknown>,
+  opts?: { devAbsoluteUrl?: string }
+): Promise<any> {
+  if (isConnectedApp) {
+    const app = await facilioAppReady();
+    const raw = await app.request.invokeFacilioAPI(`${path}${toQueryString(params)}`, { method: 'PATCH', data: body });
+    return parseSdkJson(raw, path);
+  }
+  const res = await devInstance!.patch(opts?.devAbsoluteUrl ?? path, body, { params });
+  return res.data;
+}
+
 function base64ToBlob(base64: string): Blob {
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);

@@ -173,6 +173,13 @@ export interface Booking {
   // (which only capture a time window) and older stored rows stay valid. ----
   /** 'space' -> spacebooking form, 'facility' -> facilitybooking form. */
   module?: 'space' | 'facility';
+  // ---- Stateflow/approval read-side (real spacebooking records only; local rows leave unset) ----
+  /** True when the record is under an approval flow and still awaiting a decision. */
+  approvalPending?: boolean;
+  /** Printable approval-status label (from the record's approvalStatus lookup). */
+  approvalStatusName?: string | null;
+  /** Printable stateflow state label (from the record's moduleState lookup). */
+  stateName?: string | null;
   /** Booking name/title (the form's required "Name"). */
   name?: string;
   description?: string;
@@ -271,6 +278,7 @@ export const STATE_DEFS: Record<UnitType, StateDef[]> = {
     { key: 'assigned', label: 'Assigned', desc: 'Has a permanent owner', def: '#0059D6' },
     { key: 'hot', label: 'Hot desk', desc: 'Bookable by anyone, per session', def: '#3C229D' },
     { key: 'booked', label: 'Booked', desc: 'Reserved for a time window', def: '#B61919' },
+    { key: 'pending', label: 'Pending approval', desc: 'Booked, awaiting approval', def: '#F59E0B' },
   ],
   locker: [
     { key: 'free', label: 'Free', desc: 'Available to assign', def: '#29A01E' },
@@ -279,10 +287,12 @@ export const STATE_DEFS: Record<UnitType, StateDef[]> = {
   parking: [
     { key: 'free', label: 'Free', desc: 'Open stall', def: '#29A01E' },
     { key: 'booked', label: 'Booked', desc: 'Reserved for a time window', def: '#B61919' },
+    { key: 'pending', label: 'Pending approval', desc: 'Booked, awaiting approval', def: '#F59E0B' },
   ],
   room: [
     { key: 'available', label: 'Available', desc: 'Open to book', def: '#29A01E' },
     { key: 'booked', label: 'Booked', desc: 'Reserved for a time window', def: '#B61919' },
+    { key: 'pending', label: 'Pending approval', desc: 'Booked, awaiting approval', def: '#F59E0B' },
     { key: 'free', label: 'Free', desc: 'Not reservable — open to assign', def: '#29A01E' },
     { key: 'assigned', label: 'Assigned', desc: 'Not reservable — has a permanent owner', def: '#0059D6' },
   ],

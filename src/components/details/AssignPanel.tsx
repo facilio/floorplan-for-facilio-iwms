@@ -7,6 +7,7 @@ import { openRecordSummary } from '../../lib/facilioApi';
 import { Select } from '../primitives/Select';
 import { Button } from '../primitives/Button';
 import { SkeletonRows } from '../primitives/Skeleton';
+import { UnitStateflowSection } from './StateflowActions';
 import card from './Card.module.css';
 import styles from './AssignPanel.module.css';
 
@@ -73,6 +74,7 @@ export function AssignPanel() {
             ) : (
               <p className={card.helper}>This space is booked in Booking mode, not assigned.</p>
             )}
+            <UnitStateflowSection unit={sel} />
           </div>
         </div>
       )}

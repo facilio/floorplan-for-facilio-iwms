@@ -182,6 +182,12 @@ export function markerStyle(state: AppState, unit: Unit, markerScale = 1): Marke
   }
   const conflicts = conflictsFor(state.bookings, unit.id, state.date, state.start, state.end);
   if (conflicts.length) {
+    // Every overlapping booking still awaiting approval -> the amber "pending" state, not booked
+    // red — a request isn't a confirmed reservation. Derived off already-loaded booking rows.
+    if (conflicts.every((b) => b.approvalPending)) {
+      const { bg, bd, fg } = colorTriple(null, moduleColor(state, unit.type, 'pending'), false);
+      return { bg, bd, fg, opacity: 1, shadow, size, radius, zIndex, occText: null, icon: markerIcon(unit.type) };
+    }
     const { bg, bd, fg } = colorTriple(realBookColor(cust, category, 'notAvailableColor'), moduleColor(state, unit.type, 'booked'), false);
     return { bg, bd, fg, opacity: 1, shadow, size, radius, zIndex, occText: null, icon: markerIcon(unit.type) };
   }
@@ -251,6 +257,16 @@ export function unitStatus(state: AppState, unit: Unit, contactName: (id: string
   }
   const conflicts = conflictsFor(state.bookings, unit.id, state.date, state.start, state.end);
   if (conflicts.length) {
+    // All overlaps still awaiting approval -> amber pending pill, matching markerStyle.
+    if (conflicts.every((b) => b.approvalPending)) {
+      return {
+        key: 'pendingApproval',
+        text: `Pending approval ${fmtTime(conflicts[0].start)}–${fmtTime(conflicts[0].end)}`,
+        bg: 'var(--warning-050)',
+        fg: 'var(--warning-700)',
+        dot: opaque(moduleColor(state, unit.type, 'pending')),
+      };
+    }
     return {
       key: 'booked',
       text: `Booked ${fmtTime(conflicts[0].start)}–${fmtTime(conflicts[0].end)}`,
