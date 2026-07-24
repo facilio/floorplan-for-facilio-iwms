@@ -63,8 +63,12 @@ export function isAssignable(u: Unit): boolean {
 
 export function myAssignedUnit(state: AppState): Unit | null {
   const mine = Object.entries(state.assignments).find(([, contactId]) => contactId === state.bookBy);
-  if (!mine) return null;
-  return unitById(state, mine[0]);
+  if (mine) return unitById(state, mine[0]);
+  // Real-backend fallback, no "This is me" pick needed: servicePortalHome already resolved the
+  // SESSION user's assigned/booked desk at boot (state.myDesk), and viewerData-sourced units
+  // carry the backing desk record id as their unit id — so the join is a direct id match.
+  if (state.myDesk?.recordId != null) return unitById(state, String(state.myDesk.recordId));
+  return null;
 }
 
 export function floorMeta(state: AppState, floorId: string) {

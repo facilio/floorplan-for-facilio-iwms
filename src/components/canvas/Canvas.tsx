@@ -497,7 +497,8 @@ export function Canvas() {
   const rooms = roomUnits.map((u) => ({ ...u, geom: previewedGeom(u) }));
   const markers = markerUnits.map((u) => ({ ...u, geom: previewedGeom(u) }));
   // One assignments scan per render, not one per marker (Marker's isMine fallback).
-  const myUnitId = useMemo(() => myAssignedUnit(state)?.id ?? null, [state.assignments, state.bookBy, state.units]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const myUnitId = useMemo(() => myAssignedUnit(state)?.id ?? null, [state.assignments, state.bookBy, state.units, state.myDesk]);
 
   const selectedRoom = isEditSelect && multiSel.size === 0 ? rooms.find((r) => r.id === state.selected) : undefined;
 

@@ -33,7 +33,7 @@ export function MobileApp({ mode, onClose }: MobileAppProps) {
   // the web canvas rendered them fine. A loaded image for the active plan also counts.
   const hasPlan = !!meta?.floor.hasPlan || !!state.floorsWithPlans[state.floorId] || !!state.floorImages[floorImageKey(state.floorId, state.planId)];
   // Memoized like the web canvas: a full assignments scan per pan/zoom frame is wasted work.
-  const myUnit = useMemo(() => myAssignedUnit(state), [state.assignments, state.bookBy, state.units]); // eslint-disable-line react-hooks/exhaustive-deps
+  const myUnit = useMemo(() => myAssignedUnit(state), [state.assignments, state.bookBy, state.units, state.myDesk]); // eslint-disable-line react-hooks/exhaustive-deps
   const [qrOpen, setQrOpen] = useState(false);
   const [spacesOpen, setSpacesOpen] = useState(false);
   const [myBookingsOpen, setMyBookingsOpen] = useState(false);
