@@ -995,6 +995,13 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
   const parentBuildingId = lookupId(record, 'building');
   const parentFloorId = lookupId(record, 'floor');
 
+  // Real markers carry the backing record's module id (`markerModuleId`) — confirmed from a live
+  // native-app save payload (desk markers ride with markerModuleId 569547; a non-desk marker
+  // rides with markerType + markerModuleId + recordId). Resolve name -> id once per sync via the
+  // cached org modules list; a miss just omits the field (backend derives it from markerType).
+  const orgModules = await getAllModules().catch(() => [] as ModuleSummary[]);
+  const moduleIdByName = new Map(orgModules.map((m) => [m.name, m.id]));
+
   for (const unit of pointUnits) {
     const match =
       existingMarkersByGeoId.get(unit.id) ?? existingMarkersByRecordId.get(unit.id) ?? existingMarkersByObjectId.get(unit.id);
@@ -1009,10 +1016,10 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
     }
     const [lng, lat] = quadToLngLat(quad, unit.geom.x, unit.geom.y);
     const geometry = JSON.stringify({ type: 'Point', coordinates: [lng, lat] });
-    // Markers this app owns (geoId-tagged) carry this app's own properties blob; a native-placed
-    // marker's properties string is NOT ours to rewrite — preserve it on the round-trip.
-    const ownProperties = JSON.stringify({ unitType: unit.type, secondary: unit.secondary ?? null });
-    const properties = match && !match.geoId ? (match.properties ?? ownProperties) : ownProperties;
+    // The native app's own save payload (captured live) sends `properties` as plain "{}" on
+    // EVERY marker — desk and non-desk alike. Preserve an existing entry's string on the
+    // round-trip; brand-new entries get "{}" to match.
+    const properties = match?.properties ?? '{}';
     // A brand-new entry's markerType — only resolvable for workstation right now (see
     // AUTO_MARKER_TYPE_NAME); an existing match's own markerType (spread below) is never
     // overridden by this.
@@ -1046,10 +1053,12 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
     // Spread the existing entry first so anything it already carries (recordId, markerType,
     // markerModuleId, etc.) survives the round-trip untouched — only geometry/label are ours to
     // change.
+    const newModuleId = !match && recordKey ? moduleIdByName.get(REAL_SPACE_MODULE[unit.type] ?? '') : undefined;
     nextMarkers.push({
       ...(match ?? {}),
       ...(newMarkerType ? { markerType: newMarkerType } : {}),
       ...(newRecord && recordKey ? { [recordKey]: newRecord } : {}),
+      ...(newModuleId ? { markerModuleId: newModuleId } : {}),
       geoId: unit.id,
       geometry,
       properties,
