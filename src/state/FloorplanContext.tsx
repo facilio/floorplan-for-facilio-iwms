@@ -891,7 +891,14 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       const prevContactId = next[unitId];
       next[unitId] = contactId;
       dispatch({ type: 'ASSIGN', unitId, contactId, assignments: next });
-      await dataSource.assignUnit(unitId, contactId);
+      // Local-store write is BEST-EFFORT: with local fallback off there's no tier that stores
+      // assignments (the API tier deliberately throws — its real write is the Moves flow below),
+      // and that throw must not abort the action before assignUnitReal runs. In-memory state is
+      // already dispatched above; the real backend is the durable copy.
+      await dataSource.assignUnit(unitId, contactId).catch((err) => {
+        // eslint-disable-next-line no-console
+        console.debug('[assign] local-store write unavailable (real Moves write still runs)', err);
+      });
       // Best-effort real assignment (Moves for desks, a plain field update for lockers/parking)
       // — never blocks or throws into the local assignment flow above, which is already the
       // source of truth for this app's own read-path. When this unit is being REASSIGNED (it
@@ -923,7 +930,11 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       const next = { ...state.assignments };
       delete next[unitId];
       dispatch({ type: 'VACATE', unitId, assignments: next });
-      await dataSource.vacateUnit(unitId);
+      // Best-effort, same as assign above — must not abort before vacateUnitReal runs.
+      await dataSource.vacateUnit(unitId).catch((err) => {
+        // eslint-disable-next-line no-console
+        console.debug('[vacate] local-store write unavailable (real vacate still runs)', err);
+      });
       if (isFacilioApiConfigured && target && prevContactId) {
         vacateUnitReal(target, prevContactId).catch((err) => {
           // eslint-disable-next-line no-console
