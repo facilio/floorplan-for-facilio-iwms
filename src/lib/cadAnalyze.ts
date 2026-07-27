@@ -15,6 +15,12 @@ export interface CadItem {
   point?: [number, number];
   /** Normalized closed polygon — LWPOLYLINE/POLYLINE vertices. */
   poly?: [number, number][];
+  /**
+   * Nearby TEXT/MTEXT string (inside the polygon, or within a small radius of the point) — the
+   * drawing's own name for this desk/room (e.g. "WS-101"). Auto-map uses it to place the org's
+   * EXISTING record of the same name instead of minting a new marker.
+   */
+  label?: string;
 }
 
 export type CadGroupKind = 'block' | 'circle' | 'polyline';
@@ -132,6 +138,10 @@ interface AnyEntity {
   numberOfVertices?: number;
   getPoint2dAt?: (i: number) => WorldPoint;
   blockTableRecord?: { name?: string };
+  /** TEXT/MTEXT string, under whichever property the parser exposes. */
+  textString?: string;
+  text?: string;
+  contents?: string;
 }
 
 interface AnyDatabase {
@@ -162,11 +172,25 @@ function collectGroups(database: unknown, toNorm: (pt: WorldPoint) => [number, n
     else group.truncated = true;
   };
 
+  // TEXT/MTEXT entities: the drawing's own names for spaces ("WS-101", "Meeting Rm 4") — matched
+  // to items after the walk (inside-polygon first, then nearest-point) so auto-map can place the
+  // org's EXISTING record of the same name.
+  const texts: { point: [number, number]; text: string }[] = [];
+
   const modelSpace = (database as AnyDatabase).tables.blockTable.modelSpace;
   for (const entity of modelSpace.newIterator()) {
     const type = (entity.dxfTypeName ?? '').toUpperCase();
     const layer = entity.layer ?? '0';
 
+    if ((type === 'TEXT' || type === 'MTEXT') && entity.position) {
+      const raw = entity.textString ?? entity.text ?? entity.contents;
+      const text = typeof raw === 'string' ? raw.replace(/\\[A-Za-z][^;]*;|[{}]/g, '').trim() : '';
+      if (text && text.length <= 60) {
+        const point = toNorm(entity.position);
+        if (point) texts.push({ point, text });
+      }
+      continue;
+    }
     if (type === 'INSERT' && entity.position) {
       const point = toNorm(entity.position);
       if (!point) continue;
@@ -207,9 +231,61 @@ function collectGroups(database: unknown, toNorm: (pt: WorldPoint) => [number, n
     }
   }
 
-  return [...byKey.values()]
+  const groups = [...byKey.values()]
     .filter((g) => g.count > 0)
     .sort((a, b) => b.count - a.count);
+  attachLabels(groups, texts);
+  return groups;
+}
+
+/** Pairs each item with the drawing text that names it: a text INSIDE a polygon wins outright; points take the nearest unclaimed text within ~2.5% of the frame. Each text labels at most one item. */
+function attachLabels(groups: CadGroup[], texts: { point: [number, number]; text: string }[]): void {
+  if (!texts.length) return;
+  const used = new Set<number>();
+  const NEAR = 0.025;
+
+  // Polygons first — containment is unambiguous.
+  for (const g of groups) {
+    for (const item of g.items) {
+      if (!item.poly) continue;
+      const i = texts.findIndex((t, idx) => !used.has(idx) && pointInPolyNorm(t.point, item.poly!));
+      if (i >= 0) {
+        item.label = texts[i].text;
+        used.add(i);
+      }
+    }
+  }
+  // Then points — nearest unclaimed text within the radius.
+  for (const g of groups) {
+    for (const item of g.items) {
+      if (item.poly || !item.point || item.label) continue;
+      let best = -1;
+      let bestD = NEAR;
+      texts.forEach((t, idx) => {
+        if (used.has(idx)) return;
+        const d = Math.hypot(t.point[0] - item.point![0], t.point[1] - item.point![1]);
+        if (d < bestD) {
+          bestD = d;
+          best = idx;
+        }
+      });
+      if (best >= 0) {
+        item.label = texts[best].text;
+        used.add(best);
+      }
+    }
+  }
+}
+
+function pointInPolyNorm(pt: [number, number], pts: [number, number][]): boolean {
+  let inside = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const [xi, yi] = pts[i];
+    const [xj, yj] = pts[j];
+    const intersect = yi > pt[1] !== yj > pt[1] && pt[0] < ((xj - xi) * (pt[1] - yi)) / (yj - yi) + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
 }
 
 /** Shoelace area in normalized units (frame = 1.0). */

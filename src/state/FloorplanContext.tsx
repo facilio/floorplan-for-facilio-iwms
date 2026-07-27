@@ -784,10 +784,39 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       const pad = (n: number) => String(n).padStart(2, '0');
       const created: Unit[] = [];
       const placedFromPool: Unit[] = [];
+      /** Position patches for MATCHED-BY-NAME org records already in state.units (unplaced). */
+      const updates: { id: string; patch: Partial<Unit> }[] = [];
       let idSeq = Date.now();
 
       const pool: Partial<Record<UnitType, Unit[]>> = {};
       for (const u of state.unplacedUnits) (pool[u.type] ??= []).push(u);
+
+      // Name index: the drawing's own labels (nearby TEXT entities, see CadItem.label) matched
+      // against the module's EXISTING records — the session pool plus org records with no
+      // position yet. A CAD desk labeled "WS-101" places the org's "WS-101", never a new marker.
+      const norm = (s: string) => s.trim().toLowerCase();
+      const byName: Partial<Record<UnitType, Map<string, { unit: Unit; source: 'pool' | 'org' }>>> = {};
+      for (const u of state.unplacedUnits) (byName[u.type] ??= new Map()).set(norm(u.label), { unit: u, source: 'pool' });
+      for (const u of state.units) {
+        if (!u.unplaced) continue;
+        const m = (byName[u.type] ??= new Map());
+        if (!m.has(norm(u.label))) m.set(norm(u.label), { unit: u, source: 'org' });
+      }
+      let nameMatched = 0;
+      /** Consumes the name match for a labeled CAD item, or null. Pool hits also leave the FIFO pool so they can't double-place. */
+      const takeNameMatch = (type: UnitType, label?: string): { unit: Unit; source: 'pool' | 'org' } | null => {
+        if (!label) return null;
+        const hit = byName[type]?.get(norm(label));
+        if (!hit) return null;
+        byName[type]!.delete(norm(label));
+        if (hit.source === 'pool') {
+          const arr = pool[type];
+          const i = arr ? arr.findIndex((u) => u.id === hit.unit.id) : -1;
+          if (i >= 0) arr!.splice(i, 1);
+        }
+        nameMatched += 1;
+        return hit;
+      };
 
       const ordered = [...groups].sort(
         (a, b) => (mapping[b.key] === 'room' ? 1 : 0) - (mapping[a.key] === 'room' ? 1 : 0),
@@ -798,11 +827,19 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
         for (const item of group.items) {
           if (type === 'room') {
             if (!item.poly) continue;
+            // Drawing names a room the org already has -> the outline lands on THAT record.
+            const match = takeNameMatch('room', item.label);
+            if (match) {
+              const patch: Partial<Unit> = { geom: { kind: 'poly', pts: item.poly }, unplaced: false };
+              if (match.source === 'org') updates.push({ id: match.unit.id, patch });
+              else placedFromPool.push({ ...match.unit, ...patch, floor: state.floorId } as Unit);
+              continue;
+            }
             counters.room += 1;
             created.push({
               id: 'u' + idSeq++,
               type: 'room',
-              label: `${TYPE_META.room.prefix}-${pad(counters.room)}`,
+              label: item.label || `${TYPE_META.room.prefix}-${pad(counters.room)}`,
               room: null,
               geom: { kind: 'poly', pts: item.poly },
               floor: state.floorId,
@@ -815,6 +852,15 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
             const room = rooms.find((r) => r.geom.kind === 'poly' && pointInPoly({ x, y }, r.geom.pts));
             // Tag to the ACTIVE plan tab (matching manual placement), not the unit's own type —
             // the canvas only renders a unit when its `plan` matches the currently-viewed tab.
+            // Priority: the drawing's own label naming an existing record -> place exactly that
+            // record; else FIFO from the unplaced pool; else a brand-new marker-only unit.
+            const match = takeNameMatch(type, item.label);
+            if (match) {
+              const patch: Partial<Unit> = { room: room ? room.label : null, geom: { kind: 'point', x, y }, plan: state.planId, unplaced: false };
+              if (match.source === 'org') updates.push({ id: match.unit.id, patch });
+              else placedFromPool.push({ ...match.unit, ...patch, floor: state.floorId } as Unit);
+              continue;
+            }
             const fromPool = pool[type]?.shift();
             if (fromPool) {
               placedFromPool.push({ ...fromPool, room: room ? room.label : null, geom: { kind: 'point', x, y }, floor: state.floorId, plan: state.planId });
@@ -823,7 +869,8 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
               created.push({
                 id: 'u' + idSeq++,
                 type,
-                label: `${TYPE_META[type].prefix}-${pad(counters[type])}`,
+                // The drawing's own text label wins over an auto-number when present.
+                label: item.label || `${TYPE_META[type].prefix}-${pad(counters[type])}`,
                 secondary: group.blockName ? `CAD block · ${group.blockName}` : `CAD layer · ${group.layer}`,
                 room: room ? room.label : null,
                 geom: { kind: 'point', x, y },
@@ -838,15 +885,23 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
         }
       }
 
-      const totalMapped = created.length + placedFromPool.length;
+      const totalMapped = created.length + placedFromPool.length + updates.length;
       if (totalMapped > 0) {
         dispatch({ type: 'APPLY_AUTOMAP', created, placedFromPool });
-        saveUnitsBestEffort(state.floorId, [...state.units, ...created, ...placedFromPool]);
+        // Name-matched org records already live in state.units (unplaced) — position them via
+        // patches rather than re-adding.
+        if (updates.length) dispatch({ type: 'UPDATE_UNITS', updates });
+        const patches = new Map(updates.map((u) => [u.id, u.patch]));
+        saveUnitsBestEffort(state.floorId, [
+          ...state.units.map((u) => (patches.has(u.id) ? { ...u, ...patches.get(u.id)! } : u)),
+          ...created,
+          ...placedFromPool,
+        ]);
       }
       dispatch({ type: 'SET_AUTOMAP_GROUPS', groups: null });
       showToast(
         totalMapped > 0
-          ? `${totalMapped} units mapped from CAD metadata (${placedFromPool.length} existing, ${created.length} new) — review and Save changes`
+          ? `${totalMapped} units mapped from CAD metadata (${nameMatched} matched by name, ${placedFromPool.length + updates.length - nameMatched >= 0 ? placedFromPool.length + updates.length - nameMatched : 0} pooled, ${created.length} new) — review and Save changes`
           : 'Nothing was mapped',
       );
     },
