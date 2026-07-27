@@ -1154,13 +1154,22 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
 
     if (!match) {
       // A room whose unit id IS a real space record id (numeric — an existing org room getting
-      // its first outline) must LINK that record; nesting a create here minted a DUPLICATE space
-      // whose id no longer matched the placed unit ("space id mismatched on save").
-      const existingSpaceId = /^\d+$/.test(unit.id) ? Number(unit.id) : null;
-      // Brand-new room — nest the FULL backing `space` record in the zone entry, same inline-
-      // creation pattern as a brand-new desk's marker above: the backend creates the space
-      // record together with the zone (and fills recordId/zoneModuleId itself), replacing the
-      // old separate createRecord('space')-then-reference flow.
+      // its first outline) LINKS that record; a genuinely new room gets its `space` record
+      // created FIRST (createRealZoneSpaceRecord — the confirmed flow) and referenced by id.
+      // Inline-nesting a space WITHOUT an id (the desk-marker analogy) is NOT accepted for
+      // markedZones — the server errors on the missing space id.
+      let spaceId = /^\d+$/.test(unit.id) ? Number(unit.id) : null;
+      let zoneModuleId: number | null = null;
+      if (!spaceId) {
+        const created = await createRealZoneSpaceRecord(unit);
+        if (!created) {
+          // eslint-disable-next-line no-console
+          console.warn(`[facilio-api] room ${unit.id} backing space create failed — zone not synced`);
+          continue;
+        }
+        spaceId = created.recordId;
+        zoneModuleId = created.zoneModuleId;
+      }
       nextZones.push({
         geoId: unit.id,
         geometry,
@@ -1169,16 +1178,9 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
         indoorfloorplan: { id: indoorFloorPlanId },
         label: unit.label,
         isReservable: unit.isReservable ?? true,
-        ...(existingSpaceId ? { recordId: existingSpaceId } : {}),
-        space: existingSpaceId
-          ? { id: existingSpaceId, reservable: unit.isReservable ?? true }
-          : {
-              name: unit.label,
-              ...(parentSiteId ? { site: { id: parentSiteId } } : {}),
-              ...(parentBuildingId ? { building: { id: parentBuildingId } } : {}),
-              floor: { id: parentFloorId ?? unit.floor },
-              reservable: unit.isReservable ?? true,
-            },
+        recordId: spaceId,
+        space: { id: spaceId, reservable: unit.isReservable ?? true },
+        ...(zoneModuleId ? { zoneModuleId } : {}),
       });
       continue;
     }
@@ -1191,7 +1193,13 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
       indoorfloorplan: { id: indoorFloorPlanId },
       label: unit.label,
       isReservable: unit.isReservable ?? match.isReservable,
-      space: match.space ? { ...match.space, reservable: unit.isReservable ?? match.space.reservable } : match.space,
+      // A zone entry must always carry its space id — a fetched entry that omits the nested
+      // space (projection variance) rebuilds it from recordId instead of sending nothing.
+      space: match.space
+        ? { ...match.space, reservable: unit.isReservable ?? match.space.reservable }
+        : match.recordId
+          ? { id: match.recordId, reservable: unit.isReservable ?? true }
+          : match.space,
     });
   }
   // Same preservation rule as markers: drop only our own (geoId-tagged) zones whose unit is gone;
