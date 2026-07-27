@@ -91,21 +91,12 @@ export function Tooltip() {
           Assign
         </Button>
       )}
+      {/* Assigned units: no hardcoded Vacate/Reassign here — state actions come from the
+          record's stateflow buttons in the details panel; opening it is the tooltip's job. */}
       {state.mode === 'assign' && assignable && !!contactId && (
-        <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
-          <Button variant="danger" style={{ flex: 1, justifyContent: 'center' }} onClick={() => actions.vacate(unit.id)}>
-            Vacate
-          </Button>
-          <Button
-            variant="primary"
-            style={{ flex: 1, justifyContent: 'center' }}
-            onClick={() => {
-              actions.setWebReassign(unit.id);
-            }}
-          >
-            Reassign
-          </Button>
-        </div>
+        <Button variant="primary" fullWidth style={{ marginTop: 10 }} onClick={() => actions.togglePanelOpen('details')}>
+          Manage
+        </Button>
       )}
       {state.mode === 'assign' && !assignable && (
         <div className={styles.note}>Booked in Booking mode, not assigned.</div>

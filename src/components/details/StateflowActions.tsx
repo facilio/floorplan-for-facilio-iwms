@@ -33,6 +33,7 @@ export function StateflowActions({
   showStatusRow = true,
   readOnly = false,
   onChanged,
+  onTransitionDone,
 }: {
   moduleName: string;
   recordId: number;
@@ -40,6 +41,8 @@ export function StateflowActions({
   showStatusRow?: boolean;
   readOnly?: boolean;
   onChanged?: () => void;
+  /** Called after a transition executes successfully, with the transition that ran — for callers that mirror specific transitions into app state (e.g. a desk Vacate clearing the assignee). */
+  onTransitionDone?: (t: TransitionOption) => void;
 }) {
   const { actions } = useFloorplan();
   const [flow, setFlow] = useState<FlowState | null>(null);
@@ -96,6 +99,7 @@ export function StateflowActions({
       else await executeApprovalTransition(moduleName, recordId, t.id, data);
       actions.showToast(`${t.name} done`);
       setNonce((n) => n + 1); // refetch own state
+      onTransitionDone?.(t);
       onChanged?.();
     } catch (err) {
       actions.showToast(`${t.name} failed: ${(err as Error).message || 'unknown error'}`);
@@ -143,6 +147,7 @@ export function StateflowActions({
  * StateflowActions for it.
  */
 export function UnitStateflowSection({ unit, readOnly }: { unit: Unit; readOnly?: boolean }) {
+  const { actions } = useFloorplan();
   const [ref, setRef] = useState<{ moduleName: string; recordId: number } | null>(null);
 
   useEffect(() => {
@@ -162,5 +167,18 @@ export function UnitStateflowSection({ unit, readOnly }: { unit: Unit; readOnly?
   }, [unit.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!ref) return null;
-  return <StateflowActions moduleName={ref.moduleName} recordId={ref.recordId} readOnly={readOnly} />;
+  return (
+    <StateflowActions
+      moduleName={ref.moduleName}
+      recordId={ref.recordId}
+      readOnly={readOnly}
+      // A vacate-ish transition must ALSO clear the record's assignee lookup (the transition only
+      // changes state) — clientcontact_moves: null on desks, employee: null on lockers/parking —
+      // and drop the local assignment so the overlay updates immediately. Reassignment keeps
+      // flowing through the assign path, which patches the NEW contact id the same way.
+      onTransitionDone={(t) => {
+        if (/vacat|unassign/i.test(t.name)) actions.stateflowVacated(unit.id);
+      }}
+    />
+  );
 }

@@ -5,6 +5,7 @@ import { unitStatus } from '../../lib/unitStatus';
 import { fmtTime } from '../../lib/geometry';
 import { resolveMarkerDef, TYPE_META } from '../../lib/types';
 import { useSheetDrag } from './useSheetDrag';
+import { UnitStateflowSection } from '../details/StateflowActions';
 import styles from './MobileUnitSheet.module.css';
 
 /** Cap the rendered rows — the RCU directory is 1,400+ people; search narrows. */
@@ -98,14 +99,9 @@ export function MobileUnitSheet() {
               <span className={styles.avatar}>{initials(contactName(state, contactId))}</span>
               <span className={styles.assignedName}>{contactName(state, contactId)}</span>
             </div>
-            <div className={styles.actionsRow}>
-              <button className={styles.vacateBtn} onClick={() => actions.vacate(unit.id)}>
-                Vacate
-              </button>
-              <button className={styles.reassignBtn} onClick={() => actions.setMobAssignEdit(true)}>
-                Reassign
-              </button>
-            </div>
+            {/* No hardcoded Vacate/Reassign — state actions come from the record's stateflow
+                buttons (below), matching the web panel. */}
+            <UnitStateflowSection unit={unit} />
           </>
         )}
 

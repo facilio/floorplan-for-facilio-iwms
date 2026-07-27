@@ -166,15 +166,10 @@ function AssignBody({ unitId }: { unitId: string }) {
           <span className={styles.avatar}>{initials(contactName(state, contactId))}</span>
           <span className={styles.assignedName}>{contactName(state, contactId)}</span>
         </div>
-        <div className={styles.actionsRow}>
-          {/* No hardcoded Vacate — vacating (like every other state action) comes from the
-              record's own stateflow buttons rendered below this card body (UnitStateflowSection),
-              so it only appears when the record's current state actually allows it. Reassign
-              stays: it's the person PICKER (data), not a state action. */}
-          <Button variant="primary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => actions.setWebReassign(unitId)}>
-            Reassign
-          </Button>
-        </div>
+        {/* No hardcoded Vacate/Reassign — state actions come exclusively from the record's own
+            stateflow buttons rendered below this card body (UnitStateflowSection), so only what
+            the record's current state actually allows is offered. Changing WHO holds the desk is
+            still possible by dragging a person from the list onto it. */}
       </div>
     );
   }

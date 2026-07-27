@@ -1673,6 +1673,27 @@ export async function assignUnitReal(unit: Unit, contactId: string): Promise<voi
 }
 
 /**
+ * Direct assignee-field patch, no Moves record — the companion to the STATEFLOW vacate/assign
+ * buttons (executing a transition changes state but not the lookup): desks carry the contact on
+ * `clientcontact_moves`, lockers/parking on `employee`. `contactId: null` clears it.
+ */
+export async function patchUnitContact(unit: Unit, contactId: string | null): Promise<void> {
+  if (!isFacilioApiConfigured) return;
+  const moduleName = REAL_SPACE_MODULE[unit.type];
+  if (!moduleName) return;
+  const ref = await ensureRealSpaceRecord(unit);
+  if (!ref) return;
+  const field = unit.type === 'workstation' ? 'clientcontact_moves' : 'employee';
+  const value = contactId != null && Number.isFinite(Number(contactId)) ? { id: Number(contactId) } : null;
+  const res = await facilioApi.updateRecord(moduleName, { id: ref.recordId, data: { [field]: value } });
+  if (res.error) {
+    // eslint-disable-next-line no-console
+    console.warn(`[facilio-api] ${field} patch failed for unit ${unit.id}`, res.error);
+  }
+  viewerDataCache.clear();
+}
+
+/**
  * Vacates a placed workstation/locker/parking-stall for real — for desks, a `moves` record with
  * only `from` set (confirmed live: clears the desk's assignee via `clientcontact_moves`); for
  * lockers/parking stalls, clears the `employee` field directly.

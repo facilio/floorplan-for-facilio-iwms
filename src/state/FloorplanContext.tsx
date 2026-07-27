@@ -8,7 +8,7 @@ import type { AmenityIcon, Assignments, Booking, ClientContact, MarkerDef, PlanI
 import type { CadGroup } from '../lib/cadAnalyze';
 import type { Asset } from '../lib/assets';
 import { isFacilioApiConfigured } from '../lib/facilioApi';
-import { assignUnitReal, createRealBooking, fetchFloorplanCustomization, fetchFloorplanImage, fetchMyDesk, findFloorParents, findUnitIdForDeskRecord, getAnyFloor, getFloorPlanSummary, saveFloorplanMarkers, vacateUnitReal } from '../lib/facilioApiDataSource';
+import { assignUnitReal, createRealBooking, fetchFloorplanCustomization, fetchFloorplanImage, fetchMyDesk, findFloorParents, findUnitIdForDeskRecord, getAnyFloor, getFloorPlanSummary, patchUnitContact, saveFloorplanMarkers, vacateUnitReal } from '../lib/facilioApiDataSource';
 import { listFloorplanFloorIds, loadFloorplanFile, persistFloorplanFile } from '../lib/floorplanFileStore';
 import { loadSettings, saveSettings, settingsFromState } from '../lib/settingsStore';
 import { pathForView, viewFromLocation } from '../lib/routes';
@@ -943,6 +943,26 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       }
       const prevName = prevContactId ? state.clientContacts.find((c) => c.id === prevContactId)?.name : null;
       if (target) showToast(`${target.label} vacated` + (prevName ? ` — ${prevName} unassigned` : ''));
+    },
+    /**
+     * Mirrors a STATEFLOW vacate transition into app + record state: the transition itself only
+     * changes the record's state, so the assignee lookup is cleared here explicitly
+     * (clientcontact_moves: null for desks / employee: null for lockers-parking, via
+     * patchUnitContact — no Moves record) and the local assignment is dropped so the overlay
+     * updates immediately.
+     */
+    stateflowVacated: (unitId: string) => {
+      const target = unitById(state, unitId);
+      const next = { ...state.assignments };
+      delete next[unitId];
+      dispatch({ type: 'VACATE', unitId, assignments: next });
+      void dataSource.vacateUnit(unitId).catch(() => {});
+      if (isFacilioApiConfigured && target) {
+        patchUnitContact(target, null).catch((err) => {
+          // eslint-disable-next-line no-console
+          console.warn('[facilio-api] assignee clear after stateflow vacate failed', err);
+        });
+      }
     },
     setWebReassign: (id: string | null) => {
       dispatch({ type: 'SET_WEB_REASSIGN', id });
