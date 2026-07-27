@@ -48,6 +48,7 @@ export function StateflowActions({
   const [flow, setFlow] = useState<FlowState | null>(null);
   const [approval, setApproval] = useState<FlowState | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [nonce, setNonce] = useState(0);
 
   useEffect(() => {
@@ -108,11 +109,15 @@ export function StateflowActions({
     }
   };
 
-  const variantFor = (name: string): 'primary' | 'danger' | 'secondary' => {
-    if (/approve/i.test(name)) return 'primary';
-    if (/reject|cancel/i.test(name)) return 'danger';
-    return 'secondary';
-  };
+  // One ordered action list (approval actions first, then state transitions). Display rule:
+  // 1st action = primary (blue), 2nd = secondary (white + outline), everything else collapses
+  // behind a "⋯" more-actions dropdown — matching the real client's button bar.
+  const allActions: { kind: 'state' | 'approval'; t: TransitionOption }[] = [
+    ...approvalTransitions.map((t) => ({ kind: 'approval' as const, t })),
+    ...stateTransitions.map((t) => ({ kind: 'state' as const, t })),
+  ];
+  const visible = allActions.slice(0, 2);
+  const overflow = allActions.slice(2);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '8px 0' }}>
@@ -123,18 +128,77 @@ export function StateflowActions({
           {approval?.currentStateName && <StatusPill label={`Approval · ${approval.currentStateName}`} bg="var(--warning-050)" fg="var(--warning-700)" />}
         </div>
       )}
-      {!readOnly && (approvalTransitions.length > 0 || stateTransitions.length > 0) && (
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {approvalTransitions.map((t) => (
-            <Button key={`a${t.id}`} variant={variantFor(t.name)} disabled={busyId !== null} onClick={() => run('approval', t)}>
-              {busyId === `approval:${t.id}` ? <ButtonSpinner /> : t.name}
+      {!readOnly && allActions.length > 0 && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', position: 'relative' }}>
+          {visible.map(({ kind, t }, i) => (
+            <Button key={`${kind}${t.id}`} variant={i === 0 ? 'primary' : 'secondary'} disabled={busyId !== null} onClick={() => run(kind, t)}>
+              {busyId === `${kind}:${t.id}` ? <ButtonSpinner /> : t.name}
             </Button>
           ))}
-          {stateTransitions.map((t) => (
-            <Button key={`s${t.id}`} variant={variantFor(t.name)} disabled={busyId !== null} onClick={() => run('state', t)}>
-              {busyId === `state:${t.id}` ? <ButtonSpinner /> : t.name}
-            </Button>
-          ))}
+          {overflow.length > 0 && (
+            <>
+              <Button
+                variant="secondary"
+                aria-label="More actions"
+                aria-expanded={menuOpen}
+                disabled={busyId !== null}
+                onClick={() => setMenuOpen((o) => !o)}
+                style={{ paddingLeft: 10, paddingRight: 10, fontWeight: 700, letterSpacing: 1 }}
+              >
+                ⋯
+              </Button>
+              {menuOpen && (
+                <>
+                  {/* click-away backdrop */}
+                  <div style={{ position: 'fixed', inset: 0, zIndex: 30 }} onClick={() => setMenuOpen(false)} />
+                  <div
+                    role="menu"
+                    style={{
+                      position: 'absolute',
+                      top: 'calc(100% + 4px)',
+                      right: 0,
+                      zIndex: 31,
+                      minWidth: 160,
+                      background: '#fff',
+                      border: '1px solid var(--ink-200)',
+                      borderRadius: 8,
+                      boxShadow: '0 8px 24px rgba(16,24,40,0.14)',
+                      padding: 4,
+                      display: 'flex',
+                      flexDirection: 'column',
+                    }}
+                  >
+                    {overflow.map(({ kind, t }) => (
+                      <button
+                        key={`${kind}${t.id}`}
+                        role="menuitem"
+                        type="button"
+                        disabled={busyId !== null}
+                        onClick={() => {
+                          setMenuOpen(false);
+                          void run(kind, t);
+                        }}
+                        style={{
+                          textAlign: 'left',
+                          padding: '8px 10px',
+                          borderRadius: 6,
+                          border: 'none',
+                          background: 'none',
+                          cursor: 'pointer',
+                          font: '500 13px/1.2 var(--font-sans)',
+                          color: 'var(--ink-800)',
+                        }}
+                        onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = 'var(--ink-050)')}
+                        onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = 'none')}
+                      >
+                        {t.name}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </>
+          )}
         </div>
       )}
     </div>
