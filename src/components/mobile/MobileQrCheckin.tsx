@@ -3,17 +3,17 @@ import { useFloorplan } from '../../state/FloorplanContext';
 import { contactName, floorMeta } from '../../state/selectors';
 import { fmtTime } from '../../lib/geometry';
 import { dataSource } from '../../lib/dataSource';
-import { isFacilioApiConfigured } from '../../lib/facilioApi';
-import { executeStateTransition, fetchAvailableStates } from '../../lib/stateflowApi';
+import { StateflowActions } from '../details/StateflowActions';
 import { TYPE_META } from '../../lib/types';
 import type { Booking, Unit } from '../../lib/types';
 
 /**
  * QR "Scan result" screen (Facilio DS flow "QR Check-in"): the QR identifies the space; this
- * resolves the space's bookings against it — Today / Upcoming tabs, a status chip per booking,
- * and a live Check in / Check out action only when the booking's window allows it. Check-in and
- * check-out execute the spacebooking record's own stateflow transition when the org exposes one
- * (name-matched); otherwise they're local-only with an info toast.
+ * resolves the space's bookings against it — Today / Upcoming tabs, a time-window status chip per
+ * booking, and the record's OWN stateflow + approval actions (StateflowActions) as the only
+ * action surface. STRICT rule: check-in/check-out/cancel/anything are never hardcoded here —
+ * exactly the transitions the record's current state allows are offered, and nothing is faked
+ * locally. Local-only bookings (non-numeric ids) have no backend record, so they get no actions.
  */
 
 const FONT = 'var(--font-sans)';
@@ -51,12 +51,13 @@ export function MobileQrCheckin({ unit, onClose }: { unit: Unit; onClose: () => 
   const meta = floorMeta(state, state.floorId);
   const [tab, setTab] = useState<'today' | 'upcoming'>('today');
   const [upcoming, setUpcoming] = useState<Booking[]>([]);
-  const [checked, setChecked] = useState<Record<string, 'in' | 'out'>>({});
-  const [busy, setBusy] = useState<string | null>(null);
+  const [refreshTick, setRefreshTick] = useState(0);
   const today = todayIso();
 
+  // REAL backend bookings only (numeric ids) — local-only rows have no record, no stateflow, and
+  // per the strict rule they don't appear here at all.
   const todayBookings = useMemo(
-    () => state.bookings.filter((b) => b.unitId === unit.id && b.date === today).sort((a, b) => a.start - b.start),
+    () => state.bookings.filter((b) => b.unitId === unit.id && b.date === today && /^\d+$/.test(b.id)).sort((a, b) => a.start - b.start),
     [state.bookings, unit.id, today]
   );
 
@@ -66,53 +67,21 @@ export function MobileQrCheckin({ unit, onClose }: { unit: Unit; onClose: () => 
     const days = Array.from({ length: 7 }, (_, i) => addDaysIso(today, i + 1));
     Promise.all(days.map((d) => dataSource.getBookings(state.floorId, d).catch(() => [] as Booking[]))).then((results) => {
       if (cancelled) return;
-      setUpcoming(results.flat().filter((b) => b.unitId === unit.id));
+      setUpcoming(results.flat().filter((b) => b.unitId === unit.id && /^\d+$/.test(b.id)));
     });
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [unit.id]);
+  }, [unit.id, refreshTick]);
 
+  /** Time-window status for the chip/note only — the record's REAL state comes from its stateflow pills. */
   function statusOf(b: Booking): Status {
-    const c = checked[b.id];
-    if (c === 'in') return 'checked-in';
-    if (c === 'out') return 'ended';
     if (b.date !== today) return 'upcoming';
     const now = nowMinutes();
     if (now < b.start - CHECKIN_EARLY_MIN) return 'early';
-    if (now >= b.end) return 'missed';
+    if (now >= b.end) return 'ended';
     return 'ready';
-  }
-
-  /** Executes the spacebooking stateflow transition whose name matches, when the record has one. */
-  async function runFlow(b: Booking, match: RegExp): Promise<boolean> {
-    if (!isFacilioApiConfigured || !/^\d+$/.test(b.id)) return false;
-    try {
-      const { transitions } = await fetchAvailableStates('spacebooking', Number(b.id));
-      const t = transitions.find((x) => match.test(x.name));
-      if (!t) return false;
-      await executeStateTransition('spacebooking', Number(b.id), t.id);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  async function checkIn(b: Booking) {
-    setBusy(b.id);
-    const real = await runFlow(b, /check.?in/i);
-    setChecked((c) => ({ ...c, [b.id]: 'in' }));
-    setBusy(null);
-    actions.showToast('Checked in', { variant: 'success', description: `${unit.label} is yours until ${fmtTime(b.end)}.${real ? '' : ' (recorded locally)'}` });
-  }
-
-  async function checkOut(b: Booking) {
-    setBusy(b.id);
-    await runFlow(b, /check.?out/i);
-    setChecked((c) => ({ ...c, [b.id]: 'out' }));
-    setBusy(null);
-    actions.showToast('Checked out', { variant: 'info', description: 'The space is back in the pool.' });
   }
 
   const list = tab === 'today' ? todayBookings : upcoming;
@@ -200,17 +169,12 @@ export function MobileQrCheckin({ unit, onClose }: { unit: Unit; onClose: () => 
           {list.map((b) => {
             const st = statusOf(b);
             const chip = CHIP[st];
-            const isBusy = busy === b.id;
             const note =
-              st === 'checked-in'
-                ? { text: `Checked in. Your booking runs to ${fmtTime(b.end)}.`, bg: 'var(--success-050)', fg: 'var(--success-700)' }
-                : st === 'early'
-                  ? { text: `Check-in opens at ${fmtTime(Math.max(0, b.start - CHECKIN_EARLY_MIN))}.`, bg: 'var(--ink-050)', fg: 'var(--ink-600)' }
-                  : st === 'missed'
-                    ? { text: 'This slot has ended.', bg: 'var(--danger-050)', fg: 'var(--danger-700)' }
-                    : st === 'ended'
-                      ? { text: 'Checked out. Released for others.', bg: 'var(--ink-050)', fg: 'var(--ink-600)' }
-                      : null;
+              st === 'early'
+                ? { text: `Check-in opens at ${fmtTime(Math.max(0, b.start - CHECKIN_EARLY_MIN))}.`, bg: 'var(--ink-050)', fg: 'var(--ink-600)' }
+                : st === 'ended'
+                  ? { text: 'This slot has ended.', bg: 'var(--ink-050)', fg: 'var(--ink-600)' }
+                  : null;
             return (
               <div key={b.id} style={{ background: '#fff', border: `1px solid ${chip.cardBorder}`, borderRadius: 8, boxShadow: 'var(--shadow-sm)', padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
@@ -232,24 +196,10 @@ export function MobileQrCheckin({ unit, onClose }: { unit: Unit; onClose: () => 
                     <span style={{ font: `400 12px/1.45 ${FONT}`, color: note.fg }}>{note.text}</span>
                   </div>
                 )}
-                {(st === 'ready' || st === 'early' || st === 'checked-in') && (
-                  <button
-                    disabled={st === 'early' || isBusy}
-                    onClick={() => (st === 'checked-in' ? checkOut(b) : checkIn(b))}
-                    style={{
-                      height: 40,
-                      borderRadius: 8,
-                      font: `600 13.5px ${FONT}`,
-                      cursor: st === 'early' ? 'default' : 'pointer',
-                      border: st === 'checked-in' ? '1px solid var(--ink-200)' : 'none',
-                      background: st === 'checked-in' ? '#fff' : st === 'early' ? 'var(--ink-100)' : 'var(--blue-500)',
-                      color: st === 'checked-in' ? 'var(--ink-800)' : st === 'early' ? 'var(--ink-400)' : '#fff',
-                      opacity: isBusy ? 0.6 : 1,
-                    }}
-                  >
-                    {isBusy ? '…' : st === 'checked-in' ? 'Check out' : 'Check in'}
-                  </button>
-                )}
+                {/* STRICT: the record's own stateflow + approval transitions are the ONLY actions —
+                    check-in/out/cancel appear exactly when the booking's current state offers
+                    them, with the record's real state + approval pills above the buttons. */}
+                <StateflowActions moduleName="spacebooking" recordId={Number(b.id)} onChanged={() => { setRefreshTick((t) => t + 1); actions.refreshBookings(); }} />
               </div>
             );
           })}
