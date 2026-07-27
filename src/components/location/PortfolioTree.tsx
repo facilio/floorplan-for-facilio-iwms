@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
 import styles from './PortfolioTree.module.css';
 
@@ -16,10 +17,20 @@ interface FlatNode {
 
 export function PortfolioTree() {
   const { state, actions } = useFloorplan();
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const q = query.trim().toLowerCase();
+  const matches = (name: string) => !q || name.toLowerCase().includes(q);
 
   const items: FlatNode[] = [];
   for (const site of state.portfolio) {
-    const siteExpanded = !!state.expanded[site.id];
+    // Searching: a node shows when IT matches or any LOADED descendant does, and matched
+    // branches render expanded so the hit is visible without extra clicks. (Children are
+    // lazy-loaded — un-expanded sites/buildings can only be searched by their own names.)
+    const siteMatch = matches(site.name);
+    const buildingHits = q ? site.buildings.filter((b) => matches(b.name) || b.floors.some((f) => matches(f.name))) : site.buildings;
+    if (q && !siteMatch && buildingHits.length === 0) continue;
+    const siteExpanded = q ? buildingHits.length > 0 || site.buildings.length > 0 : !!state.expanded[site.id];
     items.push({
       id: site.id,
       name: site.name,
@@ -33,8 +44,11 @@ export function PortfolioTree() {
       onClick: () => actions.toggleNode(site.id),
     });
     if (!siteExpanded) continue;
-    for (const building of site.buildings) {
-      const buildingExpanded = !!state.expanded[building.id];
+    for (const building of q && !siteMatch ? buildingHits : site.buildings) {
+      const buildingMatch = matches(building.name);
+      const floorHits = q ? building.floors.filter((f) => matches(f.name)) : building.floors;
+      if (q && !siteMatch && !buildingMatch && floorHits.length === 0) continue;
+      const buildingExpanded = q ? floorHits.length > 0 : !!state.expanded[building.id];
       items.push({
         id: building.id,
         name: building.name,
@@ -48,7 +62,7 @@ export function PortfolioTree() {
         onClick: () => actions.toggleNode(building.id),
       });
       if (!buildingExpanded) continue;
-      for (const floor of building.floors) {
+      for (const floor of q && !siteMatch && !buildingMatch ? floorHits : building.floors) {
         // A floor "has a plan" if the static portfolio flag says so OR an actual floorplan is
         // known for it (uploaded this session, or listed from the vibe-db file store at boot) —
         // without the OR, a freshly-uploaded floor kept reading "no plan" in this tree.
@@ -77,7 +91,50 @@ export function PortfolioTree() {
 
   return (
     <div className={styles.wrap}>
-      <div className={styles.label}>Choose a floor</div>
+      <div className={styles.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <span>Choose a floor</span>
+        {/* Search toggles open from the icon; closing clears the filter. */}
+        <button
+          type="button"
+          title={searchOpen ? 'Close search' : 'Search sites & buildings'}
+          aria-label={searchOpen ? 'Close search' : 'Search sites and buildings'}
+          onClick={() => {
+            setSearchOpen((o) => !o);
+            setQuery('');
+          }}
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22, border: 'none', background: 'none', color: 'var(--ink-500)', cursor: 'pointer', borderRadius: 5 }}
+        >
+          {searchOpen ? (
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+          ) : (
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
+          )}
+        </button>
+      </div>
+      {searchOpen && (
+        <input
+          autoFocus
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search sites, buildings, floors…"
+          style={{
+            margin: '0 8px 8px',
+            padding: '7px 10px',
+            border: '1px solid var(--ink-200)',
+            borderRadius: 7,
+            font: '400 12.5px var(--font-sans)',
+            color: 'var(--ink-900)',
+            outline: 'none',
+            width: 'calc(100% - 16px)',
+            boxSizing: 'border-box',
+          }}
+        />
+      )}
+      {q && items.length === 0 && (
+        <div style={{ padding: '10px 12px', font: '400 12px/1.5 var(--font-sans)', color: 'var(--ink-500)' }}>
+          Nothing matches “{query.trim()}”. Un-loaded buildings/floors are searched by name only after their site is expanded once.
+        </div>
+      )}
       <div className={styles.list}>
         {items.map((n) => (
           <div key={n.id} className={[styles.row, n.active ? styles.rowActive : ''].join(' ')} style={{ paddingLeft: n.pad }} onClick={n.onClick}>
