@@ -121,11 +121,12 @@ export function StateflowActions({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '8px 0' }}>
-      {/* Just the status pills — no "Status" label, no prefixes; the value speaks for itself. */}
+      {/* Just the pills, no "Status" label. The state pill shows its bare name; the approval one
+          keeps an "Approval - " prefix so e.g. "Pending" clearly reads as the approval state. */}
       {showStatusRow && (flow?.currentStateName || approval?.currentStateName) && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           {flow?.currentStateName && <StatusPill label={flow.currentStateName} bg="var(--blue-025)" fg="var(--blue-700)" />}
-          {approval?.currentStateName && <StatusPill label={approval.currentStateName} bg="var(--warning-050)" fg="var(--warning-700)" />}
+          {approval?.currentStateName && <StatusPill label={`Approval - ${approval.currentStateName}`} bg="var(--warning-050)" fg="var(--warning-700)" />}
         </div>
       )}
       {!readOnly && allActions.length > 0 && (
