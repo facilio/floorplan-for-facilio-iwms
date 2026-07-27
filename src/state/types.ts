@@ -130,7 +130,8 @@ export interface AppState {
    */
   allowLocalFallback: boolean;
 
-  toast: string | null;
+  /** Design-system toast stack (max 3, newest last) — see primitives/Toast. */
+  toasts: import('../components/primitives/Toast').ToastItem[];
 
   mobileTab: 'book' | 'assign';
   mobSel: string | null;

@@ -1,16 +1,96 @@
-.toast {
+/* Facilio DS "Feedback / Toast" — 400px card, semantic hairline + icon + drain timer. */
+.host {
   position: fixed;
-  left: 50%;
+  right: 24px;
   bottom: 24px;
-  transform: translateX(-50%);
-  background: var(--ink-900);
-  color: #fff;
-  border-radius: var(--radius-md);
-  padding: 10px 16px;
-  font: 500 13px/1 var(--font-sans);
-  box-shadow: var(--shadow-lg);
   z-index: 500;
-  animation: fp-toast var(--dur-base) var(--ease-standard);
-  max-width: calc(100vw - 32px);
-  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+  pointer-events: none;
 }
+
+.card {
+  width: 400px;
+  max-width: calc(100vw - 48px);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  gap: 10px;
+  padding: 12px 12px 12px 14px;
+  background: #fff;
+  border: 1px solid var(--ink-200);
+  border-left: 3px solid var(--ink-400);
+  border-radius: 8px;
+  box-shadow: var(--shadow-md);
+  box-sizing: border-box;
+  pointer-events: auto;
+  animation: fds-toast-in 220ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+@keyframes fds-toast-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+
+.icon {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+}
+
+.body { flex: 1; min-width: 0; }
+.title { font: 500 14px/1.35 var(--font-sans); color: var(--ink-900); }
+.desc { font: 400 12px/1.45 var(--font-sans); color: var(--ink-600); margin-top: 2px; }
+
+.close {
+  flex: none;
+  align-self: flex-start;
+  display: flex;
+  background: none;
+  border: none;
+  padding: 1px;
+  border-radius: 4px;
+  color: var(--ink-400);
+  cursor: pointer;
+}
+.close:hover { background: var(--ink-050); color: var(--ink-900); }
+
+.drain {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  transform-origin: left center;
+  animation-name: fds-toast-drain;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+.card:hover .drain { animation-play-state: paused; }
+
+@keyframes fds-toast-drain {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+
+/* Semantic colour: icon + left hairline + timer only — never a full fill (error excepted). */
+.success { border-color: #cdeccb; border-left-color: var(--success-500); }
+.success .icon { color: var(--success-600); }
+.success .drain { background: var(--success-500); }
+
+.warning { border-color: #f4e6b2; border-left-color: var(--warning-500); }
+.warning .icon { color: var(--warning-700); }
+.warning .drain { background: var(--warning-500); }
+
+.error { background: var(--danger-050); border-color: var(--danger-500); border-left-color: var(--danger-700); }
+.error .icon { background: var(--danger-600); color: #fff; }
+
+.info { border-color: var(--blue-100); border-left-color: var(--blue-500); }
+.info .icon { color: var(--blue-600); }
+.info .drain { background: var(--blue-500); }

@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useReducer, useRef } fro
 import type { Dispatch, MutableRefObject, ReactNode } from 'react';
 import { dataSource, clearLocalData, setAllowLocalFallback as dataSourceSetAllowLocalFallback } from '../lib/dataSource';
 import type { CreateSpaceLoc } from '../lib/dataSource';
+import type { ToastVariant } from '../components/primitives/Toast';
 import { seedBookings, seedUnits, seedAssignments } from '../lib/mockData';
 import { floorImageKey, resolveMarkerDef, TYPE_META } from '../lib/types';
 import type { AmenityIcon, Assignments, Booking, ClientContact, MarkerDef, PlanId, Role, Site, Unit, UnitType } from '../lib/types';
@@ -25,13 +26,27 @@ interface Ctx {
 
 const FloorplanCtx = createContext<Ctx | null>(null);
 
-let toastTimer: ReturnType<typeof setTimeout> | undefined;
+let toastSeq = 0;
+
+/**
+ * Variant inference for the design-system toast, so the ~50 existing plain-string call sites get
+ * sensible semantics without each being touched: failure wording -> error (persists until
+ * dismissed), caution wording -> warning, scheduling/info wording -> info, everything else is a
+ * success confirmation. Callers can always override via opts.
+ */
+function inferToastVariant(message: string): ToastVariant {
+  if (/couldn'?t|failed|error|not configured|no cancel/i.test(message)) return 'error';
+  if (/overlap|no bookings|pick a|is required|unavailable|anyway/i.test(message)) return 'warning';
+  if (/scheduled|opens|refreshes|already/i.test(message)) return 'info';
+  return 'success';
+}
 
 /** Module-level so it's reachable from the boot effect too, not just actions built in buildActions. */
-function showToastVia(dispatch: Dispatch<Action>, message: string) {
-  dispatch({ type: 'SHOW_TOAST', message });
-  if (toastTimer) clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => dispatch({ type: 'SHOW_TOAST', message: null }), 3200);
+function showToastVia(dispatch: Dispatch<Action>, message: string, opts?: { variant?: ToastVariant; description?: string }) {
+  dispatch({
+    type: 'SHOW_TOAST',
+    toast: { id: ++toastSeq, title: message, description: opts?.description, variant: opts?.variant ?? inferToastVariant(message) },
+  });
 }
 
 /**
@@ -226,7 +241,8 @@ function roomLabelAt(state: AppState, x: number, y: number): string | null {
 }
 
 function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef: MutableRefObject<DOMRect | null>) {
-  const showToast = (message: string) => showToastVia(dispatch, message);
+  const showToast = (message: string, opts?: { variant?: ToastVariant; description?: string }) => showToastVia(dispatch, message, opts);
+  const dismissToast = (id: number) => dispatch({ type: 'DISMISS_TOAST', id });
 
   /**
    * Fire-and-forget per-action persistence — every edit action calls this and moves on. Never
@@ -1229,6 +1245,7 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
     },
 
     showToast,
+    dismissToast,
 
     togglePanelOpen: (id: 'context' | 'portfolio' | 'details') => dispatch({ type: 'TOGGLE_PANEL_OPEN', id }),
     setPanelPos: (id: 'context' | 'portfolio' | 'details', x: number, y: number, width: number) => {

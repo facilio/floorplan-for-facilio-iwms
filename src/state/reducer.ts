@@ -115,7 +115,7 @@ export function buildInitialState(): AppState {
     slotGranularity: 30,
     allowLocalFallback: true,
 
-    toast: null,
+    toasts: [],
 
     mobileTab: 'book',
     mobSel: null,
@@ -208,7 +208,8 @@ export type Action =
   | { type: 'SET_SETTINGS_TAB'; tab: AppState['settingsTab'] }
   | { type: 'SET_MODULE_COLOR'; key: string; hex: string }
   | { type: 'SET_SLOT_GRANULARITY'; minutes: number }
-  | { type: 'SHOW_TOAST'; message: string | null }
+  | { type: 'SHOW_TOAST'; toast: import('../components/primitives/Toast').ToastItem }
+  | { type: 'DISMISS_TOAST'; id: number }
   | { type: 'TOGGLE_PANEL_OPEN'; id: 'context' | 'portfolio' | 'details' }
   | { type: 'SET_PANEL_OPEN'; id: 'context' | 'portfolio' | 'details'; open: boolean }
   | { type: 'SET_PANEL_POS'; id: 'context' | 'portfolio' | 'details'; x: number; y: number }
@@ -522,8 +523,13 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'SET_SLOT_GRANULARITY':
       return { ...state, slotGranularity: action.minutes, end: Math.min(1200, state.start + action.minutes) };
 
-    case 'SHOW_TOAST':
-      return { ...state, toast: action.message };
+    case 'SHOW_TOAST': {
+      // Cap the stack at 3 (design rule) — oldest drops first.
+      const next = [...state.toasts, action.toast];
+      return { ...state, toasts: next.slice(Math.max(0, next.length - 3)) };
+    }
+    case 'DISMISS_TOAST':
+      return { ...state, toasts: state.toasts.filter((t) => t.id !== action.id) };
 
     case 'TOGGLE_PANEL_OPEN':
       return { ...state, panels: { ...state.panels, [action.id]: { ...state.panels[action.id], open: !state.panels[action.id].open } } };

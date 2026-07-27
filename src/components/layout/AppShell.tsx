@@ -8,11 +8,11 @@ import { BookingsView } from '../bookings/BookingsView';
 import { PeopleView } from '../people/PeopleView';
 import { BookingModal } from '../details/BookingModal';
 import { MobileApp } from '../mobile/MobileApp';
-import { Toast } from '../primitives/Toast';
+import { ToastStack } from '../primitives/Toast';
 import styles from './AppShell.module.css';
 
 export function AppShell() {
-  const { state } = useFloorplan();
+  const { state, actions } = useFloorplan();
   const isMobileViewport = useMediaQuery('(max-width: 720px)');
   const stageRef = useRef<HTMLDivElement>(null);
 
@@ -29,7 +29,7 @@ export function AppShell() {
       <div className={styles.mobileRoot}>
         <MobileApp mode="page" />
         <BookingModal />
-        <Toast message={state.toast} />
+        <ToastStack toasts={state.toasts} onDismiss={actions.dismissToast} />
       </div>
     );
   }
@@ -47,7 +47,7 @@ export function AppShell() {
       )}
       <BottomNav />
       <BookingModal />
-      <Toast message={state.toast} />
+      <ToastStack toasts={state.toasts} onDismiss={actions.dismissToast} />
     </div>
   );
 }

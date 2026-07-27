@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
 import { isBookable } from '../../state/selectors';
 import type { Unit } from '../../lib/types';
+import { MobileQrCheckin } from './MobileQrCheckin';
 import styles from './MobileQrScanner.module.css';
 
 /**
@@ -47,6 +48,7 @@ export function MobileQrScanner({ onClose }: { onClose: () => void }) {
   const [cameraState, setCameraState] = useState<'starting' | 'live' | 'unavailable'>('starting');
   const [manualCode, setManualCode] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<Unit | null>(null);
   const doneRef = useRef(false);
 
   function handleCode(raw: string) {
@@ -58,15 +60,15 @@ export function MobileQrScanner({ onClose }: { onClose: () => void }) {
     }
     doneRef.current = true;
     if (isBookable(unit)) {
-      // The ask: scanning opens the booking form with the scanned space set.
-      actions.openBookingForm({ unitId: unit.id, date: state.date, start: state.start, end: state.end });
-      actions.showToast(`Space scanned — ${unit.label}`);
+      // Bookable space -> the design's "Scan result" check-in screen: today's/upcoming bookings
+      // for the scanned space with live check-in/out, and "book this space" from there.
+      setResult(unit);
     } else {
       // Not a bookable type (e.g. locker) — show its detail sheet instead.
       actions.setMobSel(unit.id);
       actions.showToast(`Space scanned — ${unit.label} isn't bookable; showing details`);
+      onClose();
     }
-    onClose();
   }
 
   useEffect(() => {
@@ -75,6 +77,9 @@ export function MobileQrScanner({ onClose }: { onClose: () => void }) {
     // bundled jsQR decoder on downscaled canvas frames — BarcodeDetector is
     // missing on iOS Safari, Firefox, and most desktop Chrome builds, which
     // previously forced those onto manual code entry.
+    // Keyed on `result`: once a scan resolves to the check-in screen, this re-runs, the previous
+    // run's cleanup releases the camera, and the early return keeps it off.
+    if (result) return;
     if (!navigator.mediaDevices?.getUserMedia) {
       setCameraState('unavailable');
       return;
@@ -139,7 +144,9 @@ export function MobileQrScanner({ onClose }: { onClose: () => void }) {
       stream?.getTracks().forEach((t) => t.stop());
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [result]);
+
+  if (result) return <MobileQrCheckin unit={result} onClose={onClose} />;
 
   return (
     <div className={styles.overlay}>
