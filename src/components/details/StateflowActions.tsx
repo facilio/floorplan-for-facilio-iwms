@@ -126,7 +126,7 @@ export function StateflowActions({
       {showStatusRow && (flow?.currentStateName || approval?.currentStateName) && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           {flow?.currentStateName && <StatusPill label={flow.currentStateName} bg="var(--blue-025)" fg="var(--blue-700)" />}
-          {approval?.currentStateName && <StatusPill label={`Approval - ${approval.currentStateName}`} bg="var(--warning-050)" fg="var(--warning-700)" />}
+          {approval?.currentStateName && <StatusPill label={`Approval · ${approval.currentStateName}`} bg="var(--warning-050)" fg="var(--warning-700)" />}
         </div>
       )}
       {!readOnly && allActions.length > 0 && (
