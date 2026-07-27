@@ -150,6 +150,8 @@ interface AnyDatabase {
 
 function collectGroups(database: unknown, toNorm: (pt: WorldPoint) => [number, number] | null): CadGroup[] {
   const byKey = new Map<string, CadGroup>();
+  /** Per-group centroid+area fingerprints, to drop double-drawn/duplicate outlines (CAD drawings routinely stack them) — those each became a stacked phantom "room". */
+  const polyFingerprints = new Map<string, { c: [number, number]; area: number }[]>();
 
   const push = (
     key: string,
@@ -223,11 +225,20 @@ function collectGroups(database: unknown, toNorm: (pt: WorldPoint) => [number, n
         pts.push(norm);
       }
       if (outside || pts.length < 3) continue;
-      // A polygon spanning nearly the whole frame is the building outline or
-      // the drawing border, not a mappable space — skip it.
+      // A polygon spanning nearly the whole frame is the building outline or the drawing
+      // border, not a mappable space — skip it. A SLIVER (hairline rectangles, wall outlines)
+      // isn't a space either: it renders as a collapsed phantom room whose label stacks on its
+      // neighbours'.
       const area = polygonArea(pts);
-      if (area > 0.85) continue;
-      push(`poly:${layer}`, { key: `poly:${layer}`, layer, kind: 'polyline', geometry: 'poly' }, { poly: pts, point: centroid(pts) });
+      if (area > 0.85 || area < 0.0005) continue;
+      // Duplicate outline of one already collected on this layer (drawings routinely stack a
+      // double-drawn border) -> one room, not two.
+      const c = centroid(pts);
+      const seen = polyFingerprints.get(`poly:${layer}`) ?? [];
+      if (seen.some((f) => Math.hypot(f.c[0] - c[0], f.c[1] - c[1]) < 0.004 && Math.abs(f.area - area) / Math.max(f.area, area) < 0.15)) continue;
+      seen.push({ c, area });
+      polyFingerprints.set(`poly:${layer}`, seen);
+      push(`poly:${layer}`, { key: `poly:${layer}`, layer, kind: 'polyline', geometry: 'poly' }, { poly: pts, point: c });
     }
   }
 

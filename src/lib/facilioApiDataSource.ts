@@ -438,29 +438,8 @@ function polygonRing(f: ViewerMarkerFeature): [number, number][] | null {
   return pts.length >= 3 ? pts : null;
 }
 
-/**
- * Builds the [lng,lat] -> 0-1 image-fraction converter for one plan, from ALL of its coordinates
- * (point markers + polygon-zone vertices) so markers and rooms share one consistent transform.
- *
- * viewerData's coordinates are NOT guaranteed to live in the same space as the plan's own stored
- * `geometry` quad: features this app itself wrote sit in that quad's synthetic lng/lat, but ones
- * placed through Facilio's native editor come back in a separate local system anchored near [0,0]
- * (confirmed from a live ASSIGNMENT capture — inverting the quad on those yields fractions in the
- * tens-of-thousands). So: try the quad inverse first, and only trust it when every point lands in a
- * sane band around [0,1]; otherwise fall back to normalizing the coordinate set against its own
- * bounding box (with padding), which keeps features in the right positions relative to each other
- * even with no shared georeference to the raster. Latitude increases "up", so the y axis is flipped
- * to the image convention (y=0 at top).
- */
-function fractionMapper(coords: [number, number][], quad: GeoQuad | null): (coords: [number, number]) => [number, number] {
-  if (quad && coords.length) {
-    const inRange = coords.every(([lng, lat]) => {
-      const [x, y] = lngLatToFraction(quad, lng, lat);
-      return x > -0.5 && x < 1.5 && y > -0.5 && y < 1.5;
-    });
-    if (inRange) return ([lng, lat]) => lngLatToFraction(quad, lng, lat);
-  }
-
+/** Bounding-box normalizer (with padding) over one coordinate set — y flipped to image convention. */
+function bboxMapper(coords: [number, number][]): (c: [number, number]) => [number, number] {
   if (!coords.length) return () => [0.5, 0.5];
   const xs = coords.map((p) => p[0]);
   const ys = coords.map((p) => p[1]);
@@ -470,6 +449,41 @@ function fractionMapper(coords: [number, number][], quad: GeoQuad | null): (coor
   const spanY = maxY - minY || 1;
   const PAD = 0.08;
   return ([lng, lat]) => [PAD + (1 - 2 * PAD) * ((lng - minX) / spanX), PAD + (1 - 2 * PAD) * ((maxY - lat) / spanY)];
+}
+
+/**
+ * Builds the [lng,lat] -> 0-1 image-fraction converter for one plan, from ALL of its coordinates
+ * (point markers + polygon-zone vertices) so markers and rooms share one consistent transform.
+ *
+ * viewerData's coordinates are NOT guaranteed to live in the same space as the plan's own stored
+ * `geometry` quad: features this app itself wrote sit in that quad's synthetic lng/lat, but ones
+ * placed through Facilio's native editor can come back in a separate local system (confirmed from
+ * a live capture — inverting the quad on those yields fractions in the tens-of-thousands).
+ *
+ * PER-POINT decision, not all-or-nothing: a coordinate that inverts into the sane band around
+ * [0,1] uses the quad (exact placement); only the OUTLIERS fall back to bounding-box
+ * normalization computed over the outliers alone. The old all-or-nothing rule meant ONE foreign
+ * marker dragged every correctly-georeferenced marker into the bbox fallback — the whole floor
+ * rendered misaligned in assign/book views. Latitude increases "up", so the y axis is flipped to
+ * the image convention (y=0 at top).
+ */
+function fractionMapper(coords: [number, number][], quad: GeoQuad | null): (coords: [number, number]) => [number, number] {
+  const inQuad = quad
+    ? (c: [number, number]) => {
+        const [x, y] = lngLatToFraction(quad, c[0], c[1]);
+        return x > -0.5 && x < 1.5 && y > -0.5 && y < 1.5;
+      }
+    : () => false;
+
+  if (quad && coords.length) {
+    const outliers = coords.filter((c) => !inQuad(c));
+    if (outliers.length === 0) return ([lng, lat]) => lngLatToFraction(quad, lng, lat);
+    if (outliers.length < coords.length) {
+      const fallback = bboxMapper(outliers);
+      return (c) => (inQuad(c) ? lngLatToFraction(quad, c[0], c[1]) : fallback(c));
+    }
+  }
+  return bboxMapper(coords);
 }
 
 /** viewerData tooltip title label, the fallback display name when a marker has no own `label`. */
