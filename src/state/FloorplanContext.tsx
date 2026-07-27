@@ -1009,23 +1009,6 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
     openBookModal: () => dispatch({ type: 'SET_BOOK_MODAL', open: true }),
     closeBookModal: () => dispatch({ type: 'SET_BOOK_MODAL', open: false }),
     setBookField: (field: 'bookBy' | 'bookPurpose' | 'bookNotes', value: string) => dispatch({ type: 'SET_BOOK_FIELD', field, value }),
-    confirmBooking: async (unitId: string) => {
-      const conflicts = conflictsFor(state.bookings, unitId, state.date, state.start, state.end);
-      if (state.end <= state.start || conflicts.length) return false;
-      const booking: Booking = {
-        id: 'b' + Date.now(),
-        unitId,
-        date: state.date,
-        start: state.start,
-        end: state.end,
-        by: state.bookBy,
-        purpose: state.bookPurpose,
-      };
-      const saved = await dataSource.createBooking(booking);
-      dispatch({ type: 'ADD_BOOKING', booking: saved });
-      showToast(`${unitById(state, unitId)?.label ?? 'Space'} booked`);
-      return true;
-    },
     cancelBooking: async (id: string) => {
       // Persist BEFORE dispatching: CANCEL_BOOKING bumps bookingsNonce, which refetches the
       // calendar — if the store still held the booking at that moment it would resurrect.
@@ -1138,67 +1121,24 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
         if (failureReason) {
           // eslint-disable-next-line no-console
           console.warn(`[facilio-api] real ${state.bookingModule} booking failed: ${failureReason}`);
-          if (!state.allowLocalFallback) {
-            // Local fallback is off — a local-only booking isn't acceptable data; roll it back and
-            // report the failure outright rather than a misleading "booked".
-            await dataSource.cancelBooking(saved.id).catch(() => {});
-            dispatch({ type: 'CANCEL_BOOKING', id: saved.id });
-            showToast(`Couldn't create the booking: ${failureReason}`);
-            return false;
-          }
-          showToast(`Saved locally, but the real booking failed: ${failureReason}`);
-          return true;
+          // A failed real booking is a FAILURE, full stop — regardless of the local-fallback
+          // toggle (that setting is about reading seed data, not accepting bookings that never
+          // reached the backend). Roll the local copy back and report the error; a "saved
+          // locally" success-ish path here previously read as booked while nothing was saved.
+          await dataSource.cancelBooking(saved.id).catch(() => {});
+          dispatch({ type: 'CANCEL_BOOKING', id: saved.id });
+          showToast(`Couldn't create the booking: ${failureReason}`, { variant: 'error' });
+          return false;
         }
       }
 
       showToast(`${unit.label} booked`);
       return true;
     },
-    /**
-     * Books a resource for an explicit date/time window — the calendar view drags out arbitrary
-     * windows on arbitrary days, which doesn't fit `confirmBooking`'s reliance on the shared
-     * `state.start/end/date`. Returns the saved booking (persisted via the data source, so it
-     * survives reload) or null on an invalid/conflicting window. Conflict-checking is the
-     * caller's job (the calendar holds the multi-day booking data; `state.bookings` is only the
-     * single selected date).
-     */
-    bookResource: async (input: { unitId: string; date: string; start: number; end: number; by: string; purpose?: string }): Promise<Booking | null> => {
-      if (input.end <= input.start) return null;
-      const booking: Booking = {
-        id: 'b' + Date.now(),
-        unitId: input.unitId,
-        floorId: state.floorId,
-        date: input.date,
-        start: input.start,
-        end: input.end,
-        by: input.by,
-        purpose: input.purpose ?? '',
-      };
-      const saved = await dataSource.createBooking(booking);
-      dispatch({ type: 'ADD_BOOKING', booking: saved });
-      showToast(`${unitById(state, input.unitId)?.label ?? 'Space'} booked`);
-      return saved;
-    },
-    quickMobileBook: async (unitId: string) => {
-      const u = unitById(state, unitId);
-      if (!u || u.type === 'locker') return;
-      if (state.end <= state.start) return;
-      if (conflictsFor(state.bookings, unitId, state.date, state.start, state.end).length) return;
-      const booking: Booking = {
-        id: 'b' + Date.now(),
-        unitId,
-        floorId: state.floorId,
-        date: state.date,
-        start: state.start,
-        end: state.end,
-        by: state.bookBy,
-        purpose: 'Booked from mobile',
-      };
-      const saved = await dataSource.createBooking(booking);
-      dispatch({ type: 'ADD_BOOKING', booking: saved });
-      dispatch({ type: 'SET_MOB_SEL', id: null });
-      showToast(`${u.label} booked · ${Math.floor(state.start / 60)}:${String(state.start % 60).padStart(2, '0')}`);
-    },
+    // NOTE: the old confirmBooking/bookResource/quickMobileBook actions are deliberately GONE —
+    // they wrote a local-only booking and toasted "booked" without ever touching the backend
+    // (success toast, nothing saved). Every booking flows through submitBooking (the org-form
+    // path), which awaits the real create and fails outright when it fails.
     setSchedView: (view: AppState['schedView']) => dispatch({ type: 'SET_SCHED_VIEW', view }),
 
     setRole: (role: Role) => {
