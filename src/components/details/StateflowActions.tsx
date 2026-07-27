@@ -121,14 +121,25 @@ export function StateflowActions({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '8px 0' }}>
-      {/* Just the pills, no "Status" label. The state pill shows its bare name; the approval one
-          keeps an "Approval - " prefix so e.g. "Pending" clearly reads as the approval state. */}
-      {showStatusRow && (flow?.currentStateName || approval?.currentStateName) && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          {flow?.currentStateName && <StatusPill label={flow.currentStateName} bg="var(--blue-025)" fg="var(--blue-700)" />}
-          {approval?.currentStateName && <StatusPill label={`Approval · ${approval.currentStateName}`} bg="var(--warning-050)" fg="var(--warning-700)" />}
-        </div>
-      )}
+      {/* Just the pills, no "Status" label. When the record's state name is itself approval-speak
+          ("Approval Pending") AND the approval flow has a status, the two pills said the same
+          thing twice — collapse to ONE amber approval pill; the blue state pill only shows when
+          it carries distinct information (e.g. "Occupied"). */}
+      {showStatusRow &&
+        (() => {
+          const stateName = flow?.currentStateName ?? null;
+          const approvalName = approval?.currentStateName ?? null;
+          const stateIsApprovalSpeak = !!stateName && /approval|pending|requested|waiting/i.test(stateName);
+          const approvalLabel = approvalName ? (/pending|requested|waiting/i.test(approvalName) ? 'Approval pending' : `Approval · ${approvalName}`) : null;
+          const showState = !!stateName && !(stateIsApprovalSpeak && approvalLabel);
+          if (!showState && !approvalLabel) return null;
+          return (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              {showState && <StatusPill label={stateName!} bg="var(--blue-025)" fg="var(--blue-700)" />}
+              {approvalLabel && <StatusPill label={approvalLabel} bg="var(--warning-050)" fg="var(--warning-700)" />}
+            </div>
+          );
+        })()}
       {!readOnly && allActions.length > 0 && (
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', position: 'relative' }}>
           {visible.map(({ kind, t }, i) => (
