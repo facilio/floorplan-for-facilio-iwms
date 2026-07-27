@@ -918,15 +918,17 @@ async function fetchIndoorFloorPlanRecord(indoorFloorPlanId: number): Promise<an
 }
 
 /**
- * `unit.type` -> the real org's auto-provisioned "Static" markertype name for it — confirmed live
- * for workstation only (`v3/floorplan/viewerData`'s marker features: `markerType: {name: "desk",
- * isAutoCreate: true, recordModuleId: <desks module id>, type: 1 (Static)}`). Locker/parking
- * stall's equivalent auto-markertype names aren't confirmed, so they're left unset — omitting
- * `markerType` only affects how FACILIO'S OWN native UI icons a marker; this app's own rendering
- * doesn't read it.
+ * `unit.type` -> candidate names for the real org's auto-provisioned "Static" markertype, tried
+ * in order against the org's actual markertype list. `desk` is confirmed live
+ * (`v3/floorplan/viewerData`'s marker features: `markerType: {name: "desk", isAutoCreate: true,
+ * recordModuleId: <desks module id>, type: 1 (Static)}`); locker/parking follow the same
+ * per-module naming pattern with spelling variants covered — the resolver only ever uses a name
+ * that actually exists in the org, so a miss just leaves markerType unset instead of guessing.
  */
-const AUTO_MARKER_TYPE_NAME: Partial<Record<Unit['type'], string>> = {
-  workstation: 'desk',
+const AUTO_MARKER_TYPE_NAMES: Partial<Record<Unit['type'], string[]>> = {
+  workstation: ['desk'],
+  locker: ['locker', 'lockers'],
+  parking: ['parking stall', 'parkingstall', 'parking'],
 };
 
 /** Real org's `markertype` records, name (lowercased) -> numeric id. Session-lifetime cache — this list doesn't change during a session. */
@@ -952,6 +954,15 @@ async function markerTypeIdByName(name: string): Promise<number | null> {
   }
   const map = await markerTypeIdByNameCache;
   return map.get(name.toLowerCase()) ?? null;
+}
+
+/** The unit type's auto markertype id, resolved against the org's real markertype list (first candidate name that exists wins). */
+async function autoMarkerTypeIdFor(type: Unit['type']): Promise<number | null> {
+  for (const name of AUTO_MARKER_TYPE_NAMES[type] ?? []) {
+    const id = await markerTypeIdByName(name);
+    if (id) return id;
+  }
+  return null;
 }
 
 async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: Unit[]): Promise<void> {
@@ -1013,9 +1024,9 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
     // EVERY marker — desk and non-desk alike. Preserve an existing entry's string on the
     // round-trip; brand-new entries get "{}" to match.
     const properties = match?.properties ?? '{}';
-    // A brand-new entry's markerType — only resolvable for workstation right now (see
-    // AUTO_MARKER_TYPE_NAME); an existing match's own markerType (spread below) is never
-    // overridden by this.
+    // A brand-new entry's markerType, resolved per type against the org's real markertype list
+    // (see AUTO_MARKER_TYPE_NAMES — desks/lockers/parking); an existing match's own markerType
+    // (spread below) is never overridden by this.
     let newMarkerType: { id: number } | undefined;
     // Brand-new desk/locker/parking: nest the FULL backing record inside the marker object under
     // its module's own singular field name (`desk`/`locker`/`parkingStall` — see
@@ -1029,8 +1040,7 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
     let newRecord: Record<string, unknown> | undefined;
     const recordKey = MARKER_RECORD_KEY[unit.type];
     if (!match) {
-      const autoName = AUTO_MARKER_TYPE_NAME[unit.type];
-      const id = autoName ? await markerTypeIdByName(autoName) : null;
+      const id = await autoMarkerTypeIdFor(unit.type);
       if (id) newMarkerType = { id };
       if (recordKey) {
         newRecord = {
@@ -1272,8 +1282,7 @@ async function ensureRealSpaceRecord(unit: Unit): Promise<RealSpaceRef | null> {
       return null;
     }
     const [lng, lat] = quadToLngLat(quad, unit.geom.x, unit.geom.y);
-    const autoName = AUTO_MARKER_TYPE_NAME[unit.type];
-    const markerTypeId = autoName ? await markerTypeIdByName(autoName) : null;
+    const markerTypeId = await autoMarkerTypeIdFor(unit.type);
     marker = {
       geoId: unit.id,
       geometry: JSON.stringify({ type: 'Point', coordinates: [lng, lat] }),
