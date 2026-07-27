@@ -1069,13 +1069,17 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
     // the confirmed field-sync write).
     let newRecord: Record<string, unknown> | undefined;
     const recordKey = MARKER_RECORD_KEY[unit.type];
+    // A unit whose id IS a real backend record id (numeric — auto-map name match, placement
+    // dialog, unplaced-list drag) getting its FIRST marker must LINK that record, never nest a
+    // create — nesting minted a duplicate desk/space whose id no longer matched the placed unit.
+    const existingRecordId = !match && /^\d+$/.test(unit.id) ? Number(unit.id) : null;
     if (!match) {
       const id = await autoMarkerTypeIdFor(unit.type);
       if (id) newMarkerType = { id };
       // Auto-mapped units (markerOnly) sync as bare markers — no nested record, so bulk CAD
       // mapping never mass-creates desk/locker/parkingstall records; those are minted lazily on
       // first actual use instead (ensureRealSpaceRecord).
-      if (recordKey && !unit.markerOnly) {
+      if (recordKey && !unit.markerOnly && !existingRecordId) {
         newRecord = {
           name: unit.label,
           ...(parentSiteId ? { site: { id: parentSiteId } } : {}),
@@ -1109,6 +1113,9 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
       ...(newMarkerType ? { markerType: newMarkerType } : {}),
       ...(newRecord && recordKey ? { [recordKey]: newRecord } : {}),
       ...(matchedRecordPatch && recordKey ? { [recordKey]: matchedRecordPatch } : {}),
+      // Existing-record link (see existingRecordId above): reference by id, exactly like
+      // ensureRealSpaceRecord's confirmed marker shape.
+      ...(existingRecordId ? { recordId: existingRecordId, ...(recordKey ? { [recordKey]: { id: existingRecordId } } : {}) } : {}),
       ...(newModuleId ? { markerModuleId: newModuleId } : {}),
       geoId: unit.id,
       geometry,
@@ -1146,6 +1153,10 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
     const geometry = JSON.stringify({ type: 'Polygon', coordinates: [ring] });
 
     if (!match) {
+      // A room whose unit id IS a real space record id (numeric — an existing org room getting
+      // its first outline) must LINK that record; nesting a create here minted a DUPLICATE space
+      // whose id no longer matched the placed unit ("space id mismatched on save").
+      const existingSpaceId = /^\d+$/.test(unit.id) ? Number(unit.id) : null;
       // Brand-new room — nest the FULL backing `space` record in the zone entry, same inline-
       // creation pattern as a brand-new desk's marker above: the backend creates the space
       // record together with the zone (and fills recordId/zoneModuleId itself), replacing the
@@ -1158,13 +1169,16 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
         indoorfloorplan: { id: indoorFloorPlanId },
         label: unit.label,
         isReservable: unit.isReservable ?? true,
-        space: {
-          name: unit.label,
-          ...(parentSiteId ? { site: { id: parentSiteId } } : {}),
-          ...(parentBuildingId ? { building: { id: parentBuildingId } } : {}),
-          floor: { id: parentFloorId ?? unit.floor },
-          reservable: unit.isReservable ?? true,
-        },
+        ...(existingSpaceId ? { recordId: existingSpaceId } : {}),
+        space: existingSpaceId
+          ? { id: existingSpaceId, reservable: unit.isReservable ?? true }
+          : {
+              name: unit.label,
+              ...(parentSiteId ? { site: { id: parentSiteId } } : {}),
+              ...(parentBuildingId ? { building: { id: parentBuildingId } } : {}),
+              floor: { id: parentFloorId ?? unit.floor },
+              reservable: unit.isReservable ?? true,
+            },
       });
       continue;
     }
