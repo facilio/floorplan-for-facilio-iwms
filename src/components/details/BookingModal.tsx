@@ -412,15 +412,10 @@ function BookingFormInner() {
       <ModalHeader
         title={isFacility ? 'Booking' : 'Space Booking'}
         subtitle={
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ padding: '3px 10px', borderRadius: 6, background: 'var(--ink-050)', border: '1px solid var(--ink-200)', fontSize: 12, color: 'var(--ink-700)' }}>
-              {formMeta ? formMeta.displayName : fallbackFormName}
-            </span>
-            {formMeta && (
-              <span title={`Org form ${formMeta.name}`} style={{ fontSize: 11, color: 'var(--ink-400)' }}>
-                form #{formMeta.id}
-              </span>
-            )}
+          // The form NAME identifies what the user is filling; the raw formId is an internal
+          // detail (it still travels on the create payload) and is deliberately not shown.
+          <span style={{ padding: '3px 10px', borderRadius: 6, background: 'var(--ink-050)', border: '1px solid var(--ink-200)', fontSize: 12, color: 'var(--ink-700)' }}>
+            {formMeta ? formMeta.displayName : fallbackFormName}
           </span>
         }
         onClose={actions.closeBookingForm}

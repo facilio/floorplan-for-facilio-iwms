@@ -128,14 +128,19 @@ function ScheduleList({ unitId }: { unitId: string }) {
               {b.purpose && <div className={styles.listPurpose}>{b.purpose}</div>}
               {b.approvalPending && <StatusPill label={b.approvalStatusName ?? 'Pending approval'} bg="var(--warning-050)" fg="var(--warning-700)" />}
             </div>
-            <button className={styles.cancelLink} onClick={() => actions.cancelBooking(b.id)}>
-              Cancel
-            </button>
+            {/* Local-only bookings keep the plain cancel (no backend record, nothing to
+                transition). Real bookings get NO hardcoded button — their Cancel (and any other
+                action) comes from the stateflow buttons below, so what's offered always matches
+                what the record's current state actually allows. */}
+            {!/^\d+$/.test(b.id) && (
+              <button className={styles.cancelLink} onClick={() => actions.cancelBooking(b.id)}>
+                Cancel
+              </button>
+            )}
           </div>
-          {/* Pending real bookings get the approval actions inline (Approve/Reject fire the
-              approval transition API). Gated on pending + a real backend id, so this never
-              fans out a request per ordinary booking row. */}
-          {b.approvalPending && /^\d+$/.test(b.id) && (
+          {/* Real bookings: available state transitions (Cancel, etc.) + approval actions come
+              from the record's own stateflow — nothing is shown that the backend wouldn't allow. */}
+          {/^\d+$/.test(b.id) && (
             <StateflowActions moduleName="spacebooking" recordId={Number(b.id)} showStatusRow={false} onChanged={() => actions.refreshBookings()} />
           )}
         </div>

@@ -167,9 +167,10 @@ function AssignBody({ unitId }: { unitId: string }) {
           <span className={styles.assignedName}>{contactName(state, contactId)}</span>
         </div>
         <div className={styles.actionsRow}>
-          <Button variant="danger" style={{ flex: 1, justifyContent: 'center' }} onClick={() => actions.vacate(unitId)}>
-            Vacate
-          </Button>
+          {/* No hardcoded Vacate — vacating (like every other state action) comes from the
+              record's own stateflow buttons rendered below this card body (UnitStateflowSection),
+              so it only appears when the record's current state actually allows it. Reassign
+              stays: it's the person PICKER (data), not a state action. */}
           <Button variant="primary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => actions.setWebReassign(unitId)}>
             Reassign
           </Button>

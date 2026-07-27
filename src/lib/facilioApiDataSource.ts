@@ -230,26 +230,19 @@ export class FacilioApiDataSource implements FloorplanDataSource {
   }
   /**
    * Real cancel for backend bookings (numeric ids); locally-minted ids ("b...") fall through to
-   * the local tier. Stateflow-aware: when the spacebooking module has a Cancel transition, use it
-   * (the record stays visible as Cancelled in the real client, with its state history) — only a
-   * module with no such transition falls back to the hard delete.
+   * the local tier. Transition-ONLY: cancelling runs the record's stateflow Cancel transition
+   * (the record stays visible as Cancelled in the real client, with its state history). Records
+   * are NEVER hard-deleted — a booking whose current state offers no Cancel transition simply
+   * can't be cancelled from here (the stateflow buttons are the source of truth for what's
+   * allowed).
    */
   async cancelBooking(id: string): Promise<void> {
     this.assertConfigured();
     if (!/^\d+$/.test(id)) throw new Error('facilio-api: not a backend booking id');
-    try {
-      const { transitions } = await fetchAvailableStates('spacebooking', Number(id));
-      const cancel = findCancelTransition(transitions);
-      if (cancel) {
-        await executeStateTransition('spacebooking', Number(id), cancel.id);
-        return;
-      }
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn('[facilio-api] cancel-transition lookup failed — falling back to delete', err);
-    }
-    const res = await facilioApi.deleteRecord('spacebooking', Number(id));
-    if (res.error) throw new Error(`facilio-api: spacebooking delete failed (${res.error.code ?? '?'} ${res.error.message ?? ''})`.trim());
+    const { transitions } = await fetchAvailableStates('spacebooking', Number(id));
+    const cancel = findCancelTransition(transitions);
+    if (!cancel) throw new Error('facilio-api: this booking has no Cancel transition in its current state');
+    await executeStateTransition('spacebooking', Number(id), cancel.id);
   }
 }
 
@@ -1661,6 +1654,13 @@ export async function assignUnitReal(unit: Unit, contactId: string): Promise<voi
       // eslint-disable-next-line no-console
       console.warn(`[facilio-api] assign move failed for unit ${unit.id}`, res.error);
     }
+    // The move alone wasn't reflecting on the desk's own clientcontact_moves lookup — patch the
+    // desk record directly (interim, until the backend Moves execution updates it itself).
+    const patch = await facilioApi.updateRecord(moduleName, { id: ref.recordId, data: { clientcontact_moves: { id } } });
+    if (patch.error) {
+      // eslint-disable-next-line no-console
+      console.warn(`[facilio-api] desk clientcontact_moves patch failed for unit ${unit.id}`, patch.error);
+    }
   } else {
     const res = await facilioApi.updateRecord(moduleName, { id: ref.recordId, data: { employee: { id } } });
     if (res.error) {
@@ -1701,6 +1701,12 @@ export async function vacateUnitReal(unit: Unit, contactId: string): Promise<voi
     if (res.error) {
       // eslint-disable-next-line no-console
       console.warn(`[facilio-api] vacate move failed for unit ${unit.id}`, res.error);
+    }
+    // Mirror of the assign-side patch: clear the desk's own clientcontact_moves lookup directly.
+    const patch = await facilioApi.updateRecord(moduleName, { id: ref.recordId, data: { clientcontact_moves: null } });
+    if (patch.error) {
+      // eslint-disable-next-line no-console
+      console.warn(`[facilio-api] desk clientcontact_moves clear failed for unit ${unit.id}`, patch.error);
     }
   } else {
     const res = await facilioApi.updateRecord(moduleName, { id: ref.recordId, data: { employee: null } });
