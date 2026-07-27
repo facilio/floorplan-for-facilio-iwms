@@ -521,6 +521,10 @@ function markerFeatureToUnit(
     geom: { kind: 'point', x, y },
     floor: floorId,
     plan: planId,
+    // No backing record: the id above is an OBJECT id (a small per-plan counter), NOT a module
+    // record id — flag it so the save sync never links/creates a record from it (linking one
+    // caused real FK violations: objectId 109 sent as a desks/space id).
+    ...(recordId == null ? { markerOnly: true } : {}),
   };
   if (type === 'workstation' && DESK_TYPE_BY_NUM[p.deskType]) unit.deskType = DESK_TYPE_BY_NUM[p.deskType];
   return unit;
@@ -562,6 +566,9 @@ function zoneFeatureToUnit(
     floor: floorId,
     plan: planId,
     ...(typeof reservable === 'boolean' ? { isReservable: reservable } : {}),
+    // Same objectId guard as markers — an id that isn't a real space record id must never be
+    // linked as one on save (FloorPlan_MarkedZones.SPACE_ID is FK-constrained to BaseSpace).
+    ...(recordId == null ? { markerOnly: true } : {}),
   };
 }
 
@@ -1072,7 +1079,9 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
     // A unit whose id IS a real backend record id (numeric — auto-map name match, placement
     // dialog, unplaced-list drag) getting its FIRST marker must LINK that record, never nest a
     // create — nesting minted a duplicate desk/space whose id no longer matched the placed unit.
-    const existingRecordId = !match && /^\d+$/.test(unit.id) ? Number(unit.id) : null;
+    // markerOnly units are excluded: their numeric ids are viewerData OBJECT ids, not record ids
+    // (linking one throws an FK violation server-side).
+    const existingRecordId = !match && !unit.markerOnly && /^\d+$/.test(unit.id) ? Number(unit.id) : null;
     if (!match) {
       const id = await autoMarkerTypeIdFor(unit.type);
       if (id) newMarkerType = { id };
@@ -1157,8 +1166,10 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
       // its first outline) LINKS that record; a genuinely new room gets its `space` record
       // created FIRST (createRealZoneSpaceRecord — the confirmed flow) and referenced by id.
       // Inline-nesting a space WITHOUT an id (the desk-marker analogy) is NOT accepted for
-      // markedZones — the server errors on the missing space id.
-      let spaceId = /^\d+$/.test(unit.id) ? Number(unit.id) : null;
+      // markedZones — the server errors on the missing space id. markerOnly rooms are excluded
+      // from linking: their numeric ids are viewerData OBJECT ids, not BaseSpace ids — linking
+      // one violated FloorPlan_MarkedZones' SPACE_ID foreign key.
+      let spaceId = !unit.markerOnly && /^\d+$/.test(unit.id) ? Number(unit.id) : null;
       let zoneModuleId: number | null = null;
       if (!spaceId) {
         const created = await createRealZoneSpaceRecord(unit);
