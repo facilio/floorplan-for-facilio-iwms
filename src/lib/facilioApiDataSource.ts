@@ -696,7 +696,23 @@ export async function fetchFloorplanImage(floorId: string, planId: PlanId): Prom
   const preview = await fetchFilePreview(fileId, { original: true });
   if (preview.dataUrl) return preview.dataUrl;
   if (!preview.blob) return null;
+  // A CAD source plan keeps its ORIGINAL file bytes around (session cache) so Edit mode can offer
+  // "Auto-map CAD units" on every visit — not only right after an upload. Analysis stays lazy
+  // (running the CAD viewer is expensive); this only remembers the file.
+  const type = (preview.contentType || '').toLowerCase() || (await sniffCadOrPdfType(preview.blob));
+  if (type.includes('dwg') || type.includes('dxf')) {
+    const name = `floorplan.${type.includes('dxf') ? 'dxf' : 'dwg'}`;
+    cadSourceFileCache.set(`${floorId}:${planId}`, new File([preview.blob], name, { type }));
+  }
   return blobToRenderableDataUrl(preview.blob, preview.contentType);
+}
+
+/** Session cache of CAD source files per floor+plan — see fetchFloorplanImage. */
+const cadSourceFileCache = new Map<string, File>();
+
+/** The floor+plan's original CAD file when its real plan is a DWG/DXF (fetched this session), else null. */
+export function getCachedCadFile(floorId: string, planId: PlanId): File | null {
+  return cadSourceFileCache.get(`${floorId}:${planId}`) ?? null;
 }
 
 /**

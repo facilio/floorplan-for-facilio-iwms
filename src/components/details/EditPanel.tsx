@@ -11,7 +11,7 @@ import { ButtonSpinner } from '../primitives/ButtonSpinner';
 import { Picklist } from '../fds/Picklist';
 import { Select } from '../primitives/Select';
 import { isFacilioApiConfigured } from '../../lib/facilioApi';
-import { createMarkerType, fetchMarkerIconUrl, getAllModules, getCustomMarkerTypes, uploadMarkerIcon } from '../../lib/facilioApiDataSource';
+import { createMarkerType, fetchMarkerIconUrl, getAllModules, getCachedCadFile, getCustomMarkerTypes, uploadMarkerIcon } from '../../lib/facilioApiDataSource';
 import { UnitStateflowSection } from './StateflowActions';
 import card from './Card.module.css';
 import styles from './EditPanel.module.css';
@@ -153,6 +153,30 @@ function ToolsTab() {
   ];
 
   const cadGroups = state.cadAnalyses[floorImageKey(state.floorId, state.planId)];
+  // The plan's original CAD file (cached at image-fetch time) — auto-map is offered on EVERY
+  // visit to a DWG/DXF floor, not only right after an upload; analysis runs lazily on click.
+  const cadFile = getCachedCadFile(state.floorId, state.planId);
+  const [cadAnalyzing, setCadAnalyzing] = useState(false);
+
+  async function openCadAutoMap() {
+    if (cadGroups?.length) {
+      actions.openAutoMap(cadGroups);
+      return;
+    }
+    if (!cadFile) return;
+    setCadAnalyzing(true);
+    try {
+      const { analyzeCadFile } = await import('../../lib/cadAnalyze');
+      const analysis = await analyzeCadFile(cadFile);
+      actions.storeCadAnalysis(state.floorId, state.planId, analysis.groups);
+      if (analysis.groups.length) actions.openAutoMap(analysis.groups);
+      else actions.showToast('No mappable blocks/layers found in this CAD file', { variant: 'warning' });
+    } catch (err) {
+      actions.showToast(`CAD analysis failed: ${(err as Error).message || 'unknown error'}`, { variant: 'error' });
+    } finally {
+      setCadAnalyzing(false);
+    }
+  }
 
   return (
     <div className={card.card}>
@@ -233,13 +257,13 @@ function ToolsTab() {
           <Button variant="secondary" fullWidth onClick={() => actions.setUploadOpen(true)}>
             Upload / replace floorplan image
           </Button>
-          {!!cadGroups?.length && (
+          {(!!cadGroups?.length || !!cadFile) && (
             <div style={{ marginTop: 8 }}>
-              <Button variant="secondary" fullWidth onClick={() => actions.openAutoMap(cadGroups)}>
-                Auto-map CAD units
+              <Button variant="secondary" fullWidth disabled={cadAnalyzing} onClick={() => void openCadAutoMap()}>
+                {cadAnalyzing ? 'Analyzing CAD file…' : 'Auto-map CAD units'}
               </Button>
               <p className={card.helper} style={{ marginTop: 6 }}>
-                Re-runs the layer/block mapping from the uploaded CAD file. Mapping again adds new units — discard or delete the earlier batch
+                Re-runs the layer/block mapping from the plan's CAD file. Mapping again adds new units — discard or delete the earlier batch
                 first if you don't want duplicates.
               </p>
             </div>
