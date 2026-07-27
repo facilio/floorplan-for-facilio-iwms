@@ -829,6 +829,9 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
                 geom: { kind: 'point', x, y },
                 floor: state.floorId,
                 plan: state.planId,
+                // Bulk auto-mapping creates MARKERS ONLY — no desk/locker/parkingstall record is
+                // nested on save; the real record is minted lazily on first actual use.
+                markerOnly: true,
               });
             }
           }

@@ -1042,13 +1042,19 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
     if (!match) {
       const id = await autoMarkerTypeIdFor(unit.type);
       if (id) newMarkerType = { id };
-      if (recordKey) {
+      // Auto-mapped units (markerOnly) sync as bare markers — no nested record, so bulk CAD
+      // mapping never mass-creates desk/locker/parkingstall records; those are minted lazily on
+      // first actual use instead (ensureRealSpaceRecord).
+      if (recordKey && !unit.markerOnly) {
         newRecord = {
           name: unit.label,
           ...(parentSiteId ? { site: { id: parentSiteId } } : {}),
           ...(parentBuildingId ? { building: { id: parentBuildingId } } : {}),
           floor: { id: parentFloorId ?? unit.floor },
           ...(unit.type === 'workstation' ? { deskType: DESK_TYPE_NUM[unit.deskType ?? 'ASSIGNED'] } : {}),
+          // parkingMode is MANDATORY on parkingstall creation — 1 = Permanent (confirmed from a
+          // live edit payload; the create form rejects records without it).
+          ...(unit.type === 'parking' ? { parkingMode: 1 } : {}),
           ...(unit.secondary ? { secondary: unit.secondary } : {}),
         };
       }
@@ -1317,6 +1323,8 @@ async function ensureRealSpaceRecord(unit: Unit): Promise<RealSpaceRef | null> {
       floor: { id: unit.floor },
       // Same integer enum as the marker-nested create path (ASSIGNED=1/HOT=2/HOTEL=3).
       ...(unit.type === 'workstation' ? { deskType: DESK_TYPE_NUM[unit.deskType ?? 'ASSIGNED'] } : {}),
+      // parkingMode is MANDATORY on parkingstall creation — 1 = Permanent.
+      ...(unit.type === 'parking' ? { parkingMode: 1 } : {}),
     },
   });
   if (createRes.error || !createRes[moduleName]?.id) return null;

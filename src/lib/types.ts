@@ -137,6 +137,12 @@ export interface Unit {
   unplaced?: boolean;
   /** Workstations only — see DeskType. Undefined = ASSIGNED. */
   deskType?: DeskType;
+  /**
+   * Auto-mapped units (CAD auto-map) sync as a MARKER ONLY — no backing desk/locker/parkingstall
+   * record is nested/created on save. The real record is minted lazily on first actual use
+   * (assignment/booking, via ensureRealSpaceRecord), not at bulk-mapping time.
+   */
+  markerOnly?: boolean;
   /** Amenity markers only — which glyph the marker renders (legacy built-in five). */
   icon?: AmenityIcon;
   /** Amenity markers placed from the marker library — MarkerDef id (built-in or custom). */
