@@ -6,6 +6,9 @@ import { fmtTime } from '../../lib/geometry';
 import { dataSource } from '../../lib/dataSource';
 import type { Booking, Unit, UnitType } from '../../lib/types';
 import { Select } from '../primitives/Select';
+import { Button } from '../primitives/Button';
+import { Modal, ModalHeader } from '../primitives/Modal';
+import { StateflowActions } from '../details/StateflowActions';
 import { PortfolioTree } from '../location/PortfolioTree';
 import loc from '../location/LocationPanel.module.css';
 import styles from './BookingsView.module.css';
@@ -134,6 +137,9 @@ export function BookingsView() {
   const [search, setSearch] = useState('');
   const [bookingsByDate, setBookingsByDate] = useState<Record<string, Booking[]>>({});
   const [calLoading, setCalLoading] = useState(true);
+  /** Overlap-cluster preview modal target: rows derive live from bookingsByDate so a transition/refetch updates them. */
+  const [preview, setPreview] = useState<{ date: string; ids: string[] } | null>(null);
+  const [refreshTick, setRefreshTick] = useState(0);
 
   const catDef = CATEGORIES.find((c) => c.id === category)!;
 
@@ -182,7 +188,7 @@ export function BookingsView() {
     return () => {
       cancelled = true;
     };
-  }, [state.floorId, visibleDates, state.bookingsNonce]);
+  }, [state.floorId, visibleDates, state.bookingsNonce, refreshTick]);
 
   const myBookingsInRange = useMemo(() => {
     const mine: Booking[] = [];
@@ -190,8 +196,10 @@ export function BookingsView() {
     return mine;
   }, [bookingsByDate, visibleDates, state.bookBy]);
 
+  // The calendar shows EVERY booking on the floor for the date — no per-resource filter. The
+  // resource picker only targets where drag-to-book CREATES a booking.
   function bookingsFor(date: string): Booking[] {
-    return (bookingsByDate[date] ?? []).filter((b) => b.unitId === resourceId);
+    return bookingsByDate[date] ?? [];
   }
 
   function resourceStatus(unit: Unit): string {
@@ -340,9 +348,7 @@ export function BookingsView() {
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6" /></svg>
                 </button>
               </div>
-              <div className={styles.rangeLabel}>
-                {layout === 'grid' ? rangeLabel : <>Showing: <strong>{selectedResource?.label}</strong></>}
-              </div>
+              <div className={styles.rangeLabel}>{rangeLabel}</div>
             </div>
 
             <div className={styles.calArea}>
@@ -381,12 +387,52 @@ export function BookingsView() {
                 myId={state.bookBy}
                 snap={state.slotGranularity}
                 onCreate={openForm}
-                onCancel={cancelBooking}
+                onPreview={(date, ids) => setPreview({ date, ids })}
                 contactNameOf={(id) => contactName(state, id)}
               />
             )}
             </div>
           </>
+        )}
+
+        {preview && (
+          <Modal onClose={() => setPreview(null)} width={480}>
+            <ModalHeader
+              title={`Bookings · ${shortDate(preview.date)}`}
+              subtitle={`${(bookingsByDate[preview.date] ?? []).filter((b) => preview.ids.includes(b.id)).length} booking(s)`}
+              onClose={() => setPreview(null)}
+            />
+            <div style={{ padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: 12, maxHeight: '58vh', overflowY: 'auto' }}>
+              {(bookingsByDate[preview.date] ?? [])
+                .filter((b) => preview.ids.includes(b.id))
+                .map((b) => {
+                  const unit = state.units.find((u) => u.id === b.unitId);
+                  return (
+                    <div key={b.id} style={{ border: '1px solid var(--ink-200)', borderRadius: 10, padding: '10px 12px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+                        <span style={{ font: '600 13.5px var(--font-sans)', color: 'var(--ink-900)' }}>{unit?.label ?? `#${b.unitId}`}</span>
+                        <span style={{ font: '500 12px var(--font-sans)', color: 'var(--ink-600)' }}>
+                          {fmtTime(b.start)}–{fmtTime(b.end)}
+                        </span>
+                      </div>
+                      <div style={{ font: '400 12.5px/1.4 var(--font-sans)', color: 'var(--ink-600)', marginTop: 2 }}>
+                        {contactName(state, b.by) || 'Booked'}
+                        {b.purpose ? ` · ${b.purpose}` : ''}
+                      </div>
+                      {/* Real bookings: status pills + whatever actions the record's current state
+                          allows (Cancel/Approve/...) — same stateflow bar as everywhere else. */}
+                      {/^\d+$/.test(b.id) ? (
+                        <StateflowActions moduleName="spacebooking" recordId={Number(b.id)} onChanged={() => setRefreshTick((t) => t + 1)} />
+                      ) : (
+                        <Button variant="danger" style={{ marginTop: 8 }} onClick={() => { cancelBooking(b); setPreview(null); }}>
+                          Cancel
+                        </Button>
+                      )}
+                    </div>
+                  );
+                })}
+            </div>
+          </Modal>
         )}
       </div>
     </div>
@@ -417,17 +463,34 @@ function NotBookableState({ label }: { label: string }) {
   );
 }
 
+/** Groups a day's bookings into overlap clusters (sorted by start; a booking joins the current cluster when it starts before the cluster's running end). */
+function clusterBookings(list: Booking[]): Booking[][] {
+  const sorted = [...list].sort((a, b) => a.start - b.start || a.end - b.end);
+  const clusters: Booking[][] = [];
+  let clusterEnd = -1;
+  for (const b of sorted) {
+    if (clusters.length && b.start < clusterEnd) {
+      clusters[clusters.length - 1].push(b);
+      clusterEnd = Math.max(clusterEnd, b.end);
+    } else {
+      clusters.push([b]);
+      clusterEnd = b.end;
+    }
+  }
+  return clusters;
+}
+
 interface CalendarGridProps {
   dates: string[];
   bookingsFor: (date: string) => Booking[];
   myId: string;
   snap: number;
   onCreate: (date: string, start: number, end: number) => void;
-  onCancel: (b: Booking) => void;
+  onPreview: (date: string, ids: string[]) => void;
   contactNameOf: (id: string) => string;
 }
 
-function CalendarGrid({ dates, bookingsFor, myId, snap, onCreate, onCancel, contactNameOf }: CalendarGridProps) {
+function CalendarGrid({ dates, bookingsFor, myId, snap, onCreate, onPreview, contactNameOf }: CalendarGridProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<{ date: string; from: number; to: number } | null>(null);
   const dragRef = useRef<{ date: string; colTop: number; from: number; to: number } | null>(null);
@@ -525,9 +588,30 @@ function CalendarGrid({ dates, bookingsFor, myId, snap, onCreate, onCancel, cont
                 {Array.from({ length: (dayEnd - dayStart) / 60 }, (_, i) => (
                   <div key={i} className={styles.hourCell} style={{ top: (i + 1) * PX_PER_HOUR }} />
                 ))}
-                {blocks.map((b) => {
-                  const top = (Math.max(dayStart, b.start) - dayStart) * PX_PER_MIN;
-                  const height = Math.max(16, (Math.min(dayEnd, b.end) - Math.max(dayStart, b.start)) * PX_PER_MIN);
+                {clusterBookings(blocks).map((cluster) => {
+                  const cStart = Math.min(...cluster.map((b) => b.start));
+                  const cEnd = Math.max(...cluster.map((b) => b.end));
+                  const top = (Math.max(dayStart, cStart) - dayStart) * PX_PER_MIN;
+                  const height = Math.max(16, (Math.min(dayEnd, cEnd) - Math.max(dayStart, cStart)) * PX_PER_MIN);
+                  if (cluster.length > 1) {
+                    // Overlapping bookings collapse into one COUNT block — clicking previews them
+                    // all in the modal (each with its stateflow status + actions).
+                    return (
+                      <button
+                        key={cluster[0].id}
+                        type="button"
+                        className={[styles.block, styles.blockOther].join(' ')}
+                        style={{ top, height, cursor: 'pointer', textAlign: 'left' }}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={() => onPreview(d, cluster.map((b) => b.id))}
+                        title={`${cluster.length} overlapping bookings — click to preview`}
+                      >
+                        <div className={styles.blockTime}>{fmtTime(cStart)} - {fmtTime(cEnd)}</div>
+                        <div className={styles.blockName}>{cluster.length} bookings</div>
+                      </button>
+                    );
+                  }
+                  const b = cluster[0];
                   const mine = b.by === myId;
                   return (
                     <div
@@ -535,27 +619,11 @@ function CalendarGrid({ dates, bookingsFor, myId, snap, onCreate, onCancel, cont
                       className={[styles.block, mine ? styles.blockMine : styles.blockOther].join(' ')}
                       // Pending-approval bookings render amber (matching the plan markers) so a
                       // request reads differently from a confirmed reservation.
-                      style={{ top, height, ...(b.approvalPending ? { background: 'var(--warning-050)', borderColor: 'var(--warning-700)', color: 'var(--warning-700)' } : {}) }}
+                      style={{ top, height, cursor: 'pointer', ...(b.approvalPending ? { background: 'var(--warning-050)', borderColor: 'var(--warning-700)', color: 'var(--warning-700)' } : {}) }}
                       onMouseDown={(e) => e.stopPropagation()}
-                      title={(mine ? 'Your booking' : `Booked by ${contactNameOf(b.by) || 'someone'}`) + (b.approvalPending ? ' · pending approval' : '')}
+                      onClick={() => onPreview(d, [b.id])}
+                      title={(mine ? 'Your booking' : `Booked by ${contactNameOf(b.by) || 'someone'}`) + (b.approvalPending ? ' · pending approval' : '') + ' — click to preview'}
                     >
-                      {/* Cancelling is an explicit button, never a bare click on the block —
-                          clicking a booking to inspect it used to silently cancel it. */}
-                      {mine && (
-                        <button
-                          className={styles.blockCancel}
-                          title="Cancel this booking"
-                          aria-label="Cancel booking"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onCancel(b);
-                          }}
-                        >
-                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round">
-                            <path d="M18 6L6 18M6 6l12 12" />
-                          </svg>
-                        </button>
-                      )}
                       <div className={styles.blockTime}>{fmtTime(b.start)} - {fmtTime(b.end)}</div>
                       <div className={styles.blockName}>{mine ? 'Your booking' : contactNameOf(b.by) || 'Booked'}</div>
                     </div>
