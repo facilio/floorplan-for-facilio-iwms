@@ -20,7 +20,7 @@ const PXH = 28;
 export function BookPanel() {
   const { state, actions } = useFloorplan();
   const sel = unitById(state, state.selected);
-  const bookable = state.units.filter(isBookable);
+  const bookable = state.units.filter((u) => !u.unplaced && isBookable(u)); // placed only — unplaced org records aren't bookable surfaces
   const bookedIds = bookedUnitIds(state);
   const availCount = bookable.filter((u) => !bookedIds.has(u.id)).length;
 

@@ -37,6 +37,7 @@ export function MobileSpacesSheet({ open, onClose }: { open: boolean; onClose: (
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return state.units
+      .filter((u) => !u.unplaced)
       .filter((u) => filter === 'all' || u.type === filter)
       .filter(
         (u) =>

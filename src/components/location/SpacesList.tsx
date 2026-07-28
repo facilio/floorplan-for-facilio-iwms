@@ -58,7 +58,9 @@ export function SpacesList() {
     () =>
       isEdit
         ? [...state.unplacedUnits, ...state.units.filter((u) => u.unplaced)].filter((u) => u.type !== 'amenity')
-        : state.units,
+        : // Assign/Book views list only what's actually ON the plan — org records with no
+          // position (`unplaced`) belong to Edit mode's placing flow, not these lists.
+          state.units.filter((u) => !u.unplaced),
     [isEdit, state.unplacedUnits, state.units]
   );
 

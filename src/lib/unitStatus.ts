@@ -180,21 +180,27 @@ export function markerStyle(state: AppState, unit: Unit, markerScale = 1): Marke
       icon: contactId ? null : markerIcon(unit.type),
     };
   }
+  // Bookable markers render SOLID-filled (white icon on the state color) — the translucent tint
+  // washed out against busy CAD backgrounds and read as disabled rather than color-coded.
+  const solidTriple = (real: string | null, fallback: string) => {
+    const c = opaque(real ?? fallback);
+    return { bg: c, bd: c, fg: '#fff' };
+  };
   const conflicts = conflictsFor(state.bookings, unit.id, state.date, state.start, state.end);
   if (conflicts.length) {
     // Every overlapping booking still awaiting approval -> the amber "pending" state, not booked
     // red — a request isn't a confirmed reservation. Derived off already-loaded booking rows.
     if (conflicts.every((b) => b.approvalPending)) {
-      const { bg, bd, fg } = colorTriple(null, moduleColor(state, unit.type, 'pending'), false);
+      const { bg, bd, fg } = solidTriple(null, moduleColor(state, unit.type, 'pending'));
       return { bg, bd, fg, opacity: 1, shadow, size, radius, zIndex, occText: null, icon: markerIcon(unit.type) };
     }
-    const { bg, bd, fg } = colorTriple(realBookColor(cust, category, 'notAvailableColor'), moduleColor(state, unit.type, 'booked'), false);
+    const { bg, bd, fg } = solidTriple(realBookColor(cust, category, 'notAvailableColor'), moduleColor(state, unit.type, 'booked'));
     return { bg, bd, fg, opacity: 1, shadow, size, radius, zIndex, occText: null, icon: markerIcon(unit.type) };
   }
   // bookable + free/available — the real org's "available" color when configured, else the
   // configurable "go" color.
   const avail = moduleColor(state, unit.type, unit.type === 'room' ? 'available' : 'free');
-  const { bg, bd, fg } = colorTriple(realBookColor(cust, category, 'availableColor'), avail, false);
+  const { bg, bd, fg } = solidTriple(realBookColor(cust, category, 'availableColor'), avail);
   return { bg, bd, fg, opacity: 1, shadow, size, radius, zIndex, occText: null, icon: markerIcon(unit.type) };
 }
 

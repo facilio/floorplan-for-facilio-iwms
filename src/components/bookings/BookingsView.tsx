@@ -146,7 +146,7 @@ export function BookingsView() {
   const resources = useMemo(
     // Only actually bookable units belong on the booking calendar — for desks that's
     // HOT/HOTEL only (ASSIGNED desks are assignment-only; see lib/types DeskType).
-    () => state.units.filter((u) => u.type === category && isBookable(u)).sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true })),
+    () => state.units.filter((u) => !u.unplaced && u.type === category && isBookable(u)).sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true })),
     [state.units, category]
   );
 
