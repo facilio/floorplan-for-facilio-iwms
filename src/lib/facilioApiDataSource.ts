@@ -1181,20 +1181,40 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
     // this same indoorfloorplan update — the backend syncs them to the desks/lockers/parkingstall
     // record from there (matching the native app's payload, which nests the full record on every
     // marker). This replaced one separate updateRecord PATCH per desk per save.
+    // A marker's nested record object MUST always carry id + name (+ deskType for desks) —
+    // mandatory backend fields; an id-only reference is not accepted.
     let matchedRecordPatch: Record<string, unknown> | undefined;
     if (match && recordKey && (match[recordKey] || match.recordId)) {
       const fields: Record<string, unknown> = { name: unit.label };
       if (unit.type === 'workstation' && unit.deskType) fields.deskType = DESK_TYPE_NUM[unit.deskType];
       if (unit.secondary) fields.secondary = unit.secondary;
       matchedRecordPatch = { ...(match[recordKey] ?? { id: match.recordId }), ...fields };
+      // deskType is mandatory on the desk object: keep the fetched record's when the unit
+      // doesn't carry one, defaulting to ASSIGNED only as the last resort.
+      if (unit.type === 'workstation' && matchedRecordPatch.deskType == null) {
+        matchedRecordPatch.deskType = DESK_TYPE_NUM[unit.deskType ?? 'ASSIGNED'];
+      }
     }
     nextMarkers.push({
       ...(match ?? {}),
       ...(newMarkerType ? { markerType: newMarkerType } : {}),
       ...(matchedRecordPatch && recordKey ? { [recordKey]: matchedRecordPatch } : {}),
-      // Existing-record link (see existingRecordId above): reference by id, exactly like
-      // ensureRealSpaceRecord's confirmed marker shape.
-      ...(existingRecordId ? { recordId: existingRecordId, ...(recordKey ? { [recordKey]: { id: existingRecordId } } : {}) } : {}),
+      // Existing-record link (see existingRecordId above): the FULL desk object travels — id +
+      // name + deskType are mandatory, not an id-only reference.
+      ...(existingRecordId
+        ? {
+            recordId: existingRecordId,
+            ...(recordKey
+              ? {
+                  [recordKey]: {
+                    id: existingRecordId,
+                    name: unit.label,
+                    ...(unit.type === 'workstation' ? { deskType: DESK_TYPE_NUM[unit.deskType ?? 'ASSIGNED'] } : {}),
+                  },
+                }
+              : {}),
+          }
+        : {}),
       ...(newModuleId ? { markerModuleId: newModuleId } : {}),
       geoId: unit.id,
       geometry,
