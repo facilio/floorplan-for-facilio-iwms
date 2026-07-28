@@ -1188,12 +1188,13 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
       const fields: Record<string, unknown> = { name: unit.label };
       if (unit.type === 'workstation' && unit.deskType) fields.deskType = DESK_TYPE_NUM[unit.deskType];
       if (unit.secondary) fields.secondary = unit.secondary;
-      matchedRecordPatch = { ...(match[recordKey] ?? { id: match.recordId }), ...fields };
+      const patchObj: Record<string, unknown> = { ...(match[recordKey] ?? { id: match.recordId }), ...fields };
       // deskType is mandatory on the desk object: keep the fetched record's when the unit
       // doesn't carry one, defaulting to ASSIGNED only as the last resort.
-      if (unit.type === 'workstation' && matchedRecordPatch.deskType == null) {
-        matchedRecordPatch.deskType = DESK_TYPE_NUM[unit.deskType ?? 'ASSIGNED'];
+      if (unit.type === 'workstation' && patchObj.deskType == null) {
+        patchObj.deskType = DESK_TYPE_NUM[unit.deskType ?? 'ASSIGNED'];
       }
+      matchedRecordPatch = patchObj;
     }
     nextMarkers.push({
       ...(match ?? {}),
