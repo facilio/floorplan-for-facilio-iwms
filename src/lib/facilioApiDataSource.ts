@@ -1774,6 +1774,15 @@ export async function assignUnitReal(unit: Unit, contactId: string): Promise<voi
   if (!ref) return;
 
   if (unit.type === 'workstation') {
+    // Order matters: the DESK updates FIRST (clientcontact_moves patch — the interim source of
+    // truth for the assignee), THEN the moves record is added for the history/reassignment
+    // mechanics. Once the backend's Moves execution updates the desk itself, the direct patch
+    // goes away and only the move remains.
+    const patch = await facilioApi.updateRecord(moduleName, { id: ref.recordId, data: { clientcontact_moves: { id } } });
+    if (patch.error) {
+      // eslint-disable-next-line no-console
+      console.warn(`[facilio-api] desk clientcontact_moves patch failed for unit ${unit.id}`, patch.error);
+    }
     const res = await facilioApi.createRecord('moves', {
       data: {
         to: { id: ref.recordId },
@@ -1787,13 +1796,6 @@ export async function assignUnitReal(unit: Unit, contactId: string): Promise<voi
     if (res.error) {
       // eslint-disable-next-line no-console
       console.warn(`[facilio-api] assign move failed for unit ${unit.id}`, res.error);
-    }
-    // The move alone wasn't reflecting on the desk's own clientcontact_moves lookup — patch the
-    // desk record directly (interim, until the backend Moves execution updates it itself).
-    const patch = await facilioApi.updateRecord(moduleName, { id: ref.recordId, data: { clientcontact_moves: { id } } });
-    if (patch.error) {
-      // eslint-disable-next-line no-console
-      console.warn(`[facilio-api] desk clientcontact_moves patch failed for unit ${unit.id}`, patch.error);
     }
   } else {
     const res = await facilioApi.updateRecord(moduleName, { id: ref.recordId, data: { employee: { id } } });
@@ -1843,6 +1845,14 @@ export async function vacateUnitReal(unit: Unit, contactId: string): Promise<voi
   if (!ref) return;
 
   if (unit.type === 'workstation') {
+    // Mirror of assign's ordering: the DESK clears FIRST (clientcontact_moves: null), THEN the
+    // departure move is recorded. Same future path — the direct patch goes away once the
+    // backend's Moves execution owns the desk field.
+    const patch = await facilioApi.updateRecord(moduleName, { id: ref.recordId, data: { clientcontact_moves: null } });
+    if (patch.error) {
+      // eslint-disable-next-line no-console
+      console.warn(`[facilio-api] desk clientcontact_moves clear failed for unit ${unit.id}`, patch.error);
+    }
     const res = await facilioApi.createRecord('moves', {
       data: {
         from: { id: ref.recordId },
@@ -1856,12 +1866,6 @@ export async function vacateUnitReal(unit: Unit, contactId: string): Promise<voi
     if (res.error) {
       // eslint-disable-next-line no-console
       console.warn(`[facilio-api] vacate move failed for unit ${unit.id}`, res.error);
-    }
-    // Mirror of the assign-side patch: clear the desk's own clientcontact_moves lookup directly.
-    const patch = await facilioApi.updateRecord(moduleName, { id: ref.recordId, data: { clientcontact_moves: null } });
-    if (patch.error) {
-      // eslint-disable-next-line no-console
-      console.warn(`[facilio-api] desk clientcontact_moves clear failed for unit ${unit.id}`, patch.error);
     }
   } else {
     const res = await facilioApi.updateRecord(moduleName, { id: ref.recordId, data: { employee: null } });
