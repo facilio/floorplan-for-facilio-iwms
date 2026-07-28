@@ -173,10 +173,23 @@ function SpaceRow({ unit, unplaced }: { unit: Unit; unplaced?: boolean }) {
         unplaced
           ? draggable
             ? () => actions.setPlacingUnit(placing ? null : unit.id)
-            : undefined
+            : unit.type === 'room'
+              ? () => {
+                  // Rooms place by OUTLINE: arm the room draw tool; closing the outline opens the
+                  // placement dialog where this record can be picked (same flow as drawing).
+                  actions.setTool('room');
+                  actions.showToast(`Draw ${unit.label}'s outline on the plan, then pick it in the dialog`, { variant: 'info' });
+                }
+              : undefined
           : () => actions.focusUnit(unit.id, state.stage.w, state.stage.h)
       }
-      title={draggable ? 'Drag onto the floorplan, or click and then click the map' : undefined}
+      title={
+        draggable
+          ? 'Drag onto the floorplan, or click and then click the map'
+          : unplaced && unit.type === 'room'
+            ? 'Click, then draw its outline on the plan — pick this room in the dialog to place it'
+            : undefined
+      }
     >
       <span className={styles.dot} style={{ background: status.dot }} />
       <div className={styles.rowText}>
