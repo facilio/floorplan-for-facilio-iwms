@@ -1,5 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
+import { isFacilioApiConfigured } from '../../lib/facilioApi';
+import { searchPortfolio } from '../../lib/facilioApiDataSource';
+import type { PortfolioSearchResults } from '../../lib/facilioApiDataSource';
 import styles from './PortfolioTree.module.css';
 
 interface FlatNode {
@@ -19,8 +22,48 @@ export function PortfolioTree() {
   const { state, actions } = useFloorplan();
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [apiResults, setApiResults] = useState<PortfolioSearchResults | null>(null);
+  const [searching, setSearching] = useState(false);
   const q = query.trim().toLowerCase();
   const matches = (name: string) => !q || name.toLowerCase().includes(q);
+  const useApiSearch = isFacilioApiConfigured && q.length > 0;
+
+  // Server-side search (debounced): the text goes to the API for sites, buildings AND floors —
+  // results aren't limited to branches already lazy-loaded into the tree.
+  useEffect(() => {
+    if (!useApiSearch) {
+      setApiResults(null);
+      return;
+    }
+    setSearching(true);
+    let cancelled = false;
+    const t = setTimeout(() => {
+      searchPortfolio(query)
+        .then((r) => {
+          if (!cancelled) setApiResults(r);
+        })
+        .catch(() => {
+          if (!cancelled) setApiResults({ sites: [], buildings: [], floors: [] });
+        })
+        .finally(() => {
+          if (!cancelled) setSearching(false);
+        });
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, useApiSearch]);
+
+  /** Expand a node (loading its children lazily) without collapsing it when already open. */
+  const expand = (id: string) => {
+    if (!state.expanded[id]) actions.toggleNode(id);
+  };
+  const closeSearch = () => {
+    setSearchOpen(false);
+    setQuery('');
+  };
 
   const items: FlatNode[] = [];
   for (const site of state.portfolio) {
@@ -130,11 +173,80 @@ export function PortfolioTree() {
           }}
         />
       )}
-      {q && items.length === 0 && (
+      {/* API-backed search: the text queries sites, buildings AND floors server-side and drives
+          the switcher from the results — not limited to lazily-loaded branches. */}
+      {useApiSearch && (
+        <div className={styles.list}>
+          {searching && <div style={{ padding: '8px 12px', font: '400 12px var(--font-sans)', color: 'var(--ink-500)' }}>Searching…</div>}
+          {!searching && apiResults && apiResults.sites.length + apiResults.buildings.length + apiResults.floors.length === 0 && (
+            <div style={{ padding: '8px 12px', font: '400 12px var(--font-sans)', color: 'var(--ink-500)' }}>Nothing matches “{query.trim()}”.</div>
+          )}
+          {!searching && !!apiResults?.sites.length && (
+            <div style={{ padding: '6px 12px 2px', font: '600 10.5px var(--font-sans)', letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--ink-400)' }}>Sites</div>
+          )}
+          {!searching &&
+            apiResults?.sites.map((s) => (
+              <div key={`s${s.id}`} className={styles.row} style={{ paddingLeft: 8 }} onClick={() => { expand(s.id); closeSearch(); }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={styles.typeIcon}>
+                  <path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 0 1 16 0z" /><circle cx="12" cy="10" r="3" />
+                </svg>
+                <span className={styles.name} title={s.name}>{s.name}</span>
+              </div>
+            ))}
+          {!searching && !!apiResults?.buildings.length && (
+            <div style={{ padding: '6px 12px 2px', font: '600 10.5px var(--font-sans)', letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--ink-400)' }}>Buildings</div>
+          )}
+          {!searching &&
+            apiResults?.buildings.map((b) => (
+              <div
+                key={`b${b.id}`}
+                className={styles.row}
+                style={{ paddingLeft: 8 }}
+                onClick={() => {
+                  if (b.siteId) expand(b.siteId);
+                  expand(b.id);
+                  closeSearch();
+                }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={styles.typeIcon}>
+                  <rect x="4" y="2" width="16" height="20" rx="1" />
+                </svg>
+                <span className={styles.name} title={b.name}>{b.name}</span>
+                {b.siteName && <span className={styles.badge} title={b.siteName}>{b.siteName}</span>}
+              </div>
+            ))}
+          {!searching && !!apiResults?.floors.length && (
+            <div style={{ padding: '6px 12px 2px', font: '600 10.5px var(--font-sans)', letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--ink-400)' }}>Floors</div>
+          )}
+          {!searching &&
+            apiResults?.floors.map((f) => (
+              <div
+                key={`f${f.id}`}
+                className={styles.row}
+                style={{ paddingLeft: 8 }}
+                onClick={() => {
+                  if (f.siteId) expand(f.siteId);
+                  if (f.buildingId) expand(f.buildingId);
+                  actions.selectFloor(f.id);
+                  actions.setNavView('spaces');
+                  closeSearch();
+                }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={styles.typeIcon}>
+                  <path d="M12 2L2 7l10 5 10-5-10-5z M2 12l10 5 10-5 M2 17l10 5 10-5" />
+                </svg>
+                <span className={styles.name} title={f.path ? `${f.path} › ${f.name}` : f.name}>{f.name}</span>
+                {f.path && <span className={styles.badge} title={f.path}>{f.path}</span>}
+              </div>
+            ))}
+        </div>
+      )}
+      {!useApiSearch && q && items.length === 0 && (
         <div style={{ padding: '10px 12px', font: '400 12px/1.5 var(--font-sans)', color: 'var(--ink-500)' }}>
           Nothing matches “{query.trim()}”. Un-loaded buildings/floors are searched by name only after their site is expanded once.
         </div>
       )}
+      {useApiSearch ? null : (
       <div className={styles.list}>
         {items.map((n) => (
           <div key={n.id} className={[styles.row, n.active ? styles.rowActive : ''].join(' ')} style={{ paddingLeft: n.pad }} onClick={n.onClick}>
@@ -182,6 +294,7 @@ export function PortfolioTree() {
           </div>
         ))}
       </div>
+      )}
     </div>
   );
 }

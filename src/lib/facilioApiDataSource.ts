@@ -101,21 +101,22 @@ export class FacilioApiDataSource implements FloorplanDataSource {
    */
   async getPortfolio(): Promise<Site[]> {
     this.assertConfigured();
-    const res = await facilioApi.fetchAll('site');
+    // Explicit page size — without it the backend's default (~50) silently truncated big portfolios.
+    const res = await facilioApi.fetchAll('site', { page: 1, perPage: 500 });
     if (res.error) throw new Error(`facilio-api: portfolio fetch failed (${res.error.code ?? '?'} ${res.error.message ?? ''})`.trim());
     return (res.list ?? []).map((s: any) => ({ id: String(s.id), name: s.name, buildings: [] }));
   }
 
   async getBuildingsForSite(siteId: string): Promise<Building[]> {
     this.assertConfigured();
-    const res = await facilioApi.fetchAll('building', { filters: JSON.stringify({ site: { operatorId: 36, value: [siteId] } }) });
+    const res = await facilioApi.fetchAll('building', { page: 1, perPage: 500, filters: JSON.stringify({ site: { operatorId: 36, value: [siteId] } }) });
     if (res.error) throw new Error(`facilio-api: buildings fetch failed (${res.error.code ?? '?'} ${res.error.message ?? ''})`.trim());
     return (res.list ?? []).map((b: any) => ({ id: String(b.id), name: b.name, floors: [] }));
   }
 
   async getFloorsForBuilding(buildingId: string): Promise<Floor[]> {
     this.assertConfigured();
-    const res = await facilioApi.fetchAll('floor', { filters: JSON.stringify({ building: { operatorId: 36, value: [buildingId] } }) });
+    const res = await facilioApi.fetchAll('floor', { page: 1, perPage: 500, filters: JSON.stringify({ building: { operatorId: 36, value: [buildingId] } }) });
     if (res.error) throw new Error(`facilio-api: floors fetch failed (${res.error.code ?? '?'} ${res.error.message ?? ''})`.trim());
     return (res.list ?? []).map((f: any) => ({
       id: String(f.id),
@@ -128,7 +129,7 @@ export class FacilioApiDataSource implements FloorplanDataSource {
 
   async getClientContacts(): Promise<ClientContact[]> {
     this.assertConfigured();
-    const res = await facilioApi.fetchAll('clientcontact');
+    const res = await facilioApi.fetchAll('clientcontact', { page: 1, perPage: 500 });
     if (res.error) throw new Error(`facilio-api: client contact fetch failed (${res.error.code ?? '?'} ${res.error.message ?? ''})`.trim());
     return (res.list ?? []).map((c: any) => ({
       id: String(c.id),
@@ -249,6 +250,45 @@ export class FacilioApiDataSource implements FloorplanDataSource {
 /** Best-effort lookup-field id extraction: tries `{key}.id`, `{key}Id`, then the raw field. */
 function lookupId(record: any, key: string): unknown {
   return record?.[key]?.id ?? record?.[`${key}Id`] ?? record?.[key];
+}
+
+export interface PortfolioSearchResults {
+  sites: { id: string; name: string }[];
+  buildings: { id: string; name: string; siteId: string | null; siteName: string | null }[];
+  floors: { id: string; name: string; buildingId: string | null; siteId: string | null; path: string | null }[];
+}
+
+/**
+ * Server-side portfolio search: the switcher's search text goes to the API for sites, buildings
+ * AND floors (three parallel list calls with the standard `search` param — the primary-field
+ * search every Facilio list endpoint takes), so results aren't limited to branches already
+ * lazy-loaded into the tree. 20 rows per level; a failing call contributes an empty section.
+ */
+export async function searchPortfolio(text: string): Promise<PortfolioSearchResults> {
+  const q = text.trim();
+  if (!isFacilioApiConfigured || !q) return { sites: [], buildings: [], floors: [] };
+  const params = { page: 1, perPage: 20, search: q };
+  const [siteRes, buildingRes, floorRes] = await Promise.all([
+    facilioApi.fetchAll('site', params).catch(() => ({ list: null }) as any),
+    facilioApi.fetchAll('building', params).catch(() => ({ list: null }) as any),
+    facilioApi.fetchAll('floor', params).catch(() => ({ list: null }) as any),
+  ]);
+  return {
+    sites: (siteRes.list ?? []).map((s: any) => ({ id: String(s.id), name: s.name ?? `#${s.id}` })),
+    buildings: (buildingRes.list ?? []).map((b: any) => ({
+      id: String(b.id),
+      name: b.name ?? `#${b.id}`,
+      siteId: lookupId(b, 'site') != null ? String(lookupId(b, 'site')) : null,
+      siteName: b.site?.name ?? null,
+    })),
+    floors: (floorRes.list ?? []).map((f: any) => ({
+      id: String(f.id),
+      name: f.name ?? `#${f.id}`,
+      buildingId: lookupId(f, 'building') != null ? String(lookupId(f, 'building')) : null,
+      siteId: lookupId(f, 'site') != null ? String(lookupId(f, 'site')) : null,
+      path: [f.site?.name, f.building?.name].filter(Boolean).join(' › ') || null,
+    })),
+  };
 }
 
 export interface FloorParents {
