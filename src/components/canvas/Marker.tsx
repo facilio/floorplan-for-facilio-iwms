@@ -127,17 +127,18 @@ export function Marker({ unit, invZ, onDragStart, myUnitId }: { unit: Unit; invZ
           </>
         )}
       </div>
-      {/* ONE label only — the MARKER's own label, tight above the icon (1px gap past the border).
-          The previous primary/secondary pair rendered the same text twice for unassigned desks
-          and floated too far from the icon; assignee/desk details show on CLICK (the details
-          panel / tooltip), not as a second chip. Hidden when the "Your desk" pill sits above. */}
+      {/* ONE label only — the MARKER's own label, tight above the icon; assignee/desk details
+          show on CLICK (the details panel / tooltip), not as a second chip. Hidden when the
+          "Your desk" pill sits above. The gap SCALES with the marker ((size/2+2) * invZ): a fixed
+          pixel offset overlapped the icon when zoomed out (marker visually larger than the gap)
+          and floated far away when zoomed in. */}
       {showLabel && !isMine && (
         <div
           style={{
             position: 'absolute',
             left: `${geom.x * 100}%`,
             top: `${geom.y * 100}%`,
-            transform: `translate(-50%, calc(-100% - ${Math.round(style.size / 2 + 1)}px)) scale(${invZ})`,
+            transform: `translate(-50%, -100%) translate(0, -${Math.round((style.size / 2 + 2) * invZ)}px) scale(${invZ})`,
             transformOrigin: 'bottom center',
             pointerEvents: 'none',
             zIndex: 1,
