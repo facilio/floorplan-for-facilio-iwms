@@ -111,8 +111,8 @@ export function PortfolioTree() {
       onClick: () => actions.toggleNode(site.id),
     });
     if (!siteExpanded) continue;
-    // In-branch building search, scoped to THIS site.
-    items.push({ row: 'search', parentId: site.id, parentKind: 'site', pad: 24 });
+    // In-branch building search, scoped to THIS site — collapsed behind the row's search icon.
+    if (branch?.id === site.id) items.push({ row: 'search', parentId: site.id, parentKind: 'site', pad: 24 });
     for (const building of site.buildings) {
       if (!branchPass(site.id, building.id, building.name)) continue;
       const buildingExpanded = !!state.expanded[building.id];
@@ -130,8 +130,8 @@ export function PortfolioTree() {
         onClick: () => actions.toggleNode(building.id),
       });
       if (!buildingExpanded) continue;
-      // In-branch floor search, scoped to THIS building.
-      items.push({ row: 'search', parentId: building.id, parentKind: 'building', pad: 42 });
+      // In-branch floor search, scoped to THIS building — collapsed behind the row's search icon.
+      if (branch?.id === building.id) items.push({ row: 'search', parentId: building.id, parentKind: 'building', pad: 42 });
       for (const floor of building.floors) {
         if (!branchPass(building.id, floor.id, floor.name)) continue;
         // A floor "has a plan" if the static portfolio flag says so OR an actual floorplan is
@@ -214,6 +214,7 @@ export function PortfolioTree() {
           r.row === 'search' ? (
             <div key={`search-${r.parentId}`} style={{ padding: '2px 8px 4px', paddingLeft: r.pad }}>
               <input
+                autoFocus
                 value={branch?.id === r.parentId ? branch.text : ''}
                 onChange={(e) => setBranch({ id: r.parentId, kind: r.parentKind, text: e.target.value })}
                 placeholder={r.parentKind === 'site' ? 'Search buildings…' : 'Search floors…'}
@@ -268,6 +269,27 @@ export function PortfolioTree() {
               )}
               {/* Long site/building/floor names ellipsize — the title shows them in full on hover. */}
               <span className={styles.name} title={r.name}>{r.name}</span>
+              {/* Collapsible in-branch search: the icon on an EXPANDED site/building toggles its
+                  scoped search bar (buildings within this site / floors within this building). */}
+              {r.hasChildren && r.expanded && (
+                <button
+                  type="button"
+                  title={branch?.id === r.id ? 'Close search' : r.kind === 'site' ? 'Search buildings in this site' : 'Search floors in this building'}
+                  aria-label={branch?.id === r.id ? 'Close search' : r.kind === 'site' ? 'Search buildings in this site' : 'Search floors in this building'}
+                  aria-expanded={branch?.id === r.id}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setBranch(branch?.id === r.id ? null : { id: r.id, kind: r.kind === 'site' ? 'site' : 'building', text: '' });
+                  }}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20, flex: 'none', border: 'none', background: branch?.id === r.id ? 'var(--blue-025)' : 'none', color: branch?.id === r.id ? 'var(--blue-600)' : 'var(--ink-400)', cursor: 'pointer', borderRadius: 5 }}
+                >
+                  {branch?.id === r.id ? (
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                  ) : (
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
+                  )}
+                </button>
+              )}
               {r.badge && <span className={styles.badge}>{r.badge}</span>}
               {r.drillIn && (
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--ink-400)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
