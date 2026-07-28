@@ -29,8 +29,10 @@ if (!file) {
 }
 
 const raw = JSON.parse(readFileSync(file, 'utf8'));
-// GET responses come as {indoorfloorplan: {...}} (v3 single-record) or {data:{indoorfloorplan:{...}}}.
-const record = raw.indoorfloorplan ?? raw.data?.indoorfloorplan ?? raw;
+// Accepts a GET response ({indoorfloorplan:{...}} or {data:{indoorfloorplan:{...}}}) OR an
+// existing PATCH body ({moduleName, id, data:{...record}}) — so a captured improper payload can
+// be repaired directly.
+const record = raw.indoorfloorplan ?? raw.data?.indoorfloorplan ?? (raw.data?.id != null ? raw.data : raw);
 if (!record?.id) {
   console.error('could not find an indoorfloorplan record in the input');
   process.exit(1);

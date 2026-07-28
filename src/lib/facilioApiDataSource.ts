@@ -1149,6 +1149,12 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
   const orgModules = await getAllModules().catch(() => [] as ModuleSummary[]);
   const moduleIdByName = new Map(orgModules.map((m) => [m.name, m.id]));
 
+  // The org's desk spaceCategory id (native save payloads carry it on every nested desk —
+  // spaceCategory {id: 6533} in the confirmed capture). All of an org's desks share it, so read
+  // it off ANY existing desk on the plan; when none exists yet the field is simply omitted.
+  const deskSpaceCategoryId: number | null =
+    existingMarkers.map((m) => m.desk?.spaceCategory?.id ?? m.desk?.spaceCategoryId).find((v: unknown) => typeof v === 'number') ?? null;
+
   for (const unit of pointUnits) {
     const match =
       existingMarkersByGeoId.get(unit.id) ?? existingMarkersByRecordId.get(unit.id) ?? existingMarkersByObjectId.get(unit.id);
@@ -1202,7 +1208,21 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
       const fields: Record<string, unknown> = { name: unit.label };
       if (unit.type === 'workstation' && unit.deskType) fields.deskType = DESK_TYPE_NUM[unit.deskType];
       if (unit.secondary) fields.secondary = unit.secondary;
-      const patchObj: Record<string, unknown> = { ...(match[recordKey] ?? { id: match.recordId }), ...fields };
+      // When the fetched row omits the nested record (projection variance), rebuild it in the
+      // native payload's full field shape rather than id-only (same set as the link branch).
+      const rebuiltBase: Record<string, unknown> = {
+        id: match.recordId,
+        spaceType: -1,
+        resourceType: 1,
+        reservable: false,
+        isArchived: false,
+        ...(parentSiteId ? { siteId: parentSiteId } : {}),
+        ...(parentBuildingId ? { building: { id: parentBuildingId } } : {}),
+        floorId: Number(parentFloorId ?? unit.floor),
+        floor: { id: Number(parentFloorId ?? unit.floor) },
+        ...(deskSpaceCategoryId && unit.type === 'workstation' ? { spaceCategory: { id: deskSpaceCategoryId } } : {}),
+      };
+      const patchObj: Record<string, unknown> = { ...(match[recordKey] ?? rebuiltBase), ...fields };
       // deskType is mandatory on the desk object: keep the fetched record's when the unit
       // doesn't carry one, defaulting to ASSIGNED only as the last resort.
       if (unit.type === 'workstation' && patchObj.deskType == null) {
@@ -1214,8 +1234,10 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
       ...(match ?? {}),
       ...(newMarkerType ? { markerType: newMarkerType } : {}),
       ...(matchedRecordPatch && recordKey ? { [recordKey]: matchedRecordPatch } : {}),
-      // Existing-record link (see existingRecordId above): the FULL desk object travels — id +
-      // name + deskType are mandatory, not an id-only reference.
+      // Existing-record link (see existingRecordId above): the FULL desk object travels, in the
+      // exact field set the native app's own save carries (confirmed capture): id + name +
+      // deskType + site/building/floor lookups + spaceCategory + resourceType/spaceType/
+      // reservable/isArchived — not an id-only reference.
       ...(existingRecordId
         ? {
             recordId: existingRecordId,
@@ -1225,6 +1247,15 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
                     id: existingRecordId,
                     name: unit.label,
                     ...(unit.type === 'workstation' ? { deskType: DESK_TYPE_NUM[unit.deskType ?? 'ASSIGNED'] } : {}),
+                    spaceType: -1,
+                    resourceType: 1,
+                    reservable: false,
+                    isArchived: false,
+                    ...(parentSiteId ? { siteId: parentSiteId } : {}),
+                    ...(parentBuildingId ? { building: { id: parentBuildingId } } : {}),
+                    floorId: Number(parentFloorId ?? unit.floor),
+                    floor: { id: Number(parentFloorId ?? unit.floor) },
+                    ...(deskSpaceCategoryId ? { spaceCategory: { id: deskSpaceCategoryId } } : {}),
                   },
                 }
               : {}),
