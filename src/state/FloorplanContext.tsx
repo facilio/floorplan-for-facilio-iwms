@@ -1246,6 +1246,8 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
     dismissToast,
 
     togglePanelOpen: (id: 'context' | 'portfolio' | 'details') => dispatch({ type: 'TOGGLE_PANEL_OPEN', id }),
+    /** OPEN (never close) a panel — for buttons whose job is "take me there"; toggle would close an already-open panel. */
+    openPanel: (id: 'context' | 'portfolio' | 'details') => dispatch({ type: 'SET_PANEL_OPEN', id, open: true }),
     setPanelPos: (id: 'context' | 'portfolio' | 'details', x: number, y: number, width: number) => {
       const clamped = clampPanelPos(x, y, width, state.stage.w, state.stage.h);
       dispatch({ type: 'SET_PANEL_POS', id, x: clamped.x, y: clamped.y });

@@ -89,12 +89,22 @@ export function Tooltip() {
         </Button>
       )}
       {state.mode === 'book' && bookable && booked && (
-        <Button variant="secondary" fullWidth style={{ marginTop: 10 }} onClick={() => actions.openBookingForm({ unitId: unit.id, date: state.date, start: state.start, end: state.end })}>
+        <Button
+          variant="secondary"
+          fullWidth
+          style={{ marginTop: 10 }}
+          onClick={() => {
+            // LIST the unit's bookings (BookPanel's schedule for this selected unit) — this
+            // button used to open the CREATE form, which is what "Book" is for.
+            actions.setSchedView('list');
+            actions.openPanel('details');
+          }}
+        >
           Manage bookings
         </Button>
       )}
       {state.mode === 'assign' && assignable && (
-        <Button variant={contactId ? 'secondary' : 'primary'} fullWidth style={{ marginTop: 10 }} onClick={() => actions.togglePanelOpen('details')}>
+        <Button variant={contactId ? 'secondary' : 'primary'} fullWidth style={{ marginTop: 10 }} onClick={() => actions.openPanel('details')}>
           {contactId ? 'Manage' : 'Assign a person'}
         </Button>
       )}
