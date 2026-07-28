@@ -619,19 +619,43 @@ const FLOOR_RECORD_MODULES: { type: UnitType; moduleName: string; plan: PlanId }
   { type: 'room', moduleName: 'space', plan: 'custom' },
 ];
 
+/**
+ * Short-lived promise cache for one floor's RAW module-record list. getUnits (unplaced
+ * ride-alongs) and getAssignments (desk assignees, see viewerDataAssignmentsForFloor) both need
+ * the floor's desks and run CONCURRENTLY per floor load — caching the in-flight promise collapses
+ * them into one request, same discipline as viewerDataCache.
+ */
+const FLOOR_RECORDS_TTL_MS = 20_000;
+const floorRecordsCache = new Map<string, { at: number; promise: Promise<any[]> }>();
+
+function fetchFloorRecordsRaw(moduleName: string, floorId: string): Promise<any[]> {
+  const key = `${floorId}:${moduleName}`;
+  const hit = floorRecordsCache.get(key);
+  if (hit && Date.now() - hit.at < FLOOR_RECORDS_TTL_MS) return hit.promise;
+  pruneExpired(floorRecordsCache, FLOOR_RECORDS_TTL_MS);
+  const promise = (async () => {
+    const res: any = await facilioApi.fetchAll(moduleName, {
+      page: 1,
+      perPage: 500,
+      isArchived: false,
+      filters: JSON.stringify({ floor: { operatorId: 36, value: [String(floorId)] } }),
+    });
+    if (res.error || !res.list) throw new Error(res.error?.message || `fetch failed for ${moduleName}`);
+    return res.list as any[];
+  })();
+  promise.catch(() => {
+    if (floorRecordsCache.get(key)?.promise === promise) floorRecordsCache.delete(key);
+  });
+  floorRecordsCache.set(key, { at: Date.now(), promise });
+  return promise;
+}
+
 async function fetchFloorModuleRecords(floorId: string): Promise<Unit[]> {
   const results = await Promise.all(
     FLOOR_RECORD_MODULES.map(async ({ type, moduleName, plan }) => {
-      const res = await facilioApi
-        .fetchAll(moduleName, {
-          page: 1,
-          perPage: 500,
-          isArchived: false,
-          filters: JSON.stringify({ floor: { operatorId: 36, value: [String(floorId)] } }),
-        })
-        .catch(() => ({ list: null, error: { message: 'fetch failed' } }) as any);
-      if (res.error || !res.list) return [] as Unit[];
-      return (res.list as any[]).map(
+      const list = await fetchFloorRecordsRaw(moduleName, floorId).catch(() => null);
+      if (!list) return [] as Unit[];
+      return (list as any[]).map(
         (r): Unit => ({
           id: String(r.id),
           type,
@@ -727,7 +751,7 @@ async function viewerDataUnitsForFloor(floorId: string): Promise<Unit[]> {
 
 /**
  * The CLIENT CONTACT id assigned to a desk, read off a viewerData marker's properties —
- * `clientContact_desks` (the desk module's contact lookup this app writes on assign, see
+ * `clientcontact_desks` (the desk module's contact lookup this app writes on assign, see
  * assignUnitReal), with `clientcontact_moves` kept as a fallback for older captures.
  *
  * Deliberately NOT `employeeId` — that's a separate entity (a real employee/people record), a
@@ -736,7 +760,20 @@ async function viewerDataUnitsForFloor(floorId: string): Promise<Unit[]> {
  * wrong person or none. Returns null when no client-contact assignee is present.
  */
 function contactIdFromMarker(p: Record<string, any>): string | null {
-  const raw = p.clientContact_desks?.id ?? p.clientContact_desks ?? p.clientcontact_moves?.id ?? p.clientcontact_moves;
+  // The desk module's contact lookup is `clientcontact_desks` (all-lowercase, per the live org's
+  // field name); older captures/writes used the camelCase spelling — read BOTH so no assignee is
+  // missed, on the record itself or nested under a viewerData marker's `desk`.
+  const raw =
+    p.clientcontact_desks?.id ??
+    p.clientcontact_desks ??
+    p.clientContact_desks?.id ??
+    p.clientContact_desks ??
+    p.desk?.clientcontact_desks?.id ??
+    p.desk?.clientcontact_desks ??
+    p.desk?.clientContact_desks?.id ??
+    p.desk?.clientContact_desks ??
+    p.clientcontact_moves?.id ??
+    p.clientcontact_moves;
   const n = Number(raw);
   return Number.isFinite(n) && n > 0 ? String(n) : null;
 }
@@ -758,6 +795,16 @@ async function viewerDataAssignmentsForFloor(floorId: string): Promise<Assignmen
       const contactId = contactIdFromMarker(p);
       if (recordId && contactId) map[String(recordId)] = contactId;
     }
+  }
+  // The desks MODULE is the authority on the current assignee — `clientcontact_desks` lives on
+  // the desk record, and the viewerData feed's marker properties don't always project it. Overlay
+  // it last so a desk whose record carries clientcontact_desks ALWAYS shows as assigned to that
+  // contact, even when viewerData said nothing. (Shares one request with getUnits' concurrent
+  // floor-records fetch via fetchFloorRecordsRaw's promise cache.)
+  const desks = await fetchFloorRecordsRaw('desks', floorId).catch(() => [] as any[]);
+  for (const r of desks) {
+    const contactId = contactIdFromMarker(r);
+    if (contactId) map[String(r.id)] = contactId;
   }
   return map;
 }
@@ -1872,14 +1919,15 @@ export async function assignUnitReal(unit: Unit, contactId: string): Promise<voi
   if (!ref) return;
 
   if (unit.type === 'workstation') {
-    // Order matters: the DESK updates FIRST (clientContact_desks — the DESK module's contact
-    // lookup; the moves record below keeps its own clientcontact_moves field), THEN the moves
-    // record is added for the history/reassignment mechanics. Once the backend's Moves execution
-    // updates the desk itself, the direct patch goes away and only the move remains.
-    const patch = await facilioApi.updateRecord(moduleName, { id: ref.recordId, data: { clientContact_desks: { id } } });
+    // Order matters: the DESK updates FIRST (clientcontact_desks — the DESK module's contact
+    // lookup, all-lowercase field name; the moves record below keeps its own clientcontact_moves
+    // field), THEN the moves record is added for the history/reassignment mechanics. Once the
+    // backend's Moves execution updates the desk itself, the direct patch goes away and only the
+    // move remains.
+    const patch = await facilioApi.updateRecord(moduleName, { id: ref.recordId, data: { clientcontact_desks: { id } } });
     if (patch.error) {
       // eslint-disable-next-line no-console
-      console.warn(`[facilio-api] desk clientContact_desks patch failed for unit ${unit.id}`, patch.error);
+      console.warn(`[facilio-api] desk clientcontact_desks patch failed for unit ${unit.id}`, patch.error);
     }
     const res = await facilioApi.createRecord('moves', {
       data: {
@@ -1909,7 +1957,7 @@ export async function assignUnitReal(unit: Unit, contactId: string): Promise<voi
 /**
  * Direct assignee-field patch, no Moves record — the companion to the STATEFLOW vacate/assign
  * buttons (executing a transition changes state but not the lookup): desks carry the contact on
- * `clientContact_desks` (the desk module's contact lookup), lockers/parking on `employee`.
+ * `clientcontact_desks` (the desk module's contact lookup), lockers/parking on `employee`.
  * `contactId: null` clears it.
  */
 export async function patchUnitContact(unit: Unit, contactId: string | null): Promise<void> {
@@ -1918,7 +1966,7 @@ export async function patchUnitContact(unit: Unit, contactId: string | null): Pr
   if (!moduleName) return;
   const ref = await ensureRealSpaceRecord(unit);
   if (!ref) return;
-  const field = unit.type === 'workstation' ? 'clientContact_desks' : 'employee';
+  const field = unit.type === 'workstation' ? 'clientcontact_desks' : 'employee';
   const value = contactId != null && Number.isFinite(Number(contactId)) ? { id: Number(contactId) } : null;
   const res = await facilioApi.updateRecord(moduleName, { id: ref.recordId, data: { [field]: value } });
   if (res.error) {
@@ -1944,13 +1992,13 @@ export async function vacateUnitReal(unit: Unit, contactId: string): Promise<voi
   if (!ref) return;
 
   if (unit.type === 'workstation') {
-    // Mirror of assign's ordering: the DESK clears FIRST (clientContact_desks: null), THEN the
+    // Mirror of assign's ordering: the DESK clears FIRST (clientcontact_desks: null), THEN the
     // departure move is recorded. Same future path — the direct patch goes away once the
     // backend's Moves execution owns the desk field.
-    const patch = await facilioApi.updateRecord(moduleName, { id: ref.recordId, data: { clientContact_desks: null } });
+    const patch = await facilioApi.updateRecord(moduleName, { id: ref.recordId, data: { clientcontact_desks: null } });
     if (patch.error) {
       // eslint-disable-next-line no-console
-      console.warn(`[facilio-api] desk clientContact_desks clear failed for unit ${unit.id}`, patch.error);
+      console.warn(`[facilio-api] desk clientcontact_desks clear failed for unit ${unit.id}`, patch.error);
     }
     const res = await facilioApi.createRecord('moves', {
       data: {
