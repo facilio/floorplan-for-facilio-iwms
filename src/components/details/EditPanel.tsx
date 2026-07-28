@@ -515,6 +515,8 @@ function Inspector() {
   const { state, actions } = useFloorplan();
   const sel = unitById(state, state.selected);
   const multi = state.multiSelected;
+  // Collapsible details viewer — header stays, body folds (see inspectorHead below).
+  const [inspectorOpen, setInspectorOpen] = useState(true);
 
 
   if (multi.length > 1) {
@@ -539,25 +541,57 @@ function Inspector() {
   }
 
   if (!sel) return null;
+  const isPointRecord = sel.type === 'workstation' || sel.type === 'locker' || sel.type === 'parking';
+  // The floor's other records of this type (unplaced — pool + org records with no marker):
+  // picking one swaps it into this spot; the current record moves to "Available to place".
+  const swapCandidates = isPointRecord
+    ? [...state.unplacedUnits, ...state.units.filter((u) => u.unplaced)].filter((u) => u.type === sel.type && u.id !== sel.id)
+    : [];
   return (
     <div className={card.card}>
       <div className={card.cardBody}>
+        {/* Collapsible viewer: the header always shows; the chevron folds the details away so the
+            inspector doesn't crowd the tools while nudging markers around. */}
         <div className={styles.inspectorHead}>
-          <span className={styles.inspectorCount}>{sel.label}</span>
+          <button
+            title={inspectorOpen ? 'Collapse details' : 'Expand details'}
+            aria-expanded={inspectorOpen}
+            onClick={() => setInspectorOpen((o) => !o)}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', padding: 0, cursor: 'pointer', minWidth: 0 }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--ink-500)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: `rotate(${inspectorOpen ? 90 : 0}deg)`, transition: 'transform .15s' }}>
+              <path d="M9 18l6-6-6-6" />
+            </svg>
+            <span className={styles.inspectorCount} title={sel.label}>{sel.label}</span>
+          </button>
           <button className={styles.inspectorClose} title="Deselect" onClick={() => actions.selectUnit(null)}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="M18 6L6 18M6 6l12 12" />
             </svg>
           </button>
         </div>
+        {inspectorOpen && (
+        <>
         <label className={card.label}>Label</label>
         <input className={card.input} value={sel.label} onChange={(e) => actions.updateUnit(sel.id, { label: e.target.value })} />
+        {isPointRecord && swapCandidates.length > 0 && (
+          <div style={{ marginTop: 10 }}>
+            <label className={card.label}>{TYPE_META[sel.type].name} record</label>
+            <Select
+              value={null}
+              placeholder={`Swap in another ${TYPE_META[sel.type].name.toLowerCase()}…`}
+              options={swapCandidates.map((u) => ({ value: u.id, label: u.label, sublabel: u.type === 'workstation' ? (u.deskType ?? 'ASSIGNED') : undefined }))}
+              onChange={(v) => actions.placeUnitOnUnit(v, sel.id)}
+              fullWidth
+              aria-label={`Swap in another ${TYPE_META[sel.type].name.toLowerCase()}`}
+            />
+            <p className={card.helper} style={{ marginTop: 4 }}>
+              The picked record takes this spot; “{sel.label}” moves to Available to place.
+            </p>
+          </div>
+        )}
         {sel.type === 'workstation' && (
           <>
-            <label className={card.label} style={{ marginTop: 10 }}>
-              Seat type
-            </label>
-            <input className={card.input} value={sel.secondary ?? ''} onChange={(e) => actions.updateUnit(sel.id, { secondary: e.target.value })} />
             {/* Real deskType semantics (Context/Workplace_spaceModules.md): ASSIGNED desks are
                 assignment-only; HOT/HOTEL desks are booking-only. Changing this immediately
                 regates the assign/book flows for this marker. FDS Picklist (Canvas-2.dc.html
@@ -613,6 +647,8 @@ function Inspector() {
         </Button>
         {sel.type !== 'room' && sel.type !== 'amenity' && (
           <p className={styles.inspectorNote}>Deleting keeps the record — it moves to “Available to place” so you can re-position it later.</p>
+        )}
+        </>
         )}
       </div>
     </div>

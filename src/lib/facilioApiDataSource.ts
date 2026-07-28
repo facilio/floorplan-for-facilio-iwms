@@ -573,11 +573,57 @@ function zoneFeatureToUnit(
 }
 
 /**
+ * ALL of the floor's records from their real modules (desks/lockers/parkingstall/space), filtered
+ * by the floor lookup — including ones with NO on-plan marker yet. Those surface as `unplaced`
+ * units: listed in edit mode's "Available to place", and matchable by auto-map's name matching
+ * (which otherwise can't link existing records the viewerData feed never mentions).
+ */
+const FLOOR_RECORD_MODULES: { type: UnitType; moduleName: string; plan: PlanId }[] = [
+  { type: 'workstation', moduleName: 'desks', plan: 'workstation' },
+  { type: 'locker', moduleName: 'lockers', plan: 'locker' },
+  { type: 'parking', moduleName: 'parkingstall', plan: 'parking' },
+  { type: 'room', moduleName: 'space', plan: 'custom' },
+];
+
+async function fetchFloorModuleRecords(floorId: string): Promise<Unit[]> {
+  const results = await Promise.all(
+    FLOOR_RECORD_MODULES.map(async ({ type, moduleName, plan }) => {
+      const res = await facilioApi
+        .fetchAll(moduleName, {
+          page: 1,
+          perPage: 500,
+          isArchived: false,
+          filters: JSON.stringify({ floor: { operatorId: 36, value: [String(floorId)] } }),
+        })
+        .catch(() => ({ list: null, error: { message: 'fetch failed' } }) as any);
+      if (res.error || !res.list) return [] as Unit[];
+      return (res.list as any[]).map(
+        (r): Unit => ({
+          id: String(r.id),
+          type,
+          label: r.name ?? `#${r.id}`,
+          room: null,
+          // Placeholder geometry — `unplaced` keeps it off the canvas until it's actually placed.
+          geom: { kind: 'point', x: 0, y: 0 },
+          floor: String(floorId),
+          plan,
+          unplaced: true,
+          ...(type === 'workstation' && DESK_TYPE_BY_NUM[r.deskType] ? { deskType: DESK_TYPE_BY_NUM[r.deskType] } : {}),
+          ...(type === 'room' && typeof r.reservable === 'boolean' ? { isReservable: r.reservable } : {}),
+        })
+      );
+    })
+  );
+  return results.flat();
+}
+
+/**
  * All placed units on a floor, from viewerData — unioned across every plan type configured for the
  * floor (workstations/lockers/parking each have their own `indoorfloorplan` record + viewerData
  * feed). Point markers (desks/lockers/parking/amenities) come from the `marker` layer; rooms/spaces
  * come from the `spaceZone` layer. Positions/type/metadata come straight from the feed; ASSIGNMENT
- * mode is used since geometry doesn't vary by view mode.
+ * mode is used since geometry doesn't vary by view mode. The floor's module records WITHOUT a
+ * marker ride along as `unplaced` units (see fetchFloorModuleRecords).
  */
 async function viewerDataUnitsForFloor(floorId: string): Promise<Unit[]> {
   const byType = await getFloorplanDetailsByType(floorId);
@@ -634,6 +680,14 @@ async function viewerDataUnitsForFloor(floorId: string): Promise<Unit[]> {
   if (attempted > 0 && failed === attempted) {
     throw new Error(`facilio-api: viewerData failed for all ${attempted} plan type(s) on floor ${floorId}`);
   }
+
+  // The floor's module records with NO marker yet ride along as `unplaced` — placed records
+  // (already in byId under the same record id) win.
+  const moduleRecords = await fetchFloorModuleRecords(floorId).catch(() => [] as Unit[]);
+  for (const u of moduleRecords) {
+    if (!byId.has(u.id)) byId.set(u.id, u);
+  }
+
   return [...byId.values()];
 }
 

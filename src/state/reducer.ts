@@ -266,8 +266,10 @@ export function reducer(state: AppState, action: Action): AppState {
       const dragged = state.unplacedUnits.find((u) => u.id === action.unitId) ?? state.units.find((u) => u.id === action.unitId);
       if (!dragged || dragged.id === target.id) return state;
       // Tag to the currently-active plan tab, not whatever `plan` the dragged record carried
-      // before — same reasoning as PLACE_EXISTING_UNIT above.
-      const placedDragged: Unit = { ...dragged, geom: { ...target.geom }, room: target.room, floor: state.floorId, plan: state.planId };
+      // before — same reasoning as PLACE_EXISTING_UNIT above. `unplaced` clears: an org record
+      // swapped in via the desk lookup takes the spot for real (it kept the flag before, which
+      // left it invisible on the canvas).
+      const placedDragged: Unit = { ...dragged, geom: { ...target.geom }, room: target.room, floor: state.floorId, plan: state.planId, unplaced: false };
       const units = state.units.filter((u) => u.id !== action.targetId && u.id !== action.unitId).concat(placedDragged);
       const unplacedUnits = [...state.unplacedUnits.filter((u) => u.id !== action.unitId), target];
       return {
