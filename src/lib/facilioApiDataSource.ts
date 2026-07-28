@@ -1153,47 +1153,26 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
     // (see AUTO_MARKER_TYPE_NAMES — desks/lockers/parking); an existing match's own markerType
     // (spread below) is never overridden by this.
     let newMarkerType: { id: number } | undefined;
-    // Brand-new desk/locker/parking: nest the FULL backing record inside the marker object under
-    // its module's own singular field name (`desk`/`locker`/`parkingStall` — see
-    // MARKER_RECORD_KEY; `desk` confirmed, the others follow the same singular-camelCase pattern
-    // the org's spacebooking lookups use), so this indoorfloorplan update creates the real
-    // record inline — a brand-new entry is created together with its nested record (the org's
-    // own save works this way), instead of a marker with no record behind it (which previously
-    // deferred record creation to the first assignment). All the record's required fields ride
-    // here: name, site/building/floor lookups, plus deskType for desks (INTEGER enum, matching
-    // the confirmed field-sync write).
-    let newRecord: Record<string, unknown> | undefined;
     const recordKey = MARKER_RECORD_KEY[unit.type];
     // A unit whose id IS a real backend record id (numeric — auto-map name match, placement
-    // dialog, unplaced-list drag) getting its FIRST marker must LINK that record, never nest a
-    // create — nesting minted a duplicate desk/space whose id no longer matched the placed unit.
+    // dialog, record-swap lookup, unplaced-list drag) getting its FIRST marker LINKS that record.
     // markerOnly units are excluded: their numeric ids are viewerData OBJECT ids, not record ids
     // (linking one throws an FK violation server-side).
+    //
+    // No record selected -> the marker saves BARE: no nested desk/locker/parkingStall object goes
+    // on the update payload at all (inline creation is deliberately gone — it minted records the
+    // user never asked for). The real record is created lazily on first actual use instead
+    // (assignment/booking via ensureRealSpaceRecord).
     const existingRecordId = !match && !unit.markerOnly && /^\d+$/.test(unit.id) ? Number(unit.id) : null;
     if (!match) {
       const id = await autoMarkerTypeIdFor(unit.type);
       if (id) newMarkerType = { id };
-      // Auto-mapped units (markerOnly) sync as bare markers — no nested record, so bulk CAD
-      // mapping never mass-creates desk/locker/parkingstall records; those are minted lazily on
-      // first actual use instead (ensureRealSpaceRecord).
-      if (recordKey && !unit.markerOnly && !existingRecordId) {
-        newRecord = {
-          name: unit.label,
-          ...(parentSiteId ? { site: { id: parentSiteId } } : {}),
-          ...(parentBuildingId ? { building: { id: parentBuildingId } } : {}),
-          floor: { id: parentFloorId ?? unit.floor },
-          ...(unit.type === 'workstation' ? { deskType: DESK_TYPE_NUM[unit.deskType ?? 'ASSIGNED'] } : {}),
-          // parkingMode is MANDATORY on parkingstall creation — 1 = Permanent (confirmed from a
-          // live edit payload; the create form rejects records without it).
-          ...(unit.type === 'parking' ? { parkingMode: 1 } : {}),
-          ...(unit.secondary ? { secondary: unit.secondary } : {}),
-        };
-      }
     }
     // Spread the existing entry first so anything it already carries (recordId, markerType,
     // markerModuleId, etc.) survives the round-trip untouched — only geometry/label are ours to
     // change.
-    const newModuleId = !match && recordKey ? moduleIdByName.get(REAL_SPACE_MODULE[unit.type] ?? '') : undefined;
+    // markerModuleId only travels when the marker actually references a record.
+    const newModuleId = existingRecordId && recordKey ? moduleIdByName.get(REAL_SPACE_MODULE[unit.type] ?? '') : undefined;
     // Record-field changes (deskType/secondary/name) ride INSIDE the marker's nested record in
     // this same indoorfloorplan update — the backend syncs them to the desks/lockers/parkingstall
     // record from there (matching the native app's payload, which nests the full record on every
@@ -1208,7 +1187,6 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
     nextMarkers.push({
       ...(match ?? {}),
       ...(newMarkerType ? { markerType: newMarkerType } : {}),
-      ...(newRecord && recordKey ? { [recordKey]: newRecord } : {}),
       ...(matchedRecordPatch && recordKey ? { [recordKey]: matchedRecordPatch } : {}),
       // Existing-record link (see existingRecordId above): reference by id, exactly like
       // ensureRealSpaceRecord's confirmed marker shape.

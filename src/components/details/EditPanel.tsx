@@ -517,6 +517,13 @@ function Inspector() {
   const multi = state.multiSelected;
   // Collapsible details viewer — header stays, body folds (see inspectorHead below).
   const [inspectorOpen, setInspectorOpen] = useState(true);
+  // Searchable record-swap lookup (type a desk name, pick it) — reset when the selection moves.
+  const [swapQuery, setSwapQuery] = useState('');
+  const [swapOpen, setSwapOpen] = useState(false);
+  useEffect(() => {
+    setSwapQuery('');
+    setSwapOpen(false);
+  }, [state.selected]);
 
 
   if (multi.length > 1) {
@@ -575,16 +582,68 @@ function Inspector() {
         <label className={card.label}>Label</label>
         <input className={card.input} value={sel.label} onChange={(e) => actions.updateUnit(sel.id, { label: e.target.value })} />
         {isPointRecord && swapCandidates.length > 0 && (
-          <div style={{ marginTop: 10 }}>
+          <div style={{ marginTop: 10, position: 'relative' }}>
             <label className={card.label}>{TYPE_META[sel.type].name} record</label>
-            <Select
-              value={null}
-              placeholder={`Swap in another ${TYPE_META[sel.type].name.toLowerCase()}…`}
-              options={swapCandidates.map((u) => ({ value: u.id, label: u.label, sublabel: u.type === 'workstation' ? (u.deskType ?? 'ASSIGNED') : undefined }))}
-              onChange={(v) => actions.placeUnitOnUnit(v, sel.id)}
-              fullWidth
-              aria-label={`Swap in another ${TYPE_META[sel.type].name.toLowerCase()}`}
+            {/* Searchable lookup: type a name, pick the record — it takes this spot. */}
+            <input
+              className={card.input}
+              value={swapQuery}
+              placeholder={`Search ${TYPE_META[sel.type].name.toLowerCase()}s to swap in…`}
+              aria-label={`Search ${TYPE_META[sel.type].name.toLowerCase()}s to swap in`}
+              onFocus={() => setSwapOpen(true)}
+              onChange={(e) => {
+                setSwapQuery(e.target.value);
+                setSwapOpen(true);
+              }}
             />
+            {swapOpen && (
+              <>
+                {/* click-away backdrop */}
+                <div style={{ position: 'fixed', inset: 0, zIndex: 30 }} onClick={() => setSwapOpen(false)} />
+                <div
+                  role="listbox"
+                  style={{
+                    position: 'absolute',
+                    left: 0,
+                    right: 0,
+                    top: '100%',
+                    zIndex: 31,
+                    maxHeight: 200,
+                    overflowY: 'auto',
+                    background: '#fff',
+                    border: '1px solid var(--ink-200)',
+                    borderRadius: 8,
+                    boxShadow: '0 8px 24px rgba(16,24,40,0.14)',
+                    padding: 4,
+                  }}
+                >
+                  {swapCandidates
+                    .filter((u) => !swapQuery.trim() || u.label.toLowerCase().includes(swapQuery.trim().toLowerCase()))
+                    .slice(0, 30)
+                    .map((u) => (
+                      <button
+                        key={u.id}
+                        type="button"
+                        role="option"
+                        onClick={() => {
+                          setSwapOpen(false);
+                          setSwapQuery('');
+                          actions.placeUnitOnUnit(u.id, sel.id);
+                        }}
+                        style={{ display: 'flex', justifyContent: 'space-between', gap: 8, width: '100%', textAlign: 'left', padding: '7px 9px', borderRadius: 6, border: 'none', background: 'none', cursor: 'pointer', font: '500 12.5px/1.2 var(--font-sans)', color: 'var(--ink-900)' }}
+                        onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = 'var(--ink-050)')}
+                        onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = 'none')}
+                      >
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={u.label}>{u.label}</span>
+                        {u.type === 'workstation' && <span style={{ flex: 'none', font: '400 11px var(--font-sans)', color: 'var(--ink-500)' }}>{u.deskType ?? 'ASSIGNED'}</span>}
+                      </button>
+                    ))}
+                  {swapCandidates.filter((u) => !swapQuery.trim() || u.label.toLowerCase().includes(swapQuery.trim().toLowerCase())).length === 0 && (
+                    <div style={{ padding: '8px 9px', font: '400 12px var(--font-sans)', color: 'var(--ink-500)' }}>No match for “{swapQuery.trim()}”.</div>
+                  )}
+                </div>
+              </>
+            )}
             <p className={card.helper} style={{ marginTop: 4 }}>
               The picked record takes this spot; “{sel.label}” moves to Available to place.
             </p>
