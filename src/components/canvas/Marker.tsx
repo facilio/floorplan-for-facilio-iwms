@@ -6,7 +6,7 @@ import type { PointGeom, Unit } from '../../lib/types';
 import { MARKER_ICONS as ICONS } from './markerIcons';
 import styles from './Marker.module.css';
 
-export function Marker({ unit, invZ, onDragStart, myUnitId }: { unit: Unit; invZ: number; onDragStart?: (unit: Unit, e: ReactMouseEvent) => void; myUnitId?: string | null }) {
+export function Marker({ unit, invZ, onDragStart, myUnitId, labelVisible }: { unit: Unit; invZ: number; onDragStart?: (unit: Unit, e: ReactMouseEvent) => void; myUnitId?: string | null; labelVisible?: boolean }) {
   const { state, actions } = useFloorplan();
   const geom = unit.geom as PointGeom;
   const style = markerStyle(state, unit);
@@ -71,7 +71,9 @@ export function Marker({ unit, invZ, onDragStart, myUnitId }: { unit: Unit; invZ
 
   const title = `${unit.label}${unit.room ? ' · ' + unit.room : ''} — ${status.text}`;
 
-  const showLabel = (state.mode === 'assign' || state.mode === 'book' || unit.type === 'amenity') && invZ <= 1.9;
+  // labelVisible: the parent's decluttering verdict (dense grids keep only non-colliding
+  // labels) — callers that don't pass it (mobile) show all labels as before.
+  const showLabel = (state.mode === 'assign' || state.mode === 'book' || unit.type === 'amenity') && invZ <= 1.9 && labelVisible !== false;
 
   return (
     <>

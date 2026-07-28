@@ -500,6 +500,39 @@ export function Canvas() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const myUnitId = useMemo(() => myAssignedUnit(state)?.id ?? null, [state.assignments, state.bookBy, state.units, state.myDesk]);
 
+  // Label DECLUTTERING: chips render at constant screen size (the invZ counter-scale), so
+  // whether labels fit depends on marker spacing at the current zoom — dense grids collide.
+  // Greedy keep in row-major order (selected marker first): a label renders only when its
+  // estimated screen rect doesn't overlap one already kept. z is quantized to 0.05 steps so
+  // pinch/wheel frames reuse the memo instead of running O(n²) per frame.
+  const zq = Math.max(0.05, Math.round(state.view.z * 20) / 20);
+  const labelVisibleIds = useMemo(() => {
+    const kept: { x1: number; y1: number; x2: number; y2: number }[] = [];
+    const ids = new Set<string>();
+    const CHIP_H = 15;
+    const GAP = 13; // chip bottom sits ~this far above the marker centre (screen px)
+    const order = markerUnits
+      .filter((u) => u.geom.kind === 'point')
+      .sort((a, b) => {
+        if (a.id === state.selected) return -1;
+        if (b.id === state.selected) return 1;
+        const ga = a.geom as { x: number; y: number };
+        const gb = b.geom as { x: number; y: number };
+        return ga.y - gb.y || ga.x - gb.x;
+      });
+    for (const u of order) {
+      const g = u.geom as { x: number; y: number };
+      const cx = g.x * IMG_W * zq;
+      const cy = g.y * IMG_H * zq;
+      const w = Math.min(u.label.length, 24) * 5.4 + 12;
+      const r = { x1: cx - w / 2, y1: cy - GAP - CHIP_H, x2: cx + w / 2, y2: cy - GAP };
+      if (kept.some((k) => r.x1 < k.x2 && r.x2 > k.x1 && r.y1 < k.y2 && r.y2 > k.y1)) continue;
+      kept.push(r);
+      ids.add(u.id);
+    }
+    return ids;
+  }, [markerUnits, zq, state.selected]);
+
   const selectedRoom = isEditSelect && multiSel.size === 0 ? rooms.find((r) => r.id === state.selected) : undefined;
 
   let canvasHint = '';
@@ -549,6 +582,7 @@ export function Canvas() {
             invZ={Number(invZ)}
             onDragStart={startMarkerDrag}
             myUnitId={myUnitId}
+            labelVisible={labelVisibleIds.has(m.id)}
           />
         ))}
 
