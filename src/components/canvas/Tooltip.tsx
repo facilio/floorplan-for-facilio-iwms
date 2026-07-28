@@ -4,6 +4,7 @@ import { tooltipPlacement, unitCenter } from '../../lib/geometry';
 import { unitStatus } from '../../lib/unitStatus';
 import { StatusPill } from '../primitives/StatusPill';
 import { Button } from '../primitives/Button';
+import { UnitStateflowSection } from '../details/StateflowActions';
 import { resolveMarkerDef, TYPE_META } from '../../lib/types';
 import styles from './Tooltip.module.css';
 
@@ -76,6 +77,12 @@ export function Tooltip() {
         <StatusPill label={status.text} bg={status.bg} fg={status.fg} />
       </div>
 
+      {/* The record's OWN stateflow: current state + approval pills ("the desk status"), and
+          Assign/Vacate/whatever transitions its current state actually offers — STRICT rule,
+          nothing hardcoded. Booking creation and the person picker are data-entry flows (not
+          state actions), so they keep their navigation buttons below. */}
+      <UnitStateflowSection unit={unit} />
+
       {state.mode === 'book' && bookable && !booked && (
         <Button variant="primary" fullWidth style={{ marginTop: 10 }} onClick={() => actions.openBookingForm({ unitId: unit.id, date: state.date, start: state.start, end: state.end })}>
           Book
@@ -86,16 +93,9 @@ export function Tooltip() {
           Manage bookings
         </Button>
       )}
-      {state.mode === 'assign' && assignable && !contactId && (
-        <Button variant="primary" fullWidth style={{ marginTop: 10 }} onClick={() => actions.togglePanelOpen('details')}>
-          Assign
-        </Button>
-      )}
-      {/* Assigned units: no hardcoded Vacate/Reassign here — state actions come from the
-          record's stateflow buttons in the details panel; opening it is the tooltip's job. */}
-      {state.mode === 'assign' && assignable && !!contactId && (
-        <Button variant="primary" fullWidth style={{ marginTop: 10 }} onClick={() => actions.togglePanelOpen('details')}>
-          Manage
+      {state.mode === 'assign' && assignable && (
+        <Button variant={contactId ? 'secondary' : 'primary'} fullWidth style={{ marginTop: 10 }} onClick={() => actions.togglePanelOpen('details')}>
+          {contactId ? 'Manage' : 'Assign a person'}
         </Button>
       )}
       {state.mode === 'assign' && !assignable && (
