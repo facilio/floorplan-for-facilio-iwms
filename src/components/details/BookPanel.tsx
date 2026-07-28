@@ -68,8 +68,12 @@ export function BookPanel() {
 
       {sel && isBookable(sel) && (
         <div className={card.card}>
-          <div className={card.cardHead} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <h3 className={card.cardTitle}>{sel.label}</h3>
+          <div className={card.cardHead} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flexWrap: 'wrap' }}>
+              <h3 className={card.cardTitle} style={{ margin: 0 }}>{sel.label}</h3>
+              {/* Status pills NEXT TO the name (readOnly = pills only, no buttons). */}
+              <UnitStateflowSection unit={sel} readOnly />
+            </div>
             <div className={styles.viewToggle}>
               <button className={state.schedView === 'list' ? styles.viewBtnActive : styles.viewBtn} onClick={() => actions.setSchedView('list')}>
                 List
@@ -81,7 +85,8 @@ export function BookPanel() {
           </div>
           <div className={card.cardBody}>
             {state.schedView === 'list' ? <ScheduleList unitId={sel.id} /> : <DayTimeline unitId={sel.id} />}
-            <UnitStateflowSection unit={sel} />
+            {/* Buttons only — the status pills moved up beside the name in the card header. */}
+            <UnitStateflowSection unit={sel} showStatusRow={false} />
             {!bookedUnitIds(state).has(sel.id) || conflictsFor(state.bookings, sel.id, state.date, state.start, state.end).length === 0 ? (
               <Button variant="primary" fullWidth style={{ marginTop: 12 }} onClick={() => actions.openBookingForm({ unitId: sel.id, date: state.date, start: state.start, end: state.end })}>
                 New booking

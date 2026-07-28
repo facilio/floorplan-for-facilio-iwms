@@ -222,7 +222,7 @@ export function StateflowActions({
  * record yet, a room/amenity that can't resolve, or local mode all render nothing) and mounts
  * StateflowActions for it.
  */
-export function UnitStateflowSection({ unit, readOnly }: { unit: Unit; readOnly?: boolean }) {
+export function UnitStateflowSection({ unit, readOnly, showStatusRow }: { unit: Unit; readOnly?: boolean; showStatusRow?: boolean }) {
   const { actions } = useFloorplan();
   const [ref, setRef] = useState<{ moduleName: string; recordId: number } | null>(null);
 
@@ -248,6 +248,7 @@ export function UnitStateflowSection({ unit, readOnly }: { unit: Unit; readOnly?
       moduleName={ref.moduleName}
       recordId={ref.recordId}
       readOnly={readOnly}
+      showStatusRow={showStatusRow}
       // A vacate-ish transition must ALSO clear the record's assignee lookup (the transition only
       // changes state) — clientcontact_moves: null on desks, employee: null on lockers/parking —
       // and drop the local assignment so the overlay updates immediately. Reassignment keeps
