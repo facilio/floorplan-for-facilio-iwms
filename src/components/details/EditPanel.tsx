@@ -583,14 +583,18 @@ function Inspector() {
         <input className={card.input} value={sel.label} onChange={(e) => actions.updateUnit(sel.id, { label: e.target.value })} />
         {isPointRecord && swapCandidates.length > 0 && (
           <div style={{ marginTop: 10, position: 'relative' }}>
-            <label className={card.label}>{TYPE_META[sel.type].name} record</label>
-            {/* Searchable lookup: type a name, pick the record — it takes this spot. */}
+            <label className={card.label}>{TYPE_META[sel.type].name}</label>
+            {/* Lookup that reads like a select: it SHOWS the placed record as its value; focusing
+                switches to search (type a name, pick a record — it takes this spot). */}
             <input
               className={card.input}
-              value={swapQuery}
-              placeholder={`Search ${TYPE_META[sel.type].name.toLowerCase()}s to swap in…`}
-              aria-label={`Search ${TYPE_META[sel.type].name.toLowerCase()}s to swap in`}
-              onFocus={() => setSwapOpen(true)}
+              value={swapOpen ? swapQuery : sel.label}
+              placeholder={`Select ${TYPE_META[sel.type].name.toLowerCase()}…`}
+              aria-label={`Select ${TYPE_META[sel.type].name.toLowerCase()}`}
+              onFocus={() => {
+                setSwapOpen(true);
+                setSwapQuery('');
+              }}
               onChange={(e) => {
                 setSwapQuery(e.target.value);
                 setSwapOpen(true);
@@ -617,6 +621,22 @@ function Inspector() {
                     padding: 4,
                   }}
                 >
+                  {/* The placed record leads the list, marked current — picking it just closes. */}
+                  {(!swapQuery.trim() || sel.label.toLowerCase().includes(swapQuery.trim().toLowerCase())) && (
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected="true"
+                      onClick={() => {
+                        setSwapOpen(false);
+                        setSwapQuery('');
+                      }}
+                      style={{ display: 'flex', justifyContent: 'space-between', gap: 8, width: '100%', textAlign: 'left', padding: '7px 9px', borderRadius: 6, border: 'none', background: 'var(--blue-025)', cursor: 'pointer', font: '600 12.5px/1.2 var(--font-sans)', color: 'var(--blue-700)' }}
+                    >
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={sel.label}>{sel.label}</span>
+                      <span style={{ flex: 'none', font: '400 11px var(--font-sans)', color: 'var(--blue-600)' }}>Current</span>
+                    </button>
+                  )}
                   {swapCandidates
                     .filter((u) => !swapQuery.trim() || u.label.toLowerCase().includes(swapQuery.trim().toLowerCase()))
                     .slice(0, 30)
