@@ -55,10 +55,11 @@ export function LocationPanel() {
               </svg>
             </span>
             <span className={styles.switcherText}>
-              <span className={styles.switcherPath}>
+              {/* Both lines ellipsize — the title carries the full path for long names. */}
+              <span className={styles.switcherPath} title={meta ? `${meta.site.name} › ${meta.building.name}` : undefined}>
                 {meta ? `${meta.site.name} › ${meta.building.name}` : ''}
               </span>
-              <span className={styles.switcherName}>{floor?.name ?? 'Choose a floor'}</span>
+              <span className={styles.switcherName} title={floor?.name}>{floor?.name ?? 'Choose a floor'}</span>
             </span>
             <svg
               width="16"

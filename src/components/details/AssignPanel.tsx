@@ -122,10 +122,11 @@ export function AssignPanel() {
               >
                 <span className={styles.avatar}>{initials(contact.name)}</span>
                 <div className={styles.personText}>
-                  <div className={styles.personName}>{contact.name}</div>
-                  <div className={styles.personDept}>{contact.client}</div>
+                  {/* Long names/clients ellipsize — titles carry the full text. */}
+                  <div className={styles.personName} title={contact.name}>{contact.name}</div>
+                  <div className={styles.personDept} title={contact.client || undefined}>{contact.client}</div>
                 </div>
-                {held.length > 0 && <span className={styles.heldBadge}>{held.join(', ')}</span>}
+                {held.length > 0 && <span className={styles.heldBadge} title={held.join(', ')}>{held.join(', ')}</span>}
                 {/* Record summary opens ONLY from this icon — a whole-row click used to redirect,
                     which made selecting/dragging a person too easy to misfire into a navigation. */}
                 {canOpen && (
@@ -164,7 +165,7 @@ function AssignBody({ unitId }: { unitId: string }) {
       <div>
         <div className={styles.assignedRow}>
           <span className={styles.avatar}>{initials(contactName(state, contactId))}</span>
-          <span className={styles.assignedName}>{contactName(state, contactId)}</span>
+          <span className={styles.assignedName} title={contactName(state, contactId)}>{contactName(state, contactId)}</span>
         </div>
         {/* No hardcoded Vacate/Reassign — state actions come exclusively from the record's own
             stateflow buttons rendered below this card body (UnitStateflowSection), so only what

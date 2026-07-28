@@ -180,8 +180,11 @@ function SpaceRow({ unit, unplaced }: { unit: Unit; unplaced?: boolean }) {
     >
       <span className={styles.dot} style={{ background: status.dot }} />
       <div className={styles.rowText}>
-        <div className={styles.rowLabel}>{unit.label}</div>
-        <div className={styles.rowSub}>{unit.secondary || [unit.type === 'workstation' ? 'Desk' : unit.type, unit.room].filter(Boolean).join(' · ')}</div>
+        {/* Both lines ellipsize — titles carry the full text for long names. */}
+        <div className={styles.rowLabel} title={unit.label}>{unit.label}</div>
+        <div className={styles.rowSub} title={unit.secondary || undefined}>
+          {unit.secondary || [unit.type === 'workstation' ? 'Desk' : unit.type, unit.room].filter(Boolean).join(' · ')}
+        </div>
       </div>
       {unplaced ? (
         placing ? (

@@ -171,7 +171,8 @@ export function PortfolioTree() {
                 <path d="M12 2L2 7l10 5 10-5-10-5z M2 12l10 5 10-5 M2 17l10 5 10-5" />
               </svg>
             )}
-            <span className={styles.name}>{n.name}</span>
+            {/* Long site/building/floor names ellipsize — the title shows them in full on hover. */}
+            <span className={styles.name} title={n.name}>{n.name}</span>
             {n.badge && <span className={styles.badge}>{n.badge}</span>}
             {n.drillIn && (
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--ink-400)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
