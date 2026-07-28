@@ -1010,6 +1010,10 @@ export async function saveFloorplanMarkers(floorId: string, planId: PlanId, unit
   const targetType = FLOOR_PLAN_TYPE[planId];
   const syncable = units.filter(
     (u) =>
+      // `unplaced` records (org desks fetched from their modules with NO on-plan position — their
+      // geom is a 0,0 placeholder) must NEVER sync: without this, saving one placed desk pushed a
+      // phantom origin-marker for every unplaced record on the floor (1 desk -> 125 markers).
+      !u.unplaced &&
       FLOOR_PLAN_TYPE[u.plan] === targetType &&
       ((u.geom.kind === 'point' && (u.type === 'workstation' || u.type === 'locker' || u.type === 'parking' || u.type === 'amenity')) ||
         (u.geom.kind === 'poly' && u.type === 'room'))
