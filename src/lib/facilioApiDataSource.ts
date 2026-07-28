@@ -252,43 +252,37 @@ function lookupId(record: any, key: string): unknown {
   return record?.[key]?.id ?? record?.[`${key}Id`] ?? record?.[key];
 }
 
-export interface PortfolioSearchResults {
-  sites: { id: string; name: string }[];
-  buildings: { id: string; name: string; siteId: string | null; siteName: string | null }[];
-  floors: { id: string; name: string; buildingId: string | null; siteId: string | null; path: string | null }[];
+/**
+ * Server-side SITE search for the switcher's top search bar (sites only — buildings/floors have
+ * their own in-branch scoped searches, see searchBranchChildren). Standard list `search` param,
+ * ids only: the tree renders from the already-loaded portfolio, filtered to these.
+ */
+export async function searchSiteIds(text: string): Promise<Set<string>> {
+  const q = text.trim();
+  if (!isFacilioApiConfigured || !q) return new Set();
+  const res = await facilioApi.fetchAll('site', { page: 1, perPage: 50, search: q }).catch(() => ({ list: null }) as any);
+  return new Set(((res.list ?? []) as any[]).map((r) => String(r.id)));
 }
 
 /**
- * Server-side portfolio search: the switcher's search text goes to the API for sites, buildings
- * AND floors (three parallel list calls with the standard `search` param — the primary-field
- * search every Facilio list endpoint takes), so results aren't limited to branches already
- * lazy-loaded into the tree. 20 rows per level; a failing call contributes an empty section.
+ * Scoped in-branch search: buildings WITHIN one site (`kind: 'site'`), or floors WITHIN one
+ * building (`kind: 'building'`) — the search text goes to the API together with the parent
+ * lookup filter, so only that branch's children are searched. Returns matching child ids.
  */
-export async function searchPortfolio(text: string): Promise<PortfolioSearchResults> {
+export async function searchBranchChildren(kind: 'site' | 'building', parentId: string, text: string): Promise<Set<string>> {
   const q = text.trim();
-  if (!isFacilioApiConfigured || !q) return { sites: [], buildings: [], floors: [] };
-  const params = { page: 1, perPage: 20, search: q };
-  const [siteRes, buildingRes, floorRes] = await Promise.all([
-    facilioApi.fetchAll('site', params).catch(() => ({ list: null }) as any),
-    facilioApi.fetchAll('building', params).catch(() => ({ list: null }) as any),
-    facilioApi.fetchAll('floor', params).catch(() => ({ list: null }) as any),
-  ]);
-  return {
-    sites: (siteRes.list ?? []).map((s: any) => ({ id: String(s.id), name: s.name ?? `#${s.id}` })),
-    buildings: (buildingRes.list ?? []).map((b: any) => ({
-      id: String(b.id),
-      name: b.name ?? `#${b.id}`,
-      siteId: lookupId(b, 'site') != null ? String(lookupId(b, 'site')) : null,
-      siteName: b.site?.name ?? null,
-    })),
-    floors: (floorRes.list ?? []).map((f: any) => ({
-      id: String(f.id),
-      name: f.name ?? `#${f.id}`,
-      buildingId: lookupId(f, 'building') != null ? String(lookupId(f, 'building')) : null,
-      siteId: lookupId(f, 'site') != null ? String(lookupId(f, 'site')) : null,
-      path: [f.site?.name, f.building?.name].filter(Boolean).join(' › ') || null,
-    })),
-  };
+  if (!isFacilioApiConfigured || !q) return new Set();
+  const moduleName = kind === 'site' ? 'building' : 'floor';
+  const parentField = kind === 'site' ? 'site' : 'building';
+  const res = await facilioApi
+    .fetchAll(moduleName, {
+      page: 1,
+      perPage: 50,
+      search: q,
+      filters: JSON.stringify({ [parentField]: { operatorId: 36, value: [String(parentId)] } }),
+    })
+    .catch(() => ({ list: null }) as any);
+  return new Set(((res.list ?? []) as any[]).map((r) => String(r.id)));
 }
 
 export interface FloorParents {

@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
 import { isFacilioApiConfigured } from '../../lib/facilioApi';
-import { searchPortfolio } from '../../lib/facilioApiDataSource';
-import type { PortfolioSearchResults } from '../../lib/facilioApiDataSource';
+import { searchBranchChildren, searchSiteIds } from '../../lib/facilioApiDataSource';
 import styles from './PortfolioTree.module.css';
 
 interface FlatNode {
+  row: 'node';
   id: string;
   name: string;
   pad: number;
@@ -18,63 +18,87 @@ interface FlatNode {
   onClick: () => void;
 }
 
+/** In-branch search input row — buildings within one site, floors within one building. */
+interface SearchRow {
+  row: 'search';
+  parentId: string;
+  parentKind: 'site' | 'building';
+  pad: number;
+}
+
+type Row = FlatNode | SearchRow;
+
+const DEBOUNCE_MS = 300;
+
 export function PortfolioTree() {
   const { state, actions } = useFloorplan();
+
+  // Top search — SITES ONLY (buildings/floors search inside their own branch below). API-backed
+  // when configured (ids filter the loaded portfolio), plain name filter in local mode.
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const [apiResults, setApiResults] = useState<PortfolioSearchResults | null>(null);
-  const [searching, setSearching] = useState(false);
+  const [siteIds, setSiteIds] = useState<Set<string> | null>(null);
   const q = query.trim().toLowerCase();
-  const matches = (name: string) => !q || name.toLowerCase().includes(q);
-  const useApiSearch = isFacilioApiConfigured && q.length > 0;
 
-  // Server-side search (debounced): the text goes to the API for sites, buildings AND floors —
-  // results aren't limited to branches already lazy-loaded into the tree.
+  // One in-branch search at a time: typing under a site searches ITS buildings (API filter
+  // site=<id> + search text); under a building, ITS floors. Matching child ids filter the
+  // branch's loaded children.
+  const [branch, setBranch] = useState<{ id: string; kind: 'site' | 'building'; text: string } | null>(null);
+  const [branchIds, setBranchIds] = useState<Set<string> | null>(null);
+  const bq = branch?.text.trim().toLowerCase() ?? '';
+
+  // Debounced top (site) search.
   useEffect(() => {
-    if (!useApiSearch) {
-      setApiResults(null);
+    if (!isFacilioApiConfigured || !q) {
+      setSiteIds(null);
       return;
     }
-    setSearching(true);
     let cancelled = false;
     const t = setTimeout(() => {
-      searchPortfolio(query)
-        .then((r) => {
-          if (!cancelled) setApiResults(r);
-        })
-        .catch(() => {
-          if (!cancelled) setApiResults({ sites: [], buildings: [], floors: [] });
-        })
-        .finally(() => {
-          if (!cancelled) setSearching(false);
-        });
-    }, 300);
+      searchSiteIds(query).then((ids) => {
+        if (!cancelled) setSiteIds(ids);
+      });
+    }, DEBOUNCE_MS);
     return () => {
       cancelled = true;
       clearTimeout(t);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, useApiSearch]);
+  }, [query]);
 
-  /** Expand a node (loading its children lazily) without collapsing it when already open. */
-  const expand = (id: string) => {
-    if (!state.expanded[id]) actions.toggleNode(id);
-  };
-  const closeSearch = () => {
-    setSearchOpen(false);
-    setQuery('');
+  // Debounced in-branch search.
+  useEffect(() => {
+    if (!isFacilioApiConfigured || !branch || !bq) {
+      setBranchIds(null);
+      return;
+    }
+    let cancelled = false;
+    const t = setTimeout(() => {
+      searchBranchChildren(branch.kind, branch.id, branch.text).then((ids) => {
+        if (!cancelled) setBranchIds(ids);
+      });
+    }, DEBOUNCE_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [branch?.id, branch?.kind, bq]);
+
+  /** Does this branch's child pass its in-branch filter? API ids when loaded, name filter meanwhile/locally. */
+  const branchPass = (parentId: string, childId: string, childName: string): boolean => {
+    if (!branch || branch.id !== parentId || !bq) return true;
+    if (isFacilioApiConfigured && branchIds) return branchIds.has(childId);
+    return childName.toLowerCase().includes(bq);
   };
 
-  const items: FlatNode[] = [];
+  const items: Row[] = [];
   for (const site of state.portfolio) {
-    // Searching: a node shows when IT matches or any LOADED descendant does, and matched
-    // branches render expanded so the hit is visible without extra clicks. (Children are
-    // lazy-loaded — un-expanded sites/buildings can only be searched by their own names.)
-    const siteMatch = matches(site.name);
-    const buildingHits = q ? site.buildings.filter((b) => matches(b.name) || b.floors.some((f) => matches(f.name))) : site.buildings;
-    if (q && !siteMatch && buildingHits.length === 0) continue;
-    const siteExpanded = q ? buildingHits.length > 0 || site.buildings.length > 0 : !!state.expanded[site.id];
+    // Top search: sites only — API ids when configured, name filter otherwise.
+    if (q && (isFacilioApiConfigured && siteIds ? !siteIds.has(site.id) : !site.name.toLowerCase().includes(q))) continue;
+    const siteExpanded = !!state.expanded[site.id];
     items.push({
+      row: 'node',
       id: site.id,
       name: site.name,
       pad: 8,
@@ -87,12 +111,13 @@ export function PortfolioTree() {
       onClick: () => actions.toggleNode(site.id),
     });
     if (!siteExpanded) continue;
-    for (const building of q && !siteMatch ? buildingHits : site.buildings) {
-      const buildingMatch = matches(building.name);
-      const floorHits = q ? building.floors.filter((f) => matches(f.name)) : building.floors;
-      if (q && !siteMatch && !buildingMatch && floorHits.length === 0) continue;
-      const buildingExpanded = q ? floorHits.length > 0 : !!state.expanded[building.id];
+    // In-branch building search, scoped to THIS site.
+    items.push({ row: 'search', parentId: site.id, parentKind: 'site', pad: 24 });
+    for (const building of site.buildings) {
+      if (!branchPass(site.id, building.id, building.name)) continue;
+      const buildingExpanded = !!state.expanded[building.id];
       items.push({
+        row: 'node',
         id: building.id,
         name: building.name,
         pad: 24,
@@ -105,12 +130,16 @@ export function PortfolioTree() {
         onClick: () => actions.toggleNode(building.id),
       });
       if (!buildingExpanded) continue;
-      for (const floor of q && !siteMatch && !buildingMatch ? floorHits : building.floors) {
+      // In-branch floor search, scoped to THIS building.
+      items.push({ row: 'search', parentId: building.id, parentKind: 'building', pad: 42 });
+      for (const floor of building.floors) {
+        if (!branchPass(building.id, floor.id, floor.name)) continue;
         // A floor "has a plan" if the static portfolio flag says so OR an actual floorplan is
         // known for it (uploaded this session, or listed from the vibe-db file store at boot) —
         // without the OR, a freshly-uploaded floor kept reading "no plan" in this tree.
         const hasPlan = !!floor.hasPlan || !!state.floorsWithPlans[floor.id];
         items.push({
+          row: 'node',
           id: floor.id,
           name: floor.name,
           pad: 42,
@@ -132,15 +161,17 @@ export function PortfolioTree() {
     }
   }
 
+  const visibleNodes = items.filter((r): r is FlatNode => r.row === 'node');
+
   return (
     <div className={styles.wrap}>
       <div className={styles.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
         <span>Choose a floor</span>
-        {/* Search toggles open from the icon; closing clears the filter. */}
+        {/* Top search toggles open from the icon; closing clears it. Sites only. */}
         <button
           type="button"
-          title={searchOpen ? 'Close search' : 'Search sites & buildings'}
-          aria-label={searchOpen ? 'Close search' : 'Search sites and buildings'}
+          title={searchOpen ? 'Close search' : 'Search sites'}
+          aria-label={searchOpen ? 'Close search' : 'Search sites'}
           onClick={() => {
             setSearchOpen((o) => !o);
             setQuery('');
@@ -159,7 +190,7 @@ export function PortfolioTree() {
           autoFocus
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search sites, buildings, floors…"
+          placeholder="Search sites…"
           style={{
             margin: '0 8px 8px',
             padding: '7px 10px',
@@ -173,128 +204,80 @@ export function PortfolioTree() {
           }}
         />
       )}
-      {/* API-backed search: the text queries sites, buildings AND floors server-side and drives
-          the switcher from the results — not limited to lazily-loaded branches. */}
-      {useApiSearch && (
-        <div className={styles.list}>
-          {searching && <div style={{ padding: '8px 12px', font: '400 12px var(--font-sans)', color: 'var(--ink-500)' }}>Searching…</div>}
-          {!searching && apiResults && apiResults.sites.length + apiResults.buildings.length + apiResults.floors.length === 0 && (
-            <div style={{ padding: '8px 12px', font: '400 12px var(--font-sans)', color: 'var(--ink-500)' }}>Nothing matches “{query.trim()}”.</div>
-          )}
-          {!searching && !!apiResults?.sites.length && (
-            <div style={{ padding: '6px 12px 2px', font: '600 10.5px var(--font-sans)', letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--ink-400)' }}>Sites</div>
-          )}
-          {!searching &&
-            apiResults?.sites.map((s) => (
-              <div key={`s${s.id}`} className={styles.row} style={{ paddingLeft: 8 }} onClick={() => { expand(s.id); closeSearch(); }}>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={styles.typeIcon}>
-                  <path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 0 1 16 0z" /><circle cx="12" cy="10" r="3" />
-                </svg>
-                <span className={styles.name} title={s.name}>{s.name}</span>
-              </div>
-            ))}
-          {!searching && !!apiResults?.buildings.length && (
-            <div style={{ padding: '6px 12px 2px', font: '600 10.5px var(--font-sans)', letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--ink-400)' }}>Buildings</div>
-          )}
-          {!searching &&
-            apiResults?.buildings.map((b) => (
-              <div
-                key={`b${b.id}`}
-                className={styles.row}
-                style={{ paddingLeft: 8 }}
-                onClick={() => {
-                  if (b.siteId) expand(b.siteId);
-                  expand(b.id);
-                  closeSearch();
+      {q && visibleNodes.length === 0 && (
+        <div style={{ padding: '10px 12px', font: '400 12px/1.5 var(--font-sans)', color: 'var(--ink-500)' }}>
+          No sites match “{query.trim()}”.
+        </div>
+      )}
+      <div className={styles.list}>
+        {items.map((r) =>
+          r.row === 'search' ? (
+            <div key={`search-${r.parentId}`} style={{ padding: '2px 8px 4px', paddingLeft: r.pad }}>
+              <input
+                value={branch?.id === r.parentId ? branch.text : ''}
+                onChange={(e) => setBranch({ id: r.parentId, kind: r.parentKind, text: e.target.value })}
+                placeholder={r.parentKind === 'site' ? 'Search buildings…' : 'Search floors…'}
+                aria-label={r.parentKind === 'site' ? 'Search buildings in this site' : 'Search floors in this building'}
+                style={{
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  padding: '5px 8px',
+                  border: '1px solid var(--ink-100)',
+                  borderRadius: 6,
+                  font: '400 12px var(--font-sans)',
+                  color: 'var(--ink-900)',
+                  outline: 'none',
+                  background: 'var(--ink-025, #f8fafc)',
                 }}
-              >
+              />
+            </div>
+          ) : (
+            <div key={r.id} className={[styles.row, r.active ? styles.rowActive : ''].join(' ')} style={{ paddingLeft: r.pad }} onClick={r.onClick}>
+              {r.hasChildren && (
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className={styles.chevron}
+                  style={{ transform: `rotate(${r.expanded ? 90 : 0}deg)` }}
+                >
+                  <path d="M9 18l6-6-6-6" />
+                </svg>
+              )}
+              {r.kind === 'site' && (
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={styles.typeIcon}>
+                  <path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 0 1 16 0z" />
+                  <circle cx="12" cy="10" r="3" />
+                </svg>
+              )}
+              {r.kind === 'building' && (
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={styles.typeIcon}>
                   <rect x="4" y="2" width="16" height="20" rx="1" />
+                  <path d="M9 22v-4h6v4M8 6h.01M16 6h.01M12 6h.01M8 10h.01M16 10h.01M12 10h.01M8 14h.01M16 14h.01M12 14h.01" />
                 </svg>
-                <span className={styles.name} title={b.name}>{b.name}</span>
-                {b.siteName && <span className={styles.badge} title={b.siteName}>{b.siteName}</span>}
-              </div>
-            ))}
-          {!searching && !!apiResults?.floors.length && (
-            <div style={{ padding: '6px 12px 2px', font: '600 10.5px var(--font-sans)', letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--ink-400)' }}>Floors</div>
-          )}
-          {!searching &&
-            apiResults?.floors.map((f) => (
-              <div
-                key={`f${f.id}`}
-                className={styles.row}
-                style={{ paddingLeft: 8 }}
-                onClick={() => {
-                  if (f.siteId) expand(f.siteId);
-                  if (f.buildingId) expand(f.buildingId);
-                  actions.selectFloor(f.id);
-                  actions.setNavView('spaces');
-                  closeSearch();
-                }}
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={styles.typeIcon}>
+              )}
+              {r.kind === 'floor' && (
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M12 2L2 7l10 5 10-5-10-5z M2 12l10 5 10-5 M2 17l10 5 10-5" />
                 </svg>
-                <span className={styles.name} title={f.path ? `${f.path} › ${f.name}` : f.name}>{f.name}</span>
-                {f.path && <span className={styles.badge} title={f.path}>{f.path}</span>}
-              </div>
-            ))}
-        </div>
-      )}
-      {!useApiSearch && q && items.length === 0 && (
-        <div style={{ padding: '10px 12px', font: '400 12px/1.5 var(--font-sans)', color: 'var(--ink-500)' }}>
-          Nothing matches “{query.trim()}”. Un-loaded buildings/floors are searched by name only after their site is expanded once.
-        </div>
-      )}
-      {useApiSearch ? null : (
-      <div className={styles.list}>
-        {items.map((n) => (
-          <div key={n.id} className={[styles.row, n.active ? styles.rowActive : ''].join(' ')} style={{ paddingLeft: n.pad }} onClick={n.onClick}>
-            {n.hasChildren && (
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className={styles.chevron}
-                style={{ transform: `rotate(${n.expanded ? 90 : 0}deg)` }}
-              >
-                <path d="M9 18l6-6-6-6" />
-              </svg>
-            )}
-            {n.kind === 'site' && (
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={styles.typeIcon}>
-                <path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 0 1 16 0z" />
-                <circle cx="12" cy="10" r="3" />
-              </svg>
-            )}
-            {n.kind === 'building' && (
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={styles.typeIcon}>
-                <rect x="4" y="2" width="16" height="20" rx="1" />
-                <path d="M9 22v-4h6v4M8 6h.01M16 6h.01M12 6h.01M8 10h.01M16 10h.01M12 10h.01M8 14h.01M16 14h.01M12 14h.01" />
-              </svg>
-            )}
-            {n.kind === 'floor' && (
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 2L2 7l10 5 10-5-10-5z M2 12l10 5 10-5 M2 17l10 5 10-5" />
-              </svg>
-            )}
-            {/* Long site/building/floor names ellipsize — the title shows them in full on hover. */}
-            <span className={styles.name} title={n.name}>{n.name}</span>
-            {n.badge && <span className={styles.badge}>{n.badge}</span>}
-            {n.drillIn && (
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--ink-400)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M9 18l6-6-6-6" />
-              </svg>
-            )}
-          </div>
-        ))}
+              )}
+              {/* Long site/building/floor names ellipsize — the title shows them in full on hover. */}
+              <span className={styles.name} title={r.name}>{r.name}</span>
+              {r.badge && <span className={styles.badge}>{r.badge}</span>}
+              {r.drillIn && (
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--ink-400)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 18l6-6-6-6" />
+                </svg>
+              )}
+            </div>
+          )
+        )}
       </div>
-      )}
     </div>
   );
 }
