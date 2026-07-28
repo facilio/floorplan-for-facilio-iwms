@@ -1265,6 +1265,11 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
   const consumedZones = new Set<any>();
   const nextZones: any[] = [];
 
+  // Zone-side counterpart of markerModuleId: every markedZones entry must carry zoneModuleId —
+  // the `space` module's numeric id (spacebooking resolution reads it as parentModuleId; the
+  // native capture shows it on every zone). Resolved once from the org's module list.
+  const spaceModuleId = moduleIdByName.get(ROOM_SPACE_MODULE) ?? null;
+
   for (const unit of roomUnits) {
     const match = existingZonesByGeoId.get(unit.id) ?? existingZonesByRecordId.get(unit.id) ?? existingZonesByObjectId.get(unit.id);
     if (match) consumedZones.add(match);
@@ -1301,7 +1306,7 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
         isReservable: unit.isReservable ?? true,
         recordId: spaceId,
         space: { id: spaceId, reservable: unit.isReservable ?? true },
-        ...(zoneModuleId ? { zoneModuleId } : {}),
+        ...(zoneModuleId ?? spaceModuleId ? { zoneModuleId: zoneModuleId ?? spaceModuleId } : {}),
       });
       continue;
     }
@@ -1321,6 +1326,9 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
         : match.recordId
           ? { id: match.recordId, reservable: unit.isReservable ?? true }
           : match.space,
+      // Matched rows fetched WITHOUT zoneModuleId (this projection omits it) get it restored —
+      // markers always carry markerModuleId; zones must always carry this.
+      ...(match.zoneModuleId ?? spaceModuleId ? { zoneModuleId: match.zoneModuleId ?? spaceModuleId } : {}),
     });
   }
   // Same preservation rule as markers: drop only our own (geoId-tagged) zones whose unit is gone;

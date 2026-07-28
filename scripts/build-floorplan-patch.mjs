@@ -44,11 +44,20 @@ for (const m of record.markers ?? []) {
   if (m.desk && (m.desk.id == null || !m.desk.name || m.desk.deskType == null))
     problems.push(`${tag}: desk object must carry id + name + deskType`);
 }
+// The `space` module's numeric id (zoneModuleId) — read it off any zone that has it, or off the
+// desk markers' pattern is markerModuleId; for zones we can also derive it from space.moduleId.
+const spaceModuleId = (record.markedZones ?? []).map((z) => z.zoneModuleId ?? z.space?.moduleId).find((v) => v != null) ?? null;
+
 for (const z of record.markedZones ?? []) {
   const tag = `zone id=${z.id ?? '?'} label=${z.label ?? '?'}`;
   if (z.id == null) problems.push(`${tag}: missing row id — the backend would treat it as NEW`);
   const spaceId = z.space?.id ?? z.recordId;
   if (spaceId == null) problems.push(`${tag}: no space.id/recordId — violates the SPACE_ID foreign key`);
+  // Zone-side counterpart of the markers' markerModuleId — REPAIR it in place when derivable.
+  if (z.zoneModuleId == null) {
+    if (spaceModuleId != null) z.zoneModuleId = spaceModuleId;
+    else problems.push(`${tag}: missing zoneModuleId and no space.moduleId to derive it from`);
+  }
 }
 
 if (problems.length) {
