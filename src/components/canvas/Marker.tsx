@@ -1,7 +1,7 @@
 import type { DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
 import { contactName, myAssignedUnit } from '../../state/selectors';
-import { markerStyle, resolveMarkerLabels, unitStatus } from '../../lib/unitStatus';
+import { markerStyle, unitStatus } from '../../lib/unitStatus';
 import type { PointGeom, Unit } from '../../lib/types';
 import { MARKER_ICONS as ICONS } from './markerIcons';
 import styles from './Marker.module.css';
@@ -71,10 +71,6 @@ export function Marker({ unit, invZ, onDragStart, myUnitId }: { unit: Unit; invZ
 
   const title = `${unit.label}${unit.room ? ' · ' + unit.room : ''} — ${status.text}`;
 
-  // Under-marker label. Resolved per the real org's customizationBooking label rules when
-  // loaded (e.g. assignee's full name on top, desk name underneath) — falls back to desk/room
-  // name on top + assignee underneath (assign view only) when no real customization is available.
-  const labels = resolveMarkerLabels(state, unit, (id) => contactName(state, id));
   const showLabel = (state.mode === 'assign' || state.mode === 'book' || unit.type === 'amenity') && invZ <= 1.9;
 
   return (
@@ -131,15 +127,17 @@ export function Marker({ unit, invZ, onDragStart, myUnitId }: { unit: Unit; invZ
           </>
         )}
       </div>
-      {/* Primary name label ABOVE the marker (hidden when the "Your desk"
-          pill already sits above it, to avoid stacking two labels). */}
+      {/* ONE label only — the MARKER's own label, tight above the icon (1px gap past the border).
+          The previous primary/secondary pair rendered the same text twice for unassigned desks
+          and floated too far from the icon; assignee/desk details show on CLICK (the details
+          panel / tooltip), not as a second chip. Hidden when the "Your desk" pill sits above. */}
       {showLabel && !isMine && (
         <div
           style={{
             position: 'absolute',
             left: `${geom.x * 100}%`,
             top: `${geom.y * 100}%`,
-            transform: `translate(-50%, calc(-100% - ${Math.round(style.size / 2 + 4)}px)) scale(${invZ})`,
+            transform: `translate(-50%, calc(-100% - ${Math.round(style.size / 2 + 1)}px)) scale(${invZ})`,
             transformOrigin: 'bottom center',
             pointerEvents: 'none',
             zIndex: 1,
@@ -152,30 +150,7 @@ export function Marker({ unit, invZ, onDragStart, myUnitId }: { unit: Unit; invZ
             whiteSpace: 'nowrap',
           }}
         >
-          {labels.primary}
-        </div>
-      )}
-      {/* Secondary label BELOW the marker. */}
-      {showLabel && labels.secondary && (
-        <div
-          style={{
-            position: 'absolute',
-            left: `${geom.x * 100}%`,
-            top: `${geom.y * 100}%`,
-            transform: `translate(-50%, ${Math.round(style.size / 2 + 4)}px) scale(${invZ})`,
-            transformOrigin: 'top center',
-            pointerEvents: 'none',
-            zIndex: 1,
-            font: '500 8px/1.1 var(--font-sans)',
-            color: 'var(--ink-500)',
-            background: 'rgba(255,255,255,0.9)',
-            border: '1px solid var(--ink-100)',
-            padding: '2px 5px',
-            borderRadius: 3,
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {labels.secondary}
+          {unit.label}
         </div>
       )}
     </>
