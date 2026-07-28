@@ -601,11 +601,7 @@ function Inspector() {
                 label="Desk type"
                 value={sel.deskType ?? 'ASSIGNED'}
                 onChange={(v) => actions.updateUnit(sel.id, { deskType: v })}
-                options={DESK_TYPES.map((t) => ({
-                  value: t.id,
-                  label: t.name,
-                  description: t.id === 'ASSIGNED' ? 'Assignable, not bookable' : 'Bookable, not assignable',
-                }))}
+                options={DESK_TYPES.map((t) => ({ value: t.id, label: t.name }))}
                 aria-label="Desk type"
               />
             </div>
