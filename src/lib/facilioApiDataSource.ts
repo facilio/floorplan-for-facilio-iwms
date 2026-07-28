@@ -1127,7 +1127,12 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
   // preservation loop re-added the "unmatched" original).
   const existingMarkersByGeoId = new Map(existingMarkers.filter((m) => m.geoId).map((m) => [String(m.geoId), m]));
   const existingMarkersByRecordId = new Map(existingMarkers.filter((m) => m.recordId != null).map((m) => [String(m.recordId), m]));
-  const existingMarkersByObjectId = new Map(existingMarkers.filter((m) => m.objectId != null).map((m) => [String(m.objectId), m]));
+  // NOTE: viewerData FEATURES carry `objectId`; the STORED rows carry that same number as `id`
+  // — key on both, or objectId-derived units never match and their entries get rebuilt from
+  // scratch (losing the stored row's id/recordId linkage).
+  const existingMarkersByObjectId = new Map(
+    existingMarkers.filter((m) => m.objectId != null || m.id != null).map((m) => [String(m.objectId ?? m.id), m])
+  );
   const consumedMarkers = new Set<any>();
   const nextMarkers: any[] = [];
 
@@ -1251,7 +1256,12 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
   const existingZonesByRecordId = new Map(
     existingZones.filter((z) => z.recordId != null || z.space?.id != null).map((z) => [String(z.recordId ?? z.space?.id), z])
   );
-  const existingZonesByObjectId = new Map(existingZones.filter((z) => z.objectId != null).map((z) => [String(z.objectId), z]));
+  // Same objectId/id duality as markers above — without keying on the stored row's `id`,
+  // objectId-derived rooms missed the join and their zones were rebuilt WITHOUT the existing
+  // recordId/zoneModuleId (the "markedZones lost their record ids" failure).
+  const existingZonesByObjectId = new Map(
+    existingZones.filter((z) => z.objectId != null || z.id != null).map((z) => [String(z.objectId ?? z.id), z])
+  );
   const consumedZones = new Set<any>();
   const nextZones: any[] = [];
 
