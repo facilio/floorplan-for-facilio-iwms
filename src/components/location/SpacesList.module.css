@@ -111,11 +111,46 @@
   border-radius: 3px;
 }
 .rowText {
-  /* flex-basis auto + a floor of 42% keeps the unit label readable — with
-     `flex: 1` (basis 0) a long "Assigned · <name>" pill claimed its full
-     intrinsic width first and squeezed the label down to nothing. */
+  /* Shrinkable: the LABEL ellipsizes, never the pill — .rowPill caps the pill side at 55%, so
+     the label always keeps ~45% and the pill sits at a consistent right edge on every row
+     (long names used to push it and squeeze it into "Unpl…"). */
   flex: 1 1 auto;
-  min-width: 42%;
+  min-width: 0;
+}
+.rowPill {
+  flex: none;
+  margin-left: auto;
+  max-width: 55%;
+  display: flex;
+}
+/* Fast custom tooltip (the native title waits ~1s): shows after 150ms on hover, below the text. */
+.tipHost {
+  position: relative;
+}
+.tipHost[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 0;
+  top: calc(100% + 4px);
+  z-index: 40;
+  background: var(--ink-900);
+  color: #fff;
+  font: 500 11.5px/1.35 var(--font-sans);
+  padding: 5px 8px;
+  border-radius: 6px;
+  max-width: 240px;
+  width: max-content;
+  white-space: normal;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-2px);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  box-shadow: var(--shadow-md);
+}
+.tipHost[data-tip]:hover::after {
+  opacity: 1;
+  transform: none;
+  transition-delay: 0.15s;
 }
 .rowLabel {
   font: 600 12.5px/1.2 var(--font-sans);

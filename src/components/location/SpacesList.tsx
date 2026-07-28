@@ -180,21 +180,27 @@ function SpaceRow({ unit, unplaced }: { unit: Unit; unplaced?: boolean }) {
     >
       <span className={styles.dot} style={{ background: status.dot }} />
       <div className={styles.rowText}>
-        {/* Both lines ellipsize — titles carry the full text for long names. */}
-        <div className={styles.rowLabel} title={unit.label}>{unit.label}</div>
+        {/* Both lines ellipsize — the fast tooltip (150ms, see .tipHost) shows the full text,
+            only mounted when the name is actually long enough to clip. */}
+        <div className={[styles.rowLabel, styles.tipHost].join(' ')} data-tip={unit.label.length > 20 ? unit.label : undefined}>
+          {unit.label}
+        </div>
         <div className={styles.rowSub} title={unit.secondary || undefined}>
           {unit.secondary || [unit.type === 'workstation' ? 'Desk' : unit.type, unit.room].filter(Boolean).join(' · ')}
         </div>
       </div>
-      {unplaced ? (
-        placing ? (
-          <StatusPill label="Click map" bg="var(--blue-025)" fg="var(--blue-600)" />
+      {/* Pill wrapper anchors it at a consistent right edge — the label shortens, never the pill. */}
+      <span className={styles.rowPill}>
+        {unplaced ? (
+          placing ? (
+            <StatusPill label="Click map" bg="var(--blue-025)" fg="var(--blue-600)" />
+          ) : (
+            <StatusPill label="Unplaced" bg="var(--ink-050)" fg="var(--ink-600)" />
+          )
         ) : (
-          <StatusPill label="Unplaced" bg="var(--ink-050)" fg="var(--ink-600)" />
-        )
-      ) : (
-        <StatusPill label={status.text} bg={status.bg} fg={status.fg} />
-      )}
+          <StatusPill label={status.text} bg={status.bg} fg={status.fg} />
+        )}
+      </span>
     </div>
   );
 }
