@@ -1100,10 +1100,19 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
   // returned it) — a null fetch is a real failure, not a "nothing to sync" case, so throw for the
   // save toast rather than silently reporting saved.
   if (!record) throw new Error(`indoorfloorplan ${indoorFloorPlanId} fetch failed`);
-  // No geo-reference (plan uploaded before synthetic geometry existed): a documented, intentional
-  // skip — there's no sane lng/lat conversion, and guessing would silently misplace markers.
-  const quad = geometryStringToQuad(record.geometry);
-  if (!quad) return;
+  // No geo-reference on the plan record (created by the native app, or attached before synthetic
+  // geometry existed): this used to SILENTLY skip the whole sync — every placement stayed
+  // localStorage-only, so a different browser/incognito tab saw nothing and no error ever
+  // surfaced. SELF-HEAL instead: mint the synthetic quad now and persist it WITH the markers
+  // (the quad is this app's own coordinate reference — any consistent one works; existing
+  // markers on such plans are untouched since they're matched, not re-derived). The default
+  // footprint aspect only affects real-world scale, which nothing here consumes.
+  let quad = geometryStringToQuad(record.geometry);
+  let geometryPatch: string | undefined;
+  if (!quad) {
+    quad = computeSyntheticGeometry(1492, 1054);
+    geometryPatch = quadToGeometryString(quad);
+  }
 
   const pointUnits = units.filter((u): u is Unit & { geom: PointGeom } => u.geom.kind === 'point');
   const roomUnits = units.filter((u): u is Unit & { geom: PolyGeom } => u.geom.kind === 'poly' && u.type === 'room');
@@ -1315,7 +1324,10 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
   // (customizationJSON, customizationBookingJSON, name, geometry, etc.), not just the ones
   // actually changing. A partial patch risks the backend treating this as a full replace and
   // wiping those other fields rather than merging.
-  const res = await facilioApi.updateRecord('indoorfloorplan', { id: indoorFloorPlanId, data: { ...record, markers: nextMarkers, markedZones: nextZones } });
+  const res = await facilioApi.updateRecord('indoorfloorplan', {
+    id: indoorFloorPlanId,
+    data: { ...record, ...(geometryPatch ? { geometry: geometryPatch } : {}), markers: nextMarkers, markedZones: nextZones },
+  });
   if (res.error) {
     // Throw (not just warn) — the save UI must be able to report this instead of "saved".
     throw new Error(res.error.message || `indoorfloorplan ${indoorFloorPlanId} update failed (code ${res.error.code ?? '?'})`);
