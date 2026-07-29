@@ -36,6 +36,27 @@ const CAD_TIER_CACHE_MAX = 4;
 const cadTierCache = new Map<string, string>();
 const cadTierInFlight = new Set<string>();
 
+/**
+ * Decode an image OFF-DOM before it's ever shown. Swapping a multi-MB data URL straight into a
+ * mounted <img> blanks the plan to white while the browser decodes it — priming the decode here
+ * means the later paint lands in a single already-decoded frame.
+ */
+async function preloadDecode(url: string): Promise<void> {
+  try {
+    const img = new Image();
+    img.src = url;
+    if (img.decode) await img.decode();
+    else
+      await new Promise<void>((resolve) => {
+        img.onload = () => resolve();
+        img.onerror = () => resolve();
+      });
+  } catch {
+    // decode() rejecting is non-fatal — the in-DOM onLoad fade still gates visibility.
+  }
+}
+
+/** The hi-res tier URL for the CURRENT plan+base image, or undefined while only the base exists. */
 function useCadZoomUpgrade(imageUrl: string | undefined, zoom: number | undefined): string | undefined {
   const { state } = useFloorplan();
   const planKey = `${state.floorId}:${state.planId}`;
@@ -63,18 +84,20 @@ function useCadZoomUpgrade(imageUrl: string | undefined, zoom: number | undefine
     // File size in the key: a re-uploaded plan for the same floor must not serve stale tiers.
     const key = `${planKey}:${file.size}:${tier}`;
     const timer = setTimeout(async () => {
-      const apply = (url: string) => {
+      const apply = async (url: string) => {
+        // Decode BEFORE the state swap — see preloadDecode. Never blank the visible plan.
+        await preloadDecode(url);
         if (liveRef.current.mounted && liveRef.current.planKey === planKey) setHiRes({ planKey, tier, url, forUrl: imageUrl });
       };
       const cached = cadTierCache.get(key);
-      if (cached) return apply(cached);
+      if (cached) return void (await apply(cached));
       if (cadTierInFlight.has(key)) return; // the in-flight starter applies it on completion
       cadTierInFlight.add(key);
       try {
         const url = await renderCadToDataUrl(file, tier);
         while (cadTierCache.size >= CAD_TIER_CACHE_MAX) cadTierCache.delete(cadTierCache.keys().next().value!);
         cadTierCache.set(key, url);
-        apply(url);
+        await apply(url);
       } catch {
         // keep showing the base raster — the upgrade is strictly best-effort
       } finally {
@@ -84,31 +107,44 @@ function useCadZoomUpgrade(imageUrl: string | undefined, zoom: number | undefine
     return () => clearTimeout(timer);
   }, [imageUrl, zoom, planKey, hiRes, state.floorId, state.planId]);
 
-  return hiRes && hiRes.planKey === planKey && hiRes.forUrl === imageUrl ? hiRes.url : imageUrl;
+  return hiRes && hiRes.planKey === planKey && hiRes.forUrl === imageUrl ? hiRes.url : undefined;
 }
 
+// Shared geometry for both raster layers — contain, not cover: uploads rarely match the frame's
+// 1492×1054 aspect, and cover silently crops the overflow (a squarer plan lost its top and
+// bottom). Letterbox on white instead — nothing is cut.
+const RASTER_STYLE = {
+  position: 'absolute',
+  left: 0,
+  top: 0,
+  width: IMG_W,
+  height: IMG_H,
+  pointerEvents: 'none',
+  objectFit: 'contain',
+} as const;
+
 export function FloorplanBackground({ imageUrl, zoom }: { imageUrl?: string; zoom?: number }) {
-  const shownUrl = useCadZoomUpgrade(imageUrl, zoom);
-  if (shownUrl) {
+  const hiResUrl = useCadZoomUpgrade(imageUrl, zoom);
+  // The overlay stays invisible until ITS OWN onLoad fires — combined with the off-DOM
+  // pre-decode, the base raster is never removed or blanked during a tier swap: the sharper
+  // image simply fades in ON TOP of the one already showing.
+  const [overlayReady, setOverlayReady] = useState(false);
+  useEffect(() => {
+    if (!hiResUrl) setOverlayReady(false);
+  }, [hiResUrl]);
+  if (imageUrl) {
     return (
-      <img
-        src={shownUrl}
-        draggable={false}
-        // contain, not cover: uploads rarely match the frame's 1492×1054
-        // aspect, and cover silently crops the overflow (a squarer plan lost
-        // its top and bottom). Letterbox on white instead — nothing is cut.
-        style={{
-          position: 'absolute',
-          left: 0,
-          top: 0,
-          width: IMG_W,
-          height: IMG_H,
-          boxShadow: 'var(--shadow-md)',
-          pointerEvents: 'none',
-          objectFit: 'contain',
-          background: '#fff',
-        }}
-      />
+      <>
+        <img src={imageUrl} draggable={false} style={{ ...RASTER_STYLE, boxShadow: 'var(--shadow-md)', background: '#fff' }} />
+        {hiResUrl && hiResUrl !== imageUrl && (
+          <img
+            src={hiResUrl}
+            draggable={false}
+            onLoad={() => setOverlayReady(true)}
+            style={{ ...RASTER_STYLE, background: 'transparent', opacity: overlayReady ? 1 : 0, transition: 'opacity 160ms ease' }}
+          />
+        )}
+      </>
     );
   }
   // Real backend OR deployed app: a missing image is a blank sheet, never the mock schematic.
