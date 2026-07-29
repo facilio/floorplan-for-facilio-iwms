@@ -97,7 +97,11 @@ export function FloorUploadModal() {
         throw new Error(cad ? 'cad-render-failed' : 'Could not read this file.');
       }
 
-      if (previewUrl) actions.setFloorImage(state.floorId, state.planId, previewUrl);
+      // Only mirror the image into the local cache when the org actually has it (attach
+      // succeeded, or pure local mode where local IS the store) — caching a failed upload's
+      // preview would show THIS device a plan no other device/user sees.
+      const persistLocal = !isFacilioApiConfigured || attachedToFloorPlan;
+      if (previewUrl) actions.setFloorImage(state.floorId, state.planId, previewUrl, { persistLocal });
 
       // The backend upload FAILED but a local render exists: show it (better than nothing), but
       // say so honestly — the old flow toasted "Floorplan updated" and closed, so the user only

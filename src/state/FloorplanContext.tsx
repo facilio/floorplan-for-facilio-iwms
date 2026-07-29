@@ -199,6 +199,10 @@ async function loadFloorPlanTypesAndImage(dispatch: Dispatch<Action>, floorId: s
             void persistFloorplanFile(floorId, resolvedPlanId, { dataUrl: storable }).catch(() => {});
           }
         }
+      } else if (cached?.dataUrl) {
+        // The cache painted but the SOURCE refresh failed — say so instead of silently letting
+        // this device believe a possibly-outdated plan (other devices may see something else).
+        showToastVia(dispatch, 'Showing a locally cached floor plan — refresh from Facilio failed', { variant: 'warning' });
       }
       const customization = await fetchFloorplanCustomization(floorId, resolvedPlanId).catch(() => null);
       if (customization) dispatch({ type: 'SET_FLOOR_CUSTOMIZATION', floorId, planId: resolvedPlanId, customization });
@@ -223,6 +227,9 @@ async function ensureFloorplanImage(dispatch: Dispatch<Action>, floorId: string,
       // Deployed / no real backend for this plan: fall back to the Vibe DB copy (no-op in dev).
       const stored = await loadFloorplanFile(floorId, planId).catch(() => null);
       imageUrl = stored?.dataUrl ?? null;
+      if (imageUrl && isFacilioApiConfigured) {
+        showToastVia(dispatch, 'Showing a locally cached floor plan — refresh from Facilio failed', { variant: 'warning' });
+      }
     }
     if (imageUrl) dispatch({ type: 'SET_FLOOR_IMAGE', floorId, planId, dataUrl: imageUrl });
     if (isFacilioApiConfigured) {
@@ -1380,11 +1387,14 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       const types = await getFloorPlanSummary(state.floorId).catch(() => []);
       dispatch({ type: 'SET_FLOOR_PLAN_TYPES', floorId: state.floorId, types });
     },
-    setFloorImage: (floorId: string, planId: PlanId, dataUrl: string) => {
+    setFloorImage: (floorId: string, planId: PlanId, dataUrl: string, opts?: { persistLocal?: boolean }) => {
       dispatch({ type: 'SET_FLOOR_IMAGE', floorId, planId, dataUrl });
       // Persist the uploaded floorplan so a deployed app reloads it after a refresh. Best-effort
       // and a no-op in dev (where the real backend's indoorfloorplan record already holds it).
-      void persistFloorplanFile(floorId, planId, { dataUrl });
+      // Callers pass persistLocal: false when the BACKEND write failed — caching a local-only
+      // image would keep showing this device a floorplan no other device has (the local cache
+      // must only ever mirror what the org actually stores).
+      if (opts?.persistLocal !== false) void persistFloorplanFile(floorId, planId, { dataUrl });
     },
 
     resetDemo: () => {
@@ -1455,6 +1465,20 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
       if (floorIds.length) dispatch({ type: 'SET_FLOORS_WITH_PLANS', floorIds });
     });
   }, [state.allowLocalFallback]);
+
+  // Unsaved edit-mode changes exist ONLY in this device's local cache until "Save changes"
+  // pushes the real marker sync — closing/refreshing the tab now would silently leave the DB
+  // (and every other user/device) without them. Standard leave-confirmation while any exist.
+  const hasUnsaved = state.unsavedChanges > 0;
+  useEffect(() => {
+    if (!hasUnsaved) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [hasUnsaved]);
 
   // Load persisted settings (vibe-db when deployed, else localStorage) once on mount.
   useEffect(() => {
