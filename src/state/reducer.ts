@@ -484,7 +484,8 @@ export function reducer(state: AppState, action: Action): AppState {
         bookingModule: c.bookingModule ?? state.bookingModule,
         customMarkers: c.customMarkers ?? state.customMarkers,
         allowLocalFallback: c.allowLocalFallback ?? state.allowLocalFallback,
-        bookBy: c.bookBy ?? state.bookBy,
+        // bookBy deliberately NOT hydrated: who-you-are comes from the login session (see the
+        // boot effect's fetchCurrentPeopleId), never from a persisted device setting.
       };
     }
     case 'ADD_BOOKING':

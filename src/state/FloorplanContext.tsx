@@ -9,7 +9,7 @@ import type { AmenityIcon, Assignments, Booking, ClientContact, DefaultPlanView,
 import type { CadGroup } from '../lib/cadAnalyze';
 import type { Asset } from '../lib/assets';
 import { isFacilioApiConfigured } from '../lib/facilioApi';
-import { assignUnitReal, createRealBooking, fetchFloorplanCustomization, fetchFloorplanImage, fetchMyDesk, findFloorParents, findUnitIdForDeskRecord, getAnyFloor, getFloorPlanSummary, patchUnitContact, saveFloorplanDefaultView, saveFloorplanMarkers, vacateUnitReal } from '../lib/facilioApiDataSource';
+import { assignUnitReal, createRealBooking, fetchCurrentPeopleId, fetchFloorplanCustomization, fetchFloorplanImage, fetchMyDesk, findFloorParents, findUnitIdForDeskRecord, getAnyFloor, getFloorPlanSummary, patchUnitContact, saveFloorplanDefaultView, saveFloorplanMarkers, vacateUnitReal } from '../lib/facilioApiDataSource';
 import { listFloorplanFloorIds, loadFloorplanFile, persistFloorplanFile } from '../lib/floorplanFileStore';
 import { loadSettings, saveSettings, settingsFromState } from '../lib/settingsStore';
 import { pathForView, viewFromLocation } from '../lib/routes';
@@ -1454,6 +1454,12 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
       let myDesk: Awaited<ReturnType<typeof fetchMyDesk>> = null;
       let firstRealFloor: string | undefined;
       if (isFacilioApiConfigured) {
+        // "Who am I" comes from the SESSION, not a setting: the logged-in user's people id is
+        // the id space assignments/bookings use (desks.clientcontact_desks holds it). Resolved
+        // once here (cached — fetchMyDesk reuses it) and stamped as bookBy so "My bookings",
+        // the "Your desk" badge, and booking defaults all follow the real login.
+        const peopleId = await fetchCurrentPeopleId().catch(() => null);
+        if (peopleId) dispatch({ type: 'SET_BOOK_FIELD', field: 'bookBy', value: String(peopleId) });
         myDesk = await fetchMyDesk().catch(() => null);
         firstRealFloor = myDesk?.floorId ?? (await getAnyFloor().catch(() => null))?.id;
       }

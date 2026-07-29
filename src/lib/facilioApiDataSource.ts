@@ -1,6 +1,5 @@
 import { apiOrigin, customGet, customPost, facilioApi, fetchFilePreview, isFacilioApiConfigured } from './facilioApi';
 import { executeStateTransition, fetchAvailableStates, findCancelTransition, isPendingApprovalName, stateName } from './stateflowApi';
-import { loadSettings } from './settingsStore';
 import { renderCadToDataUrl } from './cadPreview';
 import { renderPdfToDataUrl } from './pdfPreview';
 import { computeSyntheticGeometry, geometryStringToQuad, lngLatToFraction, quadToGeometryString, quadToLngLat, type GeoQuad } from './geoReference';
@@ -1891,27 +1890,53 @@ export interface MyDeskInfo {
 }
 
 /**
+ * The logged-in user's PEOPLE id — the id space desk assignment actually lives in:
+ * `desks.clientcontact_desks` holds the person's clientcontact/people record id, which is NOT
+ * the same as their login user id (ouid). Resolved once per session from the account endpoint;
+ * null when it's unreachable or the user has no people record.
+ */
+let currentPeopleIdCache: Promise<number | null> | null = null;
+export function fetchCurrentPeopleId(): Promise<number | null> {
+  if (!isFacilioApiConfigured) return Promise.resolve(null);
+  if (!currentPeopleIdCache) {
+    currentPeopleIdCache = (async () => {
+      const body = await customGet('v2/account').catch(() => null);
+      const user = body?.result?.account?.user ?? body?.account?.user ?? body?.data?.account?.user ?? body?.result?.user ?? body?.user ?? null;
+      const pid = Number(user?.peopleId ?? user?.people?.id);
+      if (Number.isFinite(pid) && pid > 0) return pid;
+      // eslint-disable-next-line no-console
+      console.warn('[facilio-api] account fetch carried no peopleId', user ? Object.keys(user) : body);
+      return null;
+    })();
+    currentPeopleIdCache.catch(() => {
+      currentPeopleIdCache = null;
+    });
+  }
+  return currentPeopleIdCache;
+}
+
+/**
  * The current user's assigned desk. Primary path (client-portal style): a direct `desks` list
- * fetch, one row (page 1 / perPage 1), filtered on the desk module's `clientContact_desk` lookup
- * to the user's client-contact id (Settings › Bookings › "This is me"), archived records
- * excluded (`isArchived: false`). The lookup filter uses operatorId 36 — the same lookup-"is"
- * operator every other list filter in this file uses.
+ * fetch, one row (page 1 / perPage 1), filtered on the desk module's `clientcontact_desks`
+ * lookup to the logged-in user's PEOPLE id (see fetchCurrentPeopleId — the lookup holds the
+ * people/clientcontact record id, not the login user id), archived records excluded
+ * (`isArchived: false`). The lookup filter uses operatorId 36 — the same lookup-"is" operator
+ * every other list filter in this file uses. No manual "this is me" setting involved.
  *
- * Fallback (no contact id picked yet): the employee portal's home endpoint
+ * Fallback (no people id resolvable): the employee portal's home endpoint
  * `GET maintenance/api/v2/servicePortalHome?fetchOnlyDesk=true&count=1[&recordId={employeeId}]`,
  * which resolves the employee from the session. Returns null when neither path finds a desk.
  */
 export async function fetchMyDesk(employeeId?: number): Promise<MyDeskInfo | null> {
   if (!isFacilioApiConfigured) return null;
 
-  const cfg = await loadSettings().catch(() => null);
-  const contactId = Number(cfg?.bookBy);
-  if (Number.isFinite(contactId) && contactId > 0) {
+  const peopleId = await fetchCurrentPeopleId().catch(() => null);
+  if (peopleId) {
     const res = await facilioApi.fetchAll('desks', {
       page: 1,
       perPage: 1,
       isArchived: false,
-      filters: JSON.stringify({ clientContact_desk: { operatorId: 36, value: [String(contactId)] } }),
+      filters: JSON.stringify({ clientcontact_desks: { operatorId: 36, value: [String(peopleId)] } }),
     });
     const desk = res.list?.[0];
     if (!res.error && desk?.id) {
@@ -1920,7 +1945,7 @@ export async function fetchMyDesk(employeeId?: number): Promise<MyDeskInfo | nul
     }
     if (res.error) {
       // eslint-disable-next-line no-console
-      console.warn('[facilio-api] clientContact_desk filter fetch failed — falling back to servicePortalHome', res.error);
+      console.warn('[facilio-api] clientcontact_desks filter fetch failed — falling back to servicePortalHome', res.error);
     }
   }
 

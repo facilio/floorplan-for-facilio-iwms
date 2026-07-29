@@ -18,9 +18,9 @@ export interface SettingsConfig {
   /** When false, a real-org data failure shows an error instead of silently falling back to local/seed data. */
   allowLocalFallback?: boolean;
   /**
-   * The client contact this device's user IS (Settings › Bookings › "This is me") — drives
-   * "My bookings", the "Your desk" badge, and booking defaults. There's no confirmed backend
-   * mapping from the logged-in session to a clientcontact record, so it's user-picked.
+   * DEPRECATED — the client contact this device's user was manually picked to be. Who-you-are
+   * now resolves from the login session's people id (fetchCurrentPeopleId) at boot; this key is
+   * neither written nor applied anymore, it only remains so old stored JSON still parses.
    */
   bookBy?: string;
 }
@@ -36,7 +36,6 @@ export function settingsFromState(state: AppState): SettingsConfig {
     bookingModule: state.bookingModule,
     customMarkers: state.customMarkers,
     allowLocalFallback: state.allowLocalFallback,
-    bookBy: state.bookBy,
   };
 }
 
