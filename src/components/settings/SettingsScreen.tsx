@@ -154,23 +154,31 @@ function BookingsSettingsTab() {
 function PermissionsTab() {
   const { state, actions } = useFloorplan();
   const [records, setRecords] = useState<RolePermRecord[]>([]);
+  // The last-saved copy — toggles edit `records` LOCALLY; "Save changes" diffs against this and
+  // writes only the flipped flags to the module.
+  const [savedRecords, setSavedRecords] = useState<RolePermRecord[]>([]);
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
 
   const loadRecords = async (moduleName: string) => {
     if (!moduleName.trim() || !isFacilioApiConfigured) {
       setRecords([]);
+      setSavedRecords([]);
       setLoadedFor(moduleName.trim() || null);
       return;
     }
     setLoading(true);
     setLoadError(null);
     try {
-      setRecords(await fetchRolePermissionRecords(moduleName));
+      const list = await fetchRolePermissionRecords(moduleName);
+      setRecords(list);
+      setSavedRecords(list.map((r) => ({ ...r, values: { ...r.values } })));
       setLoadedFor(moduleName.trim());
     } catch (err) {
       setRecords([]);
+      setSavedRecords([]);
       setLoadError((err as Error).message || 'fetch failed');
       setLoadedFor(moduleName.trim());
     } finally {
@@ -184,19 +192,53 @@ function PermissionsTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.permsModuleName]);
 
-  const toggleRecord = async (rec: RolePermRecord, perm: keyof ModePerms) => {
-    const next = !(rec.values[perm] ?? false);
-    // Optimistic flip; revert on failure.
-    setRecords((rs) => rs.map((r) => (r.id === rec.id ? { ...r, values: { ...r.values, [perm]: next } } : r)));
-    const ok = await updateRolePermissionRecord(state.permsModuleName, rec, perm, next).catch(() => false);
-    if (!ok) {
-      setRecords((rs) => rs.map((r) => (r.id === rec.id ? { ...r, values: { ...r.values, [perm]: !next } } : r)));
-      actions.showToast(`Couldn't update ${String(perm)} for ${rec.label}`, { variant: 'error' });
-      return;
+  /** LOCAL flip only — nothing hits the API until "Save changes". */
+  const toggleRecord = (rec: RolePermRecord, perm: keyof ModePerms) => {
+    setRecords((rs) => rs.map((r) => (r.id === rec.id ? { ...r, values: { ...r.values, [perm]: !(r.values[perm] ?? false) } } : r)));
+  };
+
+  const savedValueOf = (id: number, perm: keyof ModePerms) => savedRecords.find((r) => r.id === id)?.values[perm];
+  const pendingChanges = records.flatMap((rec) =>
+    MODE_PERM_COLS.filter((c) => rec.fieldKeys[c.id] && (rec.values[c.id] ?? false) !== (savedValueOf(rec.id, c.id) ?? false)).map((c) => ({
+      rec,
+      perm: c.id,
+      value: rec.values[c.id] ?? false,
+    }))
+  );
+
+  const saveChanges = async () => {
+    if (!pendingChanges.length) return;
+    setSaving(true);
+    const results = await Promise.all(
+      pendingChanges.map((c) => updateRolePermissionRecord(state.permsModuleName, c.rec, c.perm, c.value).catch(() => false))
+    );
+    const failed = pendingChanges.filter((_, i) => !results[i]);
+    // Successes become the new saved baseline; failures revert the local toggle so the table
+    // never shows a state the module doesn't have.
+    setSavedRecords((prev) =>
+      prev.map((r) => {
+        const next = { ...r, values: { ...r.values } };
+        pendingChanges.forEach((c, i) => {
+          if (results[i] && c.rec.id === r.id) next.values[c.perm] = c.value;
+        });
+        return next;
+      })
+    );
+    if (failed.length) {
+      setRecords((rs) =>
+        rs.map((r) => {
+          const next = { ...r, values: { ...r.values } };
+          for (const f of failed) if (f.rec.id === r.id) next.values[f.perm] = !f.value;
+          return next;
+        })
+      );
+      actions.showToast(`${failed.length} of ${pendingChanges.length} permission change(s) failed to save`, { variant: 'error' });
+    } else {
+      actions.showToast(`${pendingChanges.length} permission change(s) saved`);
     }
-    actions.showToast(`${rec.label}: ${String(perm)} ${next ? 'enabled' : 'disabled'}`);
     // The signed-in user's own tabs may have just changed.
     void actions.refreshModePerms();
+    setSaving(false);
   };
 
   return (
@@ -248,14 +290,18 @@ function PermissionsTab() {
               <div key={rec.id} className={styles.matrixRow}>
                 <div>
                   <div className={styles.rowName}>{rec.label}</div>
-                  <div className={styles.rowDesc}>{rec.roleId ? `Role #${rec.roleId}` : 'No role lookup on this record'}</div>
+                  <div className={styles.rowDesc}>
+                    {rec.roleIds.length
+                      ? `Role${rec.roleIds.length === 1 ? '' : 's'} ${rec.roleIds.map((id) => `#${id}`).join(', ')}`
+                      : 'No roles on this record'}
+                  </div>
                 </div>
                 {MODE_PERM_COLS.map((c) => (
                   <div key={c.id} className={styles.switchCell}>
                     {rec.fieldKeys[c.id] ? (
                       <button
                         className={[styles.switch, rec.values[c.id] ? styles.switchOn : ''].join(' ')}
-                        onClick={() => void toggleRecord(rec, c.id)}
+                        onClick={() => toggleRecord(rec, c.id)}
                       >
                         <span className={styles.knob} style={{ left: rec.values[c.id] ? 18 : 2 }} />
                       </button>
@@ -266,6 +312,17 @@ function PermissionsTab() {
                 ))}
               </div>
             ))}
+            {/* Batched save on request: toggles above only edit locally; this writes the diff. */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12, marginTop: 12 }}>
+              {pendingChanges.length > 0 && (
+                <span className={styles.rowDesc}>
+                  {pendingChanges.length} unsaved change{pendingChanges.length === 1 ? '' : 's'}
+                </span>
+              )}
+              <Button variant="primary" disabled={saving || pendingChanges.length === 0} onClick={() => void saveChanges()}>
+                {saving ? 'Saving…' : 'Save changes'}
+              </Button>
+            </div>
           </>
         )}
       </div>

@@ -1985,13 +1985,26 @@ export async function fetchCurrentPeopleId(): Promise<number | null> {
 
 export interface RolePermRecord {
   id: number;
-  /** Display label — the role's name when the lookup projects it. */
+  /** Display label — the role names when the lookup projects them. */
   label: string;
-  roleId: number | null;
+  /** `role` is a MULTI-lookup: one permission record can apply to several roles. */
+  roleIds: number[];
   /** The record's boolean permission values, keyed by mode. Missing = field absent on the record. */
   values: Partial<ModePerms>;
   /** The record's ACTUAL field names per mode — updates write back these exact keys. */
   fieldKeys: Partial<Record<keyof ModePerms, string>>;
+}
+
+/** One role reference (object with roleId/id, or a bare id) -> numeric role id. */
+function roleIdOf(v: any): number | null {
+  const n = Number(v?.roleId ?? v?.id ?? v);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/** The record's role multi-lookup, whatever shape the projection used, -> role id list. */
+function normalizeRoleIds(v: any): number[] {
+  const arr = Array.isArray(v) ? v : v != null ? [v] : [];
+  return arr.map(roleIdOf).filter((n): n is number => n != null);
 }
 
 /** The module's CONFIRMED field names (this org): assignment / booking / edit. */
@@ -2023,11 +2036,15 @@ export async function fetchRolePermissionRecords(moduleName: string): Promise<Ro
       const k = fieldKeys[p];
       if (k) values[p] = asPermBool(r[k]);
     }
-    const rid = Number(r.role?.roleId ?? r.role?.id ?? r.roleId ?? (typeof r.role === 'number' ? r.role : NaN));
+    const roleRaw = r.role ?? r.roles ?? r.roleId;
+    const roleList = Array.isArray(roleRaw) ? roleRaw : roleRaw != null ? [roleRaw] : [];
+    const names = roleList
+      .map((x: any) => x?.name ?? x?.primaryValue)
+      .filter((n: unknown): n is string => typeof n === 'string' && n.trim().length > 0);
     return {
       id: r.id,
-      label: r.role?.name ?? r.role?.primaryValue ?? r.roleName ?? r.name ?? `#${r.id}`,
-      roleId: Number.isFinite(rid) && rid > 0 ? rid : null,
+      label: names.length ? names.join(', ') : (r.roleName ?? r.name ?? `#${r.id}`),
+      roleIds: normalizeRoleIds(roleRaw),
       values,
       fieldKeys,
     };
@@ -2035,16 +2052,23 @@ export async function fetchRolePermissionRecords(moduleName: string): Promise<Ro
 }
 
 /**
- * The current user's mode permissions from the org module — the record whose role matches the
- * session's roleId — or null when there's no session role, no matching record, or the matching
- * record carries no recognizable permission fields (the caller then applies the defaults).
+ * The current user's mode permissions from the org module — every record whose role MULTI-lookup
+ * includes the session's roleId. Overlapping records merge permissively (a mode granted by ANY
+ * matching record is granted). Null when there's no session role or nothing matches with
+ * recognizable permission fields — the caller then applies the defaults.
  */
 export async function resolveModePermsForCurrentUser(moduleName: string): Promise<Partial<ModePerms> | null> {
   const { roleId } = await fetchSessionUser();
   if (!roleId) return null;
   const records = await fetchRolePermissionRecords(moduleName);
-  const hit = records.find((r) => r.roleId === roleId);
-  return hit && Object.keys(hit.values).length > 0 ? hit.values : null;
+  const hits = records.filter((r) => r.roleIds.includes(roleId) && Object.keys(r.values).length > 0);
+  if (!hits.length) return null;
+  const merged: Partial<ModePerms> = {};
+  for (const p of MODE_PERM_KEYS) {
+    const seen = hits.filter((h) => h.values[p] !== undefined);
+    if (seen.length) merged[p] = seen.some((h) => h.values[p] === true);
+  }
+  return merged;
 }
 
 /** Writes ONE permission flag back to its module record, using the record's own field name. */
