@@ -5,7 +5,6 @@ import { conflictsFor, contactName, floorMeta, isBookable } from '../../state/se
 import { fmtTime } from '../../lib/geometry';
 import { dataSource } from '../../lib/dataSource';
 import type { Booking, Unit, UnitType } from '../../lib/types';
-import { Select } from '../primitives/Select';
 import { Button } from '../primitives/Button';
 import { Modal, ModalHeader } from '../primitives/Modal';
 import { StateflowActions } from '../details/StateflowActions';
@@ -133,8 +132,9 @@ export function BookingsView() {
   const [calView, setCalView] = useState<CalView>('week');
   const [focusDate, setFocusDate] = useState(state.date);
   const [category, setCategory] = useState<UnitType>('workstation');
+  // No resource dropdown anymore — this is set by clicking a Resource-grid row (or My bookings),
+  // and only gates where drag-to-book CREATES; the calendar always shows the whole floor.
   const [resourceId, setResourceId] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
   const [bookingsByDate, setBookingsByDate] = useState<Record<string, Booking[]>>({});
   const [calLoading, setCalLoading] = useState(true);
   /** Overlap-cluster preview modal target: rows derive live from bookingsByDate so a transition/refetch updates them. */
@@ -200,13 +200,6 @@ export function BookingsView() {
   // resource picker only targets where drag-to-book CREATES a booking.
   function bookingsFor(date: string): Booking[] {
     return bookingsByDate[date] ?? [];
-  }
-
-  function resourceStatus(unit: Unit): string {
-    if (!catDef.bookable) return 'Not bookable';
-    const list = (bookingsByDate[focusDate] ?? []).filter((b) => b.unitId === unit.id);
-    if (!list.length) return 'Vacant';
-    return `${list.length} booking${list.length === 1 ? '' : 's'}`;
   }
 
   const selectedResource = resources.find((r) => r.id === resourceId) ?? null;
@@ -290,28 +283,10 @@ export function BookingsView() {
               </button>
             ))}
           </div>
-          <div className={styles.resourcePick}>
-            <Select
-              value={resourceId}
-              options={resources
-                .filter((r) => !search || r.label.toLowerCase().includes(search.toLowerCase()))
-                .map((r) => ({ value: r.id, label: `${r.label} — ${resourceStatus(r)}`, sublabel: r.secondary }))}
-              onChange={(v) => setResourceId(v)}
-              placeholder={resources.length ? 'Select a resource' : 'No resources'}
-              disabled={!resources.length}
-              size="md"
-              aria-label="Resource"
-            />
-            <button className={styles.searchBtn} title="Filter resources" onClick={() => setSearch((s) => (s === '' ? ' ' : ''))}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" />
-              </svg>
-            </button>
-          </div>
+          {/* Resource DROPDOWN removed on request — this view is for viewing/managing bookings.
+              A booking target is picked on the floor plan (Book mode) or by clicking a row in
+              the Resource grid, which focuses the calendar on that space (see onPick below). */}
         </div>
-        {search !== '' && (
-          <input className={styles.searchInput} autoFocus placeholder="Filter resources by name…" value={search.trim()} onChange={(e) => setSearch(e.target.value || ' ')} />
-        )}
 
         {catDef.bookable && selectedResource && (
           <p className={styles.hint}>Drag across the calendar to book <strong>{selectedResource.label}</strong> for that window.</p>
@@ -360,7 +335,7 @@ export function BookingsView() {
               )}
             {layout === 'grid' ? (
               <ResourceGrid
-                resources={resources.filter((r) => !search || r.label.toLowerCase().includes(search.toLowerCase()))}
+                resources={resources}
                 dates={calView === 'day' ? [focusDate] : Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(focusDate), i))}
                 bookingsByDate={bookingsByDate}
                 onPick={(rid, date) => {

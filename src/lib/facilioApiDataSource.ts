@@ -186,6 +186,14 @@ export class FacilioApiDataSource implements FloorplanDataSource {
       filters: JSON.stringify({ bookingStartTime: { operatorId: 20, value: [String(dayStart), String(dayEnd - 1)] } }),
     });
     if (res.error) throw new Error(`facilio-api: spacebooking fetch failed (${res.error.code ?? '?'} ${res.error.message ?? ''})`.trim());
+    // The day filter above is ORG-WIDE — spacebooking rows aren't floor-filtered server-side —
+    // so scope to THIS floor's bookable records (same cached per-floor fetches getUnits shares).
+    // Without this, a booking on any other floor rode onto every floor's calendar and inflated
+    // the "My bookings" badge with rows the current floor never renders.
+    const [desks, spaces, stalls] = await Promise.all(
+      ['desks', 'space', 'parkingstall'].map((m) => fetchFloorRecordsRaw(m, floorId).catch(() => [] as any[]))
+    );
+    const onFloor = new Set([...desks, ...spaces, ...stalls].map((r: any) => String(r.id)));
     const toMinutes = (t: number) => Math.max(0, Math.min(24 * 60, Math.round((t - dayStart) / 60_000)));
     return (res.list ?? [])
       .map((b: any): Booking | null => {
@@ -203,7 +211,8 @@ export class FacilioApiDataSource implements FloorplanDataSource {
         const approvalEnabled = b.approvalFlowId != null && b.approvalFlowId !== -1 && b.approvalStatus != null && typeof b.approvalStatus === 'object';
         const approvalPending = approvalEnabled && (approvalStatusName === null || isPendingApprovalName(approvalStatusName));
         const recordStateName = stateName(b.moduleState);
-        if (recordStateName && /cancel|reject/i.test(recordStateName)) return null;
+        // Dead states beyond literal "cancel" — orgs name them Terminated/Declined/Void too.
+        if (recordStateName && /cancel|reject|terminat|declin|void/i.test(recordStateName)) return null;
         return {
           id: String(b.id),
           unitId: String(unitId),
@@ -220,7 +229,9 @@ export class FacilioApiDataSource implements FloorplanDataSource {
           stateName: recordStateName,
         };
       })
-      .filter((b: Booking | null): b is Booking => b !== null);
+      // An EMPTY floor set can also mean the record fetches failed — showing the unscoped rows
+      // beats silently blanking real bookings in that case.
+      .filter((b: Booking | null): b is Booking => b !== null && (onFloor.size === 0 || onFloor.has(b.unitId)));
   }
   // Booking WRITES stay on their existing paths: creation goes through createRealBooking (the
   // org-form-aware create), with the local tier's copy as the interim store — so this tier's
