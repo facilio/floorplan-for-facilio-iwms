@@ -1985,7 +1985,7 @@ export async function fetchCurrentPeopleId(): Promise<number | null> {
 
 export interface RolePermRecord {
   id: number;
-  /** Display label — the role names when the lookup projects them. */
+  /** Display label — the record's own NAME field (roles are listed/edited separately). */
   label: string;
   /** `role` is a MULTI-lookup: one permission record can apply to several roles. */
   roleIds: number[];
@@ -1993,6 +1993,46 @@ export interface RolePermRecord {
   values: Partial<ModePerms>;
   /** The record's ACTUAL field names per mode — updates write back these exact keys. */
   fieldKeys: Partial<Record<keyof ModePerms, string>>;
+}
+
+/** An org role, for the permission records' role picker. */
+export interface OrgRole {
+  id: number;
+  name: string;
+}
+
+/**
+ * The org's role list — `GET v2/setup/roles` (the endpoint clientV2's own role pickers use,
+ * response under `roles`). Session-cached; empty on failure so pickers degrade to showing ids.
+ */
+let orgRolesCache: Promise<OrgRole[]> | null = null;
+export function fetchOrgRoles(): Promise<OrgRole[]> {
+  if (!isFacilioApiConfigured) return Promise.resolve([]);
+  if (!orgRolesCache) {
+    orgRolesCache = (async () => {
+      const body = await customGet('v2/setup/roles').catch(() => null);
+      const roles = body?.data?.roles ?? body?.roles ?? body?.result?.roles ?? [];
+      return (roles as any[])
+        .map((r) => ({ id: Number(r.roleId ?? r.id), name: (typeof r.name === 'string' && r.name.trim()) || `#${r.roleId ?? r.id}` }))
+        .filter((r) => Number.isFinite(r.id) && r.id > 0);
+    })();
+    orgRolesCache.catch(() => {
+      orgRolesCache = null;
+    });
+  }
+  return orgRolesCache;
+}
+
+/** Writes a permission record's role MULTI-lookup — the standard array-of-{id} lookup shape. */
+export async function updateRolePermissionRoles(moduleName: string, recordId: number, roleIds: number[]): Promise<boolean> {
+  if (!isFacilioApiConfigured) return false;
+  const res = await facilioApi.updateRecord(moduleName.trim(), { id: recordId, data: { role: roleIds.map((id) => ({ id })) } });
+  if (res.error) {
+    // eslint-disable-next-line no-console
+    console.warn(`[facilio-api] ${moduleName} role update failed for record ${recordId}`, res.error);
+    return false;
+  }
+  return true;
 }
 
 /** One role reference (object with roleId/id, or a bare id) -> numeric role id. */
@@ -2037,13 +2077,10 @@ export async function fetchRolePermissionRecords(moduleName: string): Promise<Ro
       if (k) values[p] = asPermBool(r[k]);
     }
     const roleRaw = r.role ?? r.roles ?? r.roleId;
-    const roleList = Array.isArray(roleRaw) ? roleRaw : roleRaw != null ? [roleRaw] : [];
-    const names = roleList
-      .map((x: any) => x?.name ?? x?.primaryValue)
-      .filter((n: unknown): n is string => typeof n === 'string' && n.trim().length > 0);
     return {
       id: r.id,
-      label: names.length ? names.join(', ') : (r.roleName ?? r.name ?? `#${r.id}`),
+      // The record's OWN name labels the row; its roles are listed/edited separately in the UI.
+      label: (typeof r.name === 'string' && r.name.trim()) || `#${r.id}`,
       roleIds: normalizeRoleIds(roleRaw),
       values,
       fieldKeys,

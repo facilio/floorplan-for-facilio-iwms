@@ -3,8 +3,8 @@ import { useFloorplan } from '../../state/FloorplanContext';
 import { STATE_DEFS, STATE_SWATCHES } from '../../lib/types';
 import type { ModePerms, UnitType } from '../../lib/types';
 import { isFacilioApiConfigured } from '../../lib/facilioApi';
-import { fetchRolePermissionRecords, updateRolePermissionRecord } from '../../lib/facilioApiDataSource';
-import type { RolePermRecord } from '../../lib/facilioApiDataSource';
+import { fetchOrgRoles, fetchRolePermissionRecords, updateRolePermissionRecord, updateRolePermissionRoles } from '../../lib/facilioApiDataSource';
+import type { OrgRole, RolePermRecord } from '../../lib/facilioApiDataSource';
 import { Button } from '../primitives/Button';
 import { moduleColor } from '../../lib/unitStatus';
 import styles from './SettingsScreen.module.css';
@@ -192,49 +192,71 @@ function PermissionsTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.permsModuleName]);
 
+  // Org roles for the per-record role picker (name display + add-role options).
+  const [orgRoles, setOrgRoles] = useState<OrgRole[]>([]);
+  useEffect(() => {
+    if (isFacilioApiConfigured) void fetchOrgRoles().then(setOrgRoles);
+  }, []);
+  const roleNameOf = (id: number) => orgRoles.find((r) => r.id === id)?.name ?? `#${id}`;
+
   /** LOCAL flip only — nothing hits the API until "Save changes". */
   const toggleRecord = (rec: RolePermRecord, perm: keyof ModePerms) => {
     setRecords((rs) => rs.map((r) => (r.id === rec.id ? { ...r, values: { ...r.values, [perm]: !(r.values[perm] ?? false) } } : r)));
   };
+  /** LOCAL role-list edit — saved together with the toggles. */
+  const setRecordRoles = (rec: RolePermRecord, roleIds: number[]) => {
+    setRecords((rs) => rs.map((r) => (r.id === rec.id ? { ...r, roleIds } : r)));
+  };
 
-  const savedValueOf = (id: number, perm: keyof ModePerms) => savedRecords.find((r) => r.id === id)?.values[perm];
-  const pendingChanges = records.flatMap((rec) =>
-    MODE_PERM_COLS.filter((c) => rec.fieldKeys[c.id] && (rec.values[c.id] ?? false) !== (savedValueOf(rec.id, c.id) ?? false)).map((c) => ({
+  const savedOf = (id: number) => savedRecords.find((r) => r.id === id);
+  const permChanges = records.flatMap((rec) =>
+    MODE_PERM_COLS.filter((c) => rec.fieldKeys[c.id] && (rec.values[c.id] ?? false) !== (savedOf(rec.id)?.values[c.id] ?? false)).map((c) => ({
       rec,
       perm: c.id,
       value: rec.values[c.id] ?? false,
     }))
   );
+  const roleChanges = records.filter((rec) => {
+    const saved = savedOf(rec.id)?.roleIds ?? [];
+    return rec.roleIds.length !== saved.length || rec.roleIds.some((id) => !saved.includes(id));
+  });
+  const pendingCount = permChanges.length + roleChanges.length;
 
   const saveChanges = async () => {
-    if (!pendingChanges.length) return;
+    if (!pendingCount) return;
     setSaving(true);
-    const results = await Promise.all(
-      pendingChanges.map((c) => updateRolePermissionRecord(state.permsModuleName, c.rec, c.perm, c.value).catch(() => false))
-    );
-    const failed = pendingChanges.filter((_, i) => !results[i]);
-    // Successes become the new saved baseline; failures revert the local toggle so the table
-    // never shows a state the module doesn't have.
+    const [permResults, roleResults] = await Promise.all([
+      Promise.all(permChanges.map((c) => updateRolePermissionRecord(state.permsModuleName, c.rec, c.perm, c.value).catch(() => false))),
+      Promise.all(roleChanges.map((rec) => updateRolePermissionRoles(state.permsModuleName, rec.id, rec.roleIds).catch(() => false))),
+    ]);
+    const failedPerms = permChanges.filter((_, i) => !permResults[i]);
+    const failedRoles = roleChanges.filter((_, i) => !roleResults[i]);
+    // Successes become the new saved baseline; failures revert locally so the table never
+    // shows a state the module doesn't have.
     setSavedRecords((prev) =>
       prev.map((r) => {
         const next = { ...r, values: { ...r.values } };
-        pendingChanges.forEach((c, i) => {
-          if (results[i] && c.rec.id === r.id) next.values[c.perm] = c.value;
+        permChanges.forEach((c, i) => {
+          if (permResults[i] && c.rec.id === r.id) next.values[c.perm] = c.value;
+        });
+        roleChanges.forEach((rec, i) => {
+          if (roleResults[i] && rec.id === r.id) next.roleIds = [...rec.roleIds];
         });
         return next;
       })
     );
-    if (failed.length) {
+    if (failedPerms.length || failedRoles.length) {
       setRecords((rs) =>
         rs.map((r) => {
           const next = { ...r, values: { ...r.values } };
-          for (const f of failed) if (f.rec.id === r.id) next.values[f.perm] = !f.value;
+          for (const f of failedPerms) if (f.rec.id === r.id) next.values[f.perm] = !f.value;
+          for (const f of failedRoles) if (f.id === r.id) next.roleIds = [...(savedOf(r.id)?.roleIds ?? [])];
           return next;
         })
       );
-      actions.showToast(`${failed.length} of ${pendingChanges.length} permission change(s) failed to save`, { variant: 'error' });
+      actions.showToast(`${failedPerms.length + failedRoles.length} of ${pendingCount} permission change(s) failed to save`, { variant: 'error' });
     } else {
-      actions.showToast(`${pendingChanges.length} permission change(s) saved`);
+      actions.showToast(`${pendingCount} permission change(s) saved`);
     }
     // The signed-in user's own tabs may have just changed.
     void actions.refreshModePerms();
@@ -290,10 +312,41 @@ function PermissionsTab() {
               <div key={rec.id} className={styles.matrixRow}>
                 <div>
                   <div className={styles.rowName}>{rec.label}</div>
-                  <div className={styles.rowDesc}>
-                    {rec.roleIds.length
-                      ? `Role${rec.roleIds.length === 1 ? '' : 's'} ${rec.roleIds.map((id) => `#${id}`).join(', ')}`
-                      : 'No roles on this record'}
+                  {/* Roles edited HERE (multi-lookup): chips remove, the select adds — all
+                      local until Save changes writes the record's role list back. */}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 5, alignItems: 'center' }}>
+                    {rec.roleIds.map((id) => (
+                      <span
+                        key={id}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 6px 2px 8px', borderRadius: 999, background: 'var(--blue-025)', border: '1px solid var(--blue-200)', font: '500 11.5px var(--font-sans)', color: 'var(--blue-700)' }}
+                      >
+                        {roleNameOf(id)}
+                        <button
+                          title="Remove role"
+                          onClick={() => setRecordRoles(rec, rec.roleIds.filter((x) => x !== id))}
+                          style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--blue-600)', font: '700 12px/1 var(--font-sans)', padding: 0 }}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                    <select
+                      value=""
+                      onChange={(e) => {
+                        const id = Number(e.target.value);
+                        if (id) setRecordRoles(rec, [...rec.roleIds, id]);
+                      }}
+                      style={{ padding: '2px 6px', borderRadius: 6, border: '1px dashed var(--ink-300)', font: '500 11.5px var(--font-sans)', color: 'var(--ink-600)', background: '#fff', cursor: 'pointer' }}
+                    >
+                      <option value="">+ Add role</option>
+                      {orgRoles
+                        .filter((r) => !rec.roleIds.includes(r.id))
+                        .map((r) => (
+                          <option key={r.id} value={r.id}>
+                            {r.name}
+                          </option>
+                        ))}
+                    </select>
                   </div>
                 </div>
                 {MODE_PERM_COLS.map((c) => (
@@ -312,14 +365,14 @@ function PermissionsTab() {
                 ))}
               </div>
             ))}
-            {/* Batched save on request: toggles above only edit locally; this writes the diff. */}
+            {/* Batched save on request: toggles/roles above only edit locally; this writes the diff. */}
             <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12, marginTop: 12 }}>
-              {pendingChanges.length > 0 && (
+              {pendingCount > 0 && (
                 <span className={styles.rowDesc}>
-                  {pendingChanges.length} unsaved change{pendingChanges.length === 1 ? '' : 's'}
+                  {pendingCount} unsaved change{pendingCount === 1 ? '' : 's'}
                 </span>
               )}
-              <Button variant="primary" disabled={saving || pendingChanges.length === 0} onClick={() => void saveChanges()}>
+              <Button variant="primary" disabled={saving || pendingCount === 0} onClick={() => void saveChanges()}>
                 {saving ? 'Saving…' : 'Save changes'}
               </Button>
             </div>
