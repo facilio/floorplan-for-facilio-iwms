@@ -1,5 +1,5 @@
-import { DEFAULT_PERMS, floorImageKey } from '../lib/types';
-import type { Booking, Building, Floor, FloorplanCustomization, MarkerDef, PlanId, Site, Unit } from '../lib/types';
+import { ALL_MODES_ALLOWED, DEFAULT_PERMS, floorImageKey } from '../lib/types';
+import type { Booking, Building, Floor, FloorplanCustomization, MarkerDef, ModePerms, PlanId, Site, Unit } from '../lib/types';
 import { clamp, fitView } from '../lib/geometry';
 import { IMG_H, IMG_W, seedBookings } from '../lib/mockData';
 import { viewFromLocation } from '../lib/routes';
@@ -106,6 +106,10 @@ export function buildInitialState(): AppState {
 
     role: 'admin',
     perms: { ...DEFAULT_PERMS },
+    permsModuleName: '',
+    defaultModePerms: { ...ALL_MODES_ALLOWED },
+    modePerms: { ...ALL_MODES_ALLOWED },
+    modePermsFromModule: false,
 
     // Each bottom-nav view is a path route (see lib/routes.ts) — boot straight into whatever
     // the URL says, so a refresh/deep link on /bookings etc. lands on that tab.
@@ -199,6 +203,9 @@ export type Action =
   | { type: 'SET_SCHED_VIEW'; view: AppState['schedView'] }
   | { type: 'SET_ROLE'; role: AppState['role'] }
   | { type: 'TOGGLE_PERM'; action: keyof AppState['perms']; role: AppState['role'] }
+  | { type: 'SET_PERMS_MODULE_NAME'; value: string }
+  | { type: 'TOGGLE_DEFAULT_MODE_PERM'; perm: keyof ModePerms }
+  | { type: 'SET_MODE_PERMS'; perms: ModePerms; fromModule: boolean }
   | { type: 'RESET_PERMS' }
   | { type: 'SET_ACTIVE_VIEW'; view: AppState['activeView'] }
   | { type: 'SET_PENDING_PLACEMENT'; placement: AppState['pendingPlacement'] }
@@ -484,6 +491,11 @@ export function reducer(state: AppState, action: Action): AppState {
         bookingModule: c.bookingModule ?? state.bookingModule,
         customMarkers: c.customMarkers ?? state.customMarkers,
         allowLocalFallback: c.allowLocalFallback ?? state.allowLocalFallback,
+        permsModuleName: c.permsModuleName ?? state.permsModuleName,
+        defaultModePerms: c.defaultModePerms ?? state.defaultModePerms,
+        // Effective perms follow the persisted defaults until a module record overrides them
+        // (the boot resolution dispatches SET_MODE_PERMS afterwards when one matches).
+        ...(!state.modePermsFromModule && c.defaultModePerms ? { modePerms: c.defaultModePerms } : {}),
         // bookBy deliberately NOT hydrated: who-you-are comes from the login session (see the
         // boot effect's fetchCurrentPeopleId), never from a persisted device setting.
       };
@@ -513,6 +525,20 @@ export function reducer(state: AppState, action: Action): AppState {
     }
     case 'RESET_PERMS':
       return { ...state, perms: { ...DEFAULT_PERMS } };
+    case 'SET_PERMS_MODULE_NAME':
+      return { ...state, permsModuleName: action.value };
+    case 'TOGGLE_DEFAULT_MODE_PERM': {
+      const defaults = { ...state.defaultModePerms, [action.perm]: !state.defaultModePerms[action.perm] };
+      // Defaults ARE the effective permissions while no module record overrides them.
+      return { ...state, defaultModePerms: defaults, ...(state.modePermsFromModule ? {} : { modePerms: defaults }) };
+    }
+    case 'SET_MODE_PERMS': {
+      const perms = action.perms;
+      const modeKey = state.mode === 'edit' ? 'edit' : state.mode === 'book' ? 'book' : 'assign';
+      // The active mode must stay a VISIBLE one — kick to the first allowed tab otherwise.
+      const mode = perms[modeKey] ? state.mode : perms.assign ? 'assign' : perms.book ? 'book' : perms.edit ? 'edit' : state.mode;
+      return { ...state, modePerms: perms, modePermsFromModule: action.fromModule, mode };
+    }
 
     case 'SET_ACTIVE_VIEW':
       // Idempotent so the hash<->state sync in FloorplanContext can dispatch freely on every

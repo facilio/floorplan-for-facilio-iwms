@@ -1,6 +1,10 @@
+import { useEffect, useState } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
-import { ACTIONS, ROLES, STATE_DEFS, STATE_SWATCHES } from '../../lib/types';
-import type { PermsAction, Role, UnitType } from '../../lib/types';
+import { STATE_DEFS, STATE_SWATCHES } from '../../lib/types';
+import type { ModePerms, UnitType } from '../../lib/types';
+import { isFacilioApiConfigured } from '../../lib/facilioApi';
+import { fetchRolePermissionRecords, updateRolePermissionRecord } from '../../lib/facilioApiDataSource';
+import type { RolePermRecord } from '../../lib/facilioApiDataSource';
 import { Button } from '../primitives/Button';
 import { moduleColor } from '../../lib/unitStatus';
 import styles from './SettingsScreen.module.css';
@@ -12,6 +16,12 @@ const MODULE_TABS: { id: 'permissions' | 'bookings' | UnitType; name: string }[]
   { id: 'locker', name: 'Lockers' },
   { id: 'parking', name: 'Parking' },
   { id: 'room', name: 'Rooms' },
+];
+
+const MODE_PERM_COLS: { id: keyof ModePerms; name: string; desc: string }[] = [
+  { id: 'edit', name: 'Edit', desc: 'The Edit floorplan tab — draw rooms, place units, upload plans' },
+  { id: 'assign', name: 'Assignment', desc: 'The Assignment tab — give desks/lockers/stalls to people' },
+  { id: 'book', name: 'Booking', desc: 'The Booking tab — reserve hot desks, rooms, parking' },
 ];
 
 const SLOT_OPTIONS = [
@@ -134,66 +144,155 @@ function BookingsSettingsTab() {
   );
 }
 
+/**
+ * Permissions are ORG-DRIVEN: a custom module (named below) holds one record per role — a role
+ * lookup plus boolean fields whose names contain edit/assign/book. The signed-in user's roleId
+ * picks their record; its values show/hide the floorplan's Edit/Assignment/Booking tabs. No
+ * record (or no module) -> the default toggles below apply. This replaced the local
+ * role-matrix ("Roles & access") on request.
+ */
 function PermissionsTab() {
   const { state, actions } = useFloorplan();
+  const [records, setRecords] = useState<RolePermRecord[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadedFor, setLoadedFor] = useState<string | null>(null);
+
+  const loadRecords = async (moduleName: string) => {
+    if (!moduleName.trim() || !isFacilioApiConfigured) {
+      setRecords([]);
+      setLoadedFor(moduleName.trim() || null);
+      return;
+    }
+    setLoading(true);
+    setLoadError(null);
+    try {
+      setRecords(await fetchRolePermissionRecords(moduleName));
+      setLoadedFor(moduleName.trim());
+    } catch (err) {
+      setRecords([]);
+      setLoadError((err as Error).message || 'fetch failed');
+      setLoadedFor(moduleName.trim());
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Auto-load once for the persisted module name.
+  useEffect(() => {
+    if (state.permsModuleName.trim() && loadedFor === null && !loading) void loadRecords(state.permsModuleName);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.permsModuleName]);
+
+  const toggleRecord = async (rec: RolePermRecord, perm: keyof ModePerms) => {
+    const next = !(rec.values[perm] ?? false);
+    // Optimistic flip; revert on failure.
+    setRecords((rs) => rs.map((r) => (r.id === rec.id ? { ...r, values: { ...r.values, [perm]: next } } : r)));
+    const ok = await updateRolePermissionRecord(state.permsModuleName, rec, perm, next).catch(() => false);
+    if (!ok) {
+      setRecords((rs) => rs.map((r) => (r.id === rec.id ? { ...r, values: { ...r.values, [perm]: !next } } : r)));
+      actions.showToast(`Couldn't update ${String(perm)} for ${rec.label}`, { variant: 'error' });
+      return;
+    }
+    actions.showToast(`${rec.label}: ${String(perm)} ${next ? 'enabled' : 'disabled'}`);
+    // The signed-in user's own tabs may have just changed.
+    void actions.refreshModePerms();
+  };
+
   return (
     <div className={styles.stack}>
       <div className={styles.card}>
         <div className={styles.cardHead}>
           <div>
-            <h3 className={styles.cardTitle}>Roles &amp; access</h3>
-            <p className={styles.cardDesc}>Choose which roles can perform each action. Changes apply immediately and are saved for your workspace.</p>
+            <h3 className={styles.cardTitle}>Permissions module</h3>
+            <p className={styles.cardDesc}>
+              The custom module that stores per-role floorplan permissions — one record per role, with a role lookup and boolean fields named with
+              edit / assign / book. The signed-in user&rsquo;s role picks their record; its values show or hide the Edit, Assignment and Booking tabs.
+            </p>
           </div>
-          <Button variant="secondary" onClick={actions.resetPerms}>
-            Reset to defaults
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <input
+            value={state.permsModuleName}
+            onChange={(e) => actions.setPermsModuleName(e.target.value)}
+            placeholder="Custom module name (e.g. floorplanpermissions)"
+            style={{ flex: '1 1 260px', maxWidth: 380, padding: '10px 12px', borderRadius: 8, border: '1.5px solid var(--ink-200)', font: '500 13.5px var(--font-sans)', color: 'var(--ink-900)', background: '#fff' }}
+          />
+          <Button
+            variant="secondary"
+            disabled={loading}
+            onClick={() => {
+              void loadRecords(state.permsModuleName);
+              void actions.refreshModePerms(state.permsModuleName);
+            }}
+          >
+            {loading ? 'Loading…' : 'Load records'}
           </Button>
         </div>
-        <div className={styles.matrixHead}>
-          <span>Action</span>
-          {ROLES.map((r) => (
-            <span key={r.id} className={styles.matrixHeadCell}>
-              {r.name}
-            </span>
-          ))}
-        </div>
-        {ACTIONS.map((a) => (
-          <div key={a.id} className={styles.matrixRow}>
-            <div>
-              <div className={styles.rowName}>{a.name}</div>
-              <div className={styles.rowDesc}>{a.desc}</div>
+        {!isFacilioApiConfigured && <div className={styles.footNote}>No backend configured — only the default toggles below apply.</div>}
+        {loadError && <div className={styles.footNote} style={{ color: 'var(--danger-700)' }}>Couldn&rsquo;t load “{state.permsModuleName}”: {loadError}</div>}
+        {loadedFor && !loadError && !loading && records.length === 0 && isFacilioApiConfigured && (
+          <div className={styles.footNote}>No records in “{loadedFor}” — every user gets the defaults below.</div>
+        )}
+        {records.length > 0 && (
+          <>
+            <div className={styles.matrixHead}>
+              <span>Role</span>
+              {MODE_PERM_COLS.map((c) => (
+                <span key={c.id} className={styles.matrixHeadCell}>
+                  {c.name}
+                </span>
+              ))}
             </div>
-            {ROLES.map((r) => (
-              <div key={r.id} className={styles.switchCell}>
-                <PermSwitch action={a.id} role={r.id} />
+            {records.map((rec) => (
+              <div key={rec.id} className={styles.matrixRow}>
+                <div>
+                  <div className={styles.rowName}>{rec.label}</div>
+                  <div className={styles.rowDesc}>{rec.roleId ? `Role #${rec.roleId}` : 'No role lookup on this record'}</div>
+                </div>
+                {MODE_PERM_COLS.map((c) => (
+                  <div key={c.id} className={styles.switchCell}>
+                    {rec.fieldKeys[c.id] ? (
+                      <button
+                        className={[styles.switch, rec.values[c.id] ? styles.switchOn : ''].join(' ')}
+                        onClick={() => void toggleRecord(rec, c.id)}
+                      >
+                        <span className={styles.knob} style={{ left: rec.values[c.id] ? 18 : 2 }} />
+                      </button>
+                    ) : (
+                      <span className={styles.rowDesc}>—</span>
+                    )}
+                  </div>
+                ))}
               </div>
             ))}
-          </div>
-        ))}
-        <div className={styles.footNote} style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <span>
-            Preview the app as a role:
-          </span>
-          <div style={{ display: 'inline-flex', gap: 4, padding: 4, background: 'var(--ink-050)', border: '1px solid var(--ink-200)', borderRadius: 8 }}>
-            {ROLES.map((r) => (
-              <button
-                key={r.id}
-                onClick={() => actions.setRole(r.id)}
-                style={{
-                  height: 28,
-                  padding: '0 12px',
-                  border: 'none',
-                  borderRadius: 6,
-                  background: state.role === r.id ? 'var(--blue-500)' : 'transparent',
-                  color: state.role === r.id ? '#fff' : 'var(--ink-600)',
-                  font: '600 12px/1 var(--font-sans)',
-                  cursor: 'pointer',
-                }}
-              >
-                {r.name}
-              </button>
-            ))}
+          </>
+        )}
+      </div>
+
+      <div className={styles.card}>
+        <div className={styles.cardHead}>
+          <div>
+            <h3 className={styles.cardTitle}>Default permissions</h3>
+            <p className={styles.cardDesc}>
+              Applied when no module record matches the signed-in user&rsquo;s role (or no module is set). Saved with your workspace settings.
+            </p>
           </div>
         </div>
+        {MODE_PERM_COLS.map((c) => (
+          <div key={c.id} className={styles.stateRow}>
+            <div className={styles.stateText}>
+              <div className={styles.rowName}>{c.name}</div>
+              <div className={styles.rowDesc}>{c.desc}</div>
+            </div>
+            <button
+              className={[styles.switch, state.defaultModePerms[c.id] ? styles.switchOn : ''].join(' ')}
+              onClick={() => actions.toggleDefaultModePerm(c.id)}
+            >
+              <span className={styles.knob} style={{ left: state.defaultModePerms[c.id] ? 18 : 2 }} />
+            </button>
+          </div>
+        ))}
       </div>
 
       <div className={styles.card}>
@@ -231,16 +330,6 @@ function AllowLocalFallbackSwitch() {
   const on = state.allowLocalFallback;
   return (
     <button className={[styles.switch, on ? styles.switchOn : ''].join(' ')} onClick={() => actions.setAllowLocalFallback(!on)}>
-      <span className={styles.knob} style={{ left: on ? 18 : 2 }} />
-    </button>
-  );
-}
-
-function PermSwitch({ action, role }: { action: PermsAction; role: Role }) {
-  const { state, actions } = useFloorplan();
-  const on = state.perms[action].includes(role);
-  return (
-    <button className={[styles.switch, on ? styles.switchOn : ''].join(' ')} onClick={() => actions.togglePerm(action, role)}>
       <span className={styles.knob} style={{ left: on ? 18 : 2 }} />
     </button>
   );

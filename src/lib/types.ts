@@ -266,6 +266,20 @@ export const DEFAULT_PERMS: Perms = {
   book: ['admin', 'manager', 'employee'],
 };
 
+/**
+ * Mode visibility for the CURRENT user — which of the floorplan's Edit / Assignment / Booking
+ * tabs they get. Resolved at boot from the org's role-permissions CUSTOM MODULE (named in
+ * Settings › Permissions, one record per role: a role lookup + boolean fields whose names
+ * contain edit/assign/book), matched by the logged-in user's roleId. No matching record (or no
+ * module configured) → the DEFAULTS configured in Settings apply.
+ */
+export interface ModePerms {
+  edit: boolean;
+  assign: boolean;
+  book: boolean;
+}
+export const ALL_MODES_ALLOWED: ModePerms = { edit: true, assign: true, book: true };
+
 export const ACTIONS: { id: PermsAction; name: string; desc: string }[] = [
   { id: 'edit', name: 'Edit floorplan', desc: 'Draw rooms, place units, calibrate scale' },
   { id: 'assign', name: 'Assign desks & lockers', desc: 'Give a permanent desk or locker to a person' },

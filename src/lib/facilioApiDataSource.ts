@@ -5,7 +5,7 @@ import { renderPdfToDataUrl } from './pdfPreview';
 import { computeSyntheticGeometry, geometryStringToQuad, lngLatToFraction, quadToGeometryString, quadToLngLat, type GeoQuad } from './geoReference';
 import type { FloorplanDataSource } from './dataSource';
 import type { Asset } from './assets';
-import type { Assignments, Booking, Building, ClientContact, DefaultPlanView, DeskType, Floor, FloorplanCustomization, MarkerDef, PlanId, PointGeom, PolyGeom, Site, Unit, UnitType } from './types';
+import type { Assignments, Booking, Building, ClientContact, DefaultPlanView, DeskType, Floor, FloorplanCustomization, MarkerDef, ModePerms, PlanId, PointGeom, PolyGeom, Site, Unit, UnitType } from './types';
 
 /**
  * Sniffs a DWG/DXF/PDF signature off the file's own leading bytes — the fallback when no
@@ -1939,29 +1939,119 @@ export interface MyDeskInfo {
 }
 
 /**
- * The logged-in user's PEOPLE id — the id space desk assignment actually lives in:
- * `desks.clientcontact_desks` holds the person's clientcontact/people record id, which is NOT
- * the same as their login user id (ouid). Resolved once per session from the account endpoint;
- * null when it's unreachable or the user has no people record.
+ * The logged-in SESSION user's ids, from the account endpoint (cached per session):
+ * - `peopleId` — the clientcontact/people record id, the id space desk assignment lives in
+ *   (`desks.clientcontact_desks` holds it; it is NOT the login user id / ouid).
+ * - `roleId` — the user's role, the filter key for the org's role-permissions custom module
+ *   (Settings › Permissions).
  */
-let currentPeopleIdCache: Promise<number | null> | null = null;
-export function fetchCurrentPeopleId(): Promise<number | null> {
-  if (!isFacilioApiConfigured) return Promise.resolve(null);
-  if (!currentPeopleIdCache) {
-    currentPeopleIdCache = (async () => {
+export interface SessionUser {
+  peopleId: number | null;
+  roleId: number | null;
+}
+let sessionUserCache: Promise<SessionUser> | null = null;
+export function fetchSessionUser(): Promise<SessionUser> {
+  if (!isFacilioApiConfigured) return Promise.resolve({ peopleId: null, roleId: null });
+  if (!sessionUserCache) {
+    sessionUserCache = (async () => {
       const body = await customGet('v2/account').catch(() => null);
       const user = body?.result?.account?.user ?? body?.account?.user ?? body?.data?.account?.user ?? body?.result?.user ?? body?.user ?? null;
-      const pid = Number(user?.peopleId ?? user?.people?.id);
-      if (Number.isFinite(pid) && pid > 0) return pid;
-      // eslint-disable-next-line no-console
-      console.warn('[facilio-api] account fetch carried no peopleId', user ? Object.keys(user) : body);
-      return null;
+      const asId = (v: any) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : null);
+      const peopleId = asId(user?.peopleId ?? user?.people?.id);
+      const roleId = asId(user?.roleId ?? user?.role?.roleId ?? user?.role?.id);
+      if (!peopleId) {
+        // eslint-disable-next-line no-console
+        console.warn('[facilio-api] account fetch carried no peopleId', user ? Object.keys(user) : body);
+      }
+      return { peopleId, roleId };
     })();
-    currentPeopleIdCache.catch(() => {
-      currentPeopleIdCache = null;
+    sessionUserCache.catch(() => {
+      sessionUserCache = null;
     });
   }
-  return currentPeopleIdCache;
+  return sessionUserCache;
+}
+
+export async function fetchCurrentPeopleId(): Promise<number | null> {
+  return (await fetchSessionUser()).peopleId;
+}
+
+// ---------------------------------------------------------------------------
+// Role-permissions CUSTOM MODULE (Settings › Permissions): one record per role — a `role`
+// lookup plus BOOLEAN fields whose names contain edit/assign/book (field names are org-defined,
+// so they're discovered per record rather than hardcoded). The matched record decides which
+// mode tabs the user sees; no match -> the Settings defaults apply.
+// ---------------------------------------------------------------------------
+
+export interface RolePermRecord {
+  id: number;
+  /** Display label — the role's name when the lookup projects it. */
+  label: string;
+  roleId: number | null;
+  /** The record's boolean permission values, keyed by mode. Missing = field absent on the record. */
+  values: Partial<ModePerms>;
+  /** The record's ACTUAL field names per mode — updates write back these exact keys. */
+  fieldKeys: Partial<Record<keyof ModePerms, string>>;
+}
+
+const PERM_KEY_RX: Record<keyof ModePerms, RegExp> = { edit: /edit/i, assign: /assign/i, book: /book/i };
+const MODE_PERM_KEYS = ['edit', 'assign', 'book'] as const;
+const isBoolish = (v: unknown) => typeof v === 'boolean' || v === 0 || v === 1 || v === 'true' || v === 'false';
+const asPermBool = (v: unknown) => v === true || v === 1 || v === 'true';
+
+export async function fetchRolePermissionRecords(moduleName: string): Promise<RolePermRecord[]> {
+  if (!isFacilioApiConfigured || !moduleName.trim()) return [];
+  const res: any = await facilioApi.fetchAll(moduleName.trim(), { page: 1, perPage: 500 });
+  if (res.error || !res.list) throw new Error(res.error?.message || `facilio-api: ${moduleName} fetch failed`);
+  return (res.list as any[]).map((r) => {
+    const fieldKeys: Partial<Record<keyof ModePerms, string>> = {};
+    for (const key of Object.keys(r)) {
+      if (!isBoolish(r[key])) continue;
+      for (const p of MODE_PERM_KEYS) {
+        if (!fieldKeys[p] && PERM_KEY_RX[p].test(key)) fieldKeys[p] = key;
+      }
+    }
+    const values: Partial<ModePerms> = {};
+    for (const p of MODE_PERM_KEYS) {
+      const k = fieldKeys[p];
+      if (k) values[p] = asPermBool(r[k]);
+    }
+    const rid = Number(r.role?.roleId ?? r.role?.id ?? r.roleId ?? (typeof r.role === 'number' ? r.role : NaN));
+    return {
+      id: r.id,
+      label: r.role?.name ?? r.role?.primaryValue ?? r.roleName ?? r.name ?? `#${r.id}`,
+      roleId: Number.isFinite(rid) && rid > 0 ? rid : null,
+      values,
+      fieldKeys,
+    };
+  });
+}
+
+/**
+ * The current user's mode permissions from the org module — the record whose role matches the
+ * session's roleId — or null when there's no session role, no matching record, or the matching
+ * record carries no recognizable permission fields (the caller then applies the defaults).
+ */
+export async function resolveModePermsForCurrentUser(moduleName: string): Promise<Partial<ModePerms> | null> {
+  const { roleId } = await fetchSessionUser();
+  if (!roleId) return null;
+  const records = await fetchRolePermissionRecords(moduleName);
+  const hit = records.find((r) => r.roleId === roleId);
+  return hit && Object.keys(hit.values).length > 0 ? hit.values : null;
+}
+
+/** Writes ONE permission flag back to its module record, using the record's own field name. */
+export async function updateRolePermissionRecord(moduleName: string, rec: RolePermRecord, perm: keyof ModePerms, value: boolean): Promise<boolean> {
+  if (!isFacilioApiConfigured) return false;
+  const field = rec.fieldKeys[perm];
+  if (!field) return false;
+  const res = await facilioApi.updateRecord(moduleName.trim(), { id: rec.id, data: { [field]: value } });
+  if (res.error) {
+    // eslint-disable-next-line no-console
+    console.warn(`[facilio-api] ${moduleName}.${field} update failed for record ${rec.id}`, res.error);
+    return false;
+  }
+  return true;
 }
 
 /**

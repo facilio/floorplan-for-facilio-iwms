@@ -17,26 +17,37 @@ export function Toolbar({ leftPad, rightPad }: { leftPad: number; rightPad: numb
   return (
     <div className={styles.wrap} style={{ paddingLeft: leftPad, paddingRight: rightPad }}>
       <div className={styles.pill}>
-        <div className={styles.segment}>
-          <button className={[styles.segBtn, state.mode === 'assign' ? styles.segBtnActive : ''].join(' ')} onClick={() => actions.setMode('assign')}>
-            Assignment
-          </button>
-          <button className={[styles.segBtn, state.mode === 'book' ? styles.segBtnActive : ''].join(' ')} onClick={() => actions.setMode('book')}>
-            Booking
-          </button>
-        </div>
+        {/* Mode tabs are PERMISSION-gated: state.modePerms resolves from the org's
+            role-permissions module (by the session user's role), falling back to the Settings
+            defaults — see Settings › Permissions. */}
+        {(state.modePerms.assign || state.modePerms.book) && (
+          <div className={styles.segment}>
+            {state.modePerms.assign && (
+              <button className={[styles.segBtn, state.mode === 'assign' ? styles.segBtnActive : ''].join(' ')} onClick={() => actions.setMode('assign')}>
+                Assignment
+              </button>
+            )}
+            {state.modePerms.book && (
+              <button className={[styles.segBtn, state.mode === 'book' ? styles.segBtnActive : ''].join(' ')} onClick={() => actions.setMode('book')}>
+                Booking
+              </button>
+            )}
+          </div>
+        )}
 
-        <button
-          className={[styles.editBtn, state.mode === 'edit' ? styles.editBtnActive : ''].join(' ')}
-          title={state.mode === 'edit' ? 'Exit edit mode' : 'Edit floorplan (admin)'}
-          onClick={actions.toggleEdit}
-        >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 20h9" />
-            <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />
-          </svg>
-          Edit
-        </button>
+        {state.modePerms.edit && (
+          <button
+            className={[styles.editBtn, state.mode === 'edit' ? styles.editBtnActive : ''].join(' ')}
+            title={state.mode === 'edit' ? 'Exit edit mode' : 'Edit floorplan'}
+            onClick={actions.toggleEdit}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 20h9" />
+              <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />
+            </svg>
+            Edit
+          </button>
+        )}
 
         {/* Personal wayfinding has no place while editing the plan itself. */}
         {hasMyDesk && state.mode !== 'edit' && (

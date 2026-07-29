@@ -6,6 +6,7 @@ import type {
   EditTool,
   FloorplanCustomization,
   MarkerDef,
+  ModePerms,
   PanelsState,
   Perms,
   PlanId,
@@ -116,6 +117,15 @@ export interface AppState {
 
   role: Role;
   perms: Perms;
+
+  /** Org custom module holding per-role mode permissions (Settings › Permissions). Empty = none. */
+  permsModuleName: string;
+  /** Fallback mode visibility when the module has no record for the user's role (Settings-editable). */
+  defaultModePerms: ModePerms;
+  /** RESOLVED mode visibility for the current user — what actually shows/hides the mode tabs. */
+  modePerms: ModePerms;
+  /** True when modePerms came from a module record (defaults-toggles then don't overwrite it). */
+  modePermsFromModule: boolean;
 
   activeView: 'map' | 'settings' | 'bookings' | 'people';
   settingsTab: 'permissions' | 'bookings' | UnitType;

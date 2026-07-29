@@ -5,11 +5,11 @@ import type { CreateSpaceLoc } from '../lib/dataSource';
 import type { ToastVariant } from '../components/primitives/Toast';
 import { IMG_H, IMG_W, seedBookings, seedUnits, seedAssignments } from '../lib/mockData';
 import { floorImageKey, resolveMarkerDef, TYPE_META } from '../lib/types';
-import type { AmenityIcon, Assignments, Booking, ClientContact, DefaultPlanView, MarkerDef, PlanId, Role, Site, Unit, UnitType } from '../lib/types';
+import type { AmenityIcon, Assignments, Booking, ClientContact, DefaultPlanView, MarkerDef, ModePerms, PlanId, Role, Site, Unit, UnitType } from '../lib/types';
 import type { CadGroup } from '../lib/cadAnalyze';
 import type { Asset } from '../lib/assets';
 import { isFacilioApiConfigured } from '../lib/facilioApi';
-import { assignUnitReal, createRealBooking, fetchCurrentPeopleId, fetchFloorplanCustomization, fetchFloorplanImage, fetchMyDesk, findFloorParents, findUnitIdForDeskRecord, getAnyFloor, getFloorPlanSummary, patchUnitContact, saveFloorplanDefaultView, saveFloorplanMarkers, vacateUnitReal } from '../lib/facilioApiDataSource';
+import { assignUnitReal, createRealBooking, fetchCurrentPeopleId, fetchFloorplanCustomization, fetchFloorplanImage, fetchMyDesk, findFloorParents, findUnitIdForDeskRecord, getAnyFloor, getFloorPlanSummary, patchUnitContact, resolveModePermsForCurrentUser, saveFloorplanDefaultView, saveFloorplanMarkers, vacateUnitReal } from '../lib/facilioApiDataSource';
 import { listFloorplanFloorIds, loadFloorplanFile, persistFloorplanFile } from '../lib/floorplanFileStore';
 import { loadSettings, saveSettings, settingsFromState } from '../lib/settingsStore';
 import { pathForView, viewFromLocation } from '../lib/routes';
@@ -1312,6 +1312,25 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       dispatch({ type: 'RESET_PERMS' });
       showToast('Permissions reset to defaults');
     },
+    setPermsModuleName: (value: string) => dispatch({ type: 'SET_PERMS_MODULE_NAME', value }),
+    toggleDefaultModePerm: (perm: keyof ModePerms) => dispatch({ type: 'TOGGLE_DEFAULT_MODE_PERM', perm }),
+    /**
+     * Re-resolve the CURRENT user's mode permissions: the org's role-permissions module record
+     * matching the session roleId wins; no match (or no module set) -> the Settings defaults.
+     * Called at boot and after the Permissions tab changes the module/records.
+     */
+    refreshModePerms: async (moduleNameOverride?: string) => {
+      const moduleName = (moduleNameOverride ?? state.permsModuleName).trim();
+      const defaults = state.defaultModePerms;
+      if (isFacilioApiConfigured && moduleName) {
+        const fromModule = await resolveModePermsForCurrentUser(moduleName).catch(() => null);
+        if (fromModule) {
+          dispatch({ type: 'SET_MODE_PERMS', perms: { ...defaults, ...fromModule }, fromModule: true });
+          return;
+        }
+      }
+      dispatch({ type: 'SET_MODE_PERMS', perms: { ...defaults }, fromModule: false });
+    },
 
     /**
      * Reset the local session store (units/assignments/bookings edits + settings + uploaded
@@ -1514,7 +1533,7 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
     }, 500);
     return () => clearTimeout(saveTimer.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.perms, state.moduleColors, state.slotGranularity, state.bookingModule, state.customMarkers, state.allowLocalFallback]);
+  }, [state.perms, state.moduleColors, state.slotGranularity, state.bookingModule, state.customMarkers, state.allowLocalFallback, state.permsModuleName, state.defaultModePerms]);
 
   useEffect(() => {
     if (loadedRef.current) return;
@@ -1559,6 +1578,17 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
         // the "Your desk" badge, and booking defaults all follow the real login.
         const peopleId = await fetchCurrentPeopleId().catch(() => null);
         if (peopleId) dispatch({ type: 'SET_BOOK_FIELD', field: 'bookBy', value: String(peopleId) });
+        // Mode-tab permissions: the role-permissions module record matching the session's role
+        // decides which tabs show; no record/module -> the persisted defaults. Settings are read
+        // directly here (the settings-load effect races this one). Fire-and-forget: the tabs
+        // simply snap to the resolved set when this lands.
+        void (async () => {
+          const cfg = await loadSettings().catch(() => null);
+          const defaults: ModePerms = { edit: true, assign: true, book: true, ...(cfg?.defaultModePerms ?? {}) };
+          const moduleName = cfg?.permsModuleName?.trim();
+          const fromModule = moduleName ? await resolveModePermsForCurrentUser(moduleName).catch(() => null) : null;
+          dispatch({ type: 'SET_MODE_PERMS', perms: fromModule ? { ...defaults, ...fromModule } : defaults, fromModule: !!fromModule });
+        })();
         myDesk = await fetchMyDesk().catch(() => null);
         firstRealFloor = myDesk?.floorId ?? (await getAnyFloor().catch(() => null))?.id;
       }

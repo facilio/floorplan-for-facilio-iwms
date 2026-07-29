@@ -17,6 +17,10 @@ export interface SettingsConfig {
   customMarkers?: MarkerDef[];
   /** When false, a real-org data failure shows an error instead of silently falling back to local/seed data. */
   allowLocalFallback?: boolean;
+  /** Org custom module holding per-role mode permissions (Settings › Permissions). */
+  permsModuleName?: string;
+  /** Fallback mode visibility when no module record matches the user's role. */
+  defaultModePerms?: import('./types').ModePerms;
   /**
    * DEPRECATED — the client contact this device's user was manually picked to be. Who-you-are
    * now resolves from the login session's people id (fetchCurrentPeopleId) at boot; this key is
@@ -36,6 +40,8 @@ export function settingsFromState(state: AppState): SettingsConfig {
     bookingModule: state.bookingModule,
     customMarkers: state.customMarkers,
     allowLocalFallback: state.allowLocalFallback,
+    permsModuleName: state.permsModuleName,
+    defaultModePerms: state.defaultModePerms,
   };
 }
 
