@@ -926,16 +926,9 @@ export async function saveFloorplanDefaultView(floorId: string, planId: PlanId, 
   if (view) booking.floorplanAppDefaultView = view;
   else delete booking.floorplanAppDefaultView;
 
-  const spaceModuleId =
-    (record.markedZones ?? []).map((z: any) => z.zoneModuleId ?? z.space?.moduleId).find((v: any) => v != null) ?? null;
-  const markedZones = (record.markedZones ?? []).map((z: any) => {
-    const zoneModuleId = z.zoneModuleId ?? z.space?.moduleId ?? spaceModuleId;
-    return z.zoneModuleId == null && zoneModuleId != null ? { ...z, zoneModuleId } : z;
-  });
-
   const res = await facilioApi.updateRecord('indoorfloorplan', {
     id: summary.id,
-    data: { ...record, markedZones, customizationBooking: booking, customizationBookingJSON: JSON.stringify(booking) },
+    data: { ...record, markedZones: repairZoneModuleIds(record), customizationBooking: booking, customizationBookingJSON: JSON.stringify(booking) },
   });
   if (res.error) {
     // eslint-disable-next-line no-console
@@ -1055,28 +1048,58 @@ export async function uploadFloorplanFile(
 
     const floorPlanType = FLOOR_PLAN_TYPE[planId];
     const geometry = imageDimensions ? quadToGeometryString(computeSyntheticGeometry(imageDimensions.width, imageDimensions.height)) : undefined;
+    // Resolve the plan-type mapping FRESH, never from the session cache — a record created or
+    // deleted elsewhere (another tab/user) would otherwise send this down the wrong branch
+    // (creating a duplicate indoorfloorplan, or updating a ghost).
+    floorplanDetailsCache.delete(floorId);
     const existingByType = await getFloorplanDetailsByType(floorId);
     const existing = existingByType[String(floorPlanType)];
-    const attachRes = existing
-      ? await facilioApi.updateRecord('indoorfloorplan', { id: existing.id, data: { fileId, ...(geometry ? { geometry } : {}) } })
-      : await facilioApi.createRecord('indoorfloorplan', {
-          data: {
-            floor: { id: floorId },
-            building: { id: buildingId },
-            site: { id: siteId },
-            fileId,
-            name: file.name,
-            floorPlanType,
-            ...(geometry ? { geometry } : {}),
-          },
-        });
+    let attachRes;
+    if (existing) {
+      // REPLACE = full-record round trip, same rule as every other indoorfloorplan write: a
+      // partial {fileId} patch risks the backend treating it as a replace and WIPING the
+      // record's markers/markedZones/customization. Echo everything back with only the file
+      // fields changed — including the markedZones zoneModuleId repair (the GET omits it).
+      const record = await fetchIndoorFloorPlanRecord(existing.id);
+      if (!record) throw new Error(`indoorfloorplan ${existing.id} fetch failed before re-attach`);
+      attachRes = await facilioApi.updateRecord('indoorfloorplan', {
+        id: existing.id,
+        data: {
+          ...record,
+          markedZones: repairZoneModuleIds(record),
+          fileId,
+          name: file.name,
+          ...(geometry ? { geometry } : {}),
+        },
+      });
+    } else {
+      attachRes = await facilioApi.createRecord('indoorfloorplan', {
+        data: {
+          floor: { id: floorId },
+          building: { id: buildingId },
+          site: { id: siteId },
+          fileId,
+          name: file.name,
+          floorPlanType,
+          ...(geometry ? { geometry } : {}),
+        },
+      });
+    }
     if (attachRes.error) throw new Error(attachRes.error.message || `code ${attachRes.error.code}`);
     attachedToFloorPlan = true;
-    // The ONE write that can change the floor's plan-type -> record-id mapping (creating a new
-    // indoorfloorplan) — drop the session-long cache entry so the next lookup sees it.
+    // The plan record just changed — drop every session cache that could serve the OLD plan:
+    // the plan-type mapping (a create changes it), viewerData (geometry/file changed), and the
+    // CAD source file (auto-map + hi-res zoom tiers must use the NEW drawing, not the one
+    // cached at the last image fetch).
     floorplanDetailsCache.delete(floorId);
+    viewerDataCache.clear();
+    const cadKey = `${floorId}:${planId}`;
+    if (/\.(dwg|dxf)$/i.test(file.name)) cadSourceFileCache.set(cadKey, file);
+    else cadSourceFileCache.delete(cadKey);
   } catch (err) {
     attachError = (err as Error).message || 'attach failed';
+    // A failed attach may itself be a stale-mapping symptom — clear it so a retry re-resolves.
+    floorplanDetailsCache.delete(floorId);
   }
 
   return { fileId, previewUrl, serverImageUrl, attachedToFloorPlan, attachError };
@@ -1149,6 +1172,21 @@ async function fetchIndoorFloorPlanRecord(indoorFloorPlanId: number): Promise<an
   const res = await facilioApi.fetchRecord<any>('indoorfloorplan', { id: indoorFloorPlanId });
   if (res.error || !res.indoorfloorplan) return null;
   return res.indoorfloorplan;
+}
+
+/**
+ * The record's markedZones with `zoneModuleId` restored on every entry. The GET projection
+ * OMITS zoneModuleId — so any full-record round-trip write (default-view save, file re-attach,
+ * …) that naively echoes the fetched zones back sends exactly the broken payload shape that
+ * corrupts zone→module linkage (the musanadah incident). Every such write must go through this.
+ */
+function repairZoneModuleIds(record: any): any[] {
+  const zones: any[] = record?.markedZones ?? [];
+  const spaceModuleId = zones.map((z) => z.zoneModuleId ?? z.space?.moduleId).find((v) => v != null) ?? null;
+  return zones.map((z) => {
+    const zoneModuleId = z.zoneModuleId ?? z.space?.moduleId ?? spaceModuleId;
+    return z.zoneModuleId == null && zoneModuleId != null ? { ...z, zoneModuleId } : z;
+  });
 }
 
 /**

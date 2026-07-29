@@ -849,6 +849,29 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
         return hit;
       };
 
+      // ALREADY-MAPPED detection: a CAD item whose label matches a unit that's already PLACED on
+      // this plan — or, unlabeled, one sitting right on top of a placed same-type marker (a
+      // re-run of the same drawing) — must NEVER stack a second marker. They're collected here
+      // and the user is asked ONCE below: replace (move the existing marker to the CAD position)
+      // or skip (leave everything untouched).
+      const placedByName: Partial<Record<UnitType, Map<string, Unit>>> = {};
+      const placedPoints: Partial<Record<UnitType, Unit[]>> = {};
+      for (const u of state.units) {
+        if (u.unplaced) continue;
+        (placedByName[u.type] ??= new Map()).set(norm(u.label), u);
+        if (u.geom.kind === 'point') (placedPoints[u.type] ??= []).push(u);
+      }
+      const NEAR_PLAN_PX = 9; // same-position tolerance, in plan pixels — well under desk spacing
+      const nearPlaced = (type: UnitType, x: number, y: number): Unit | null => {
+        for (const u of placedPoints[type] ?? []) {
+          const g = u.geom as { x: number; y: number };
+          if (Math.hypot((g.x - x) * IMG_W, (g.y - y) * IMG_H) < NEAR_PLAN_PX) return u;
+        }
+        return null;
+      };
+      const alreadyMapped: { unit: Unit; patch: Partial<Unit> }[] = [];
+      const claimedPlaced = new Set<string>(); // one CAD item per placed unit — no double claims
+
       const ordered = [...groups].sort(
         (a, b) => (mapping[b.key] === 'room' ? 1 : 0) - (mapping[a.key] === 'room' ? 1 : 0),
       );
@@ -858,6 +881,13 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
         for (const item of group.items) {
           if (type === 'room') {
             if (!item.poly) continue;
+            // Already placed on the plan? Queue for the replace-or-skip prompt, never re-add.
+            const placedRoom = item.label ? placedByName.room?.get(norm(item.label)) : undefined;
+            if (placedRoom && !claimedPlaced.has(placedRoom.id)) {
+              claimedPlaced.add(placedRoom.id);
+              alreadyMapped.push({ unit: placedRoom, patch: { geom: { kind: 'poly', pts: item.poly } } });
+              continue;
+            }
             // Drawing names a room the org already has -> the outline lands on THAT record.
             const match = takeNameMatch('room', item.label);
             if (match) {
@@ -881,6 +911,14 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
             const [x, y] = item.point;
             const rooms = [...state.units, ...created].filter((u) => u.type === 'room');
             const room = rooms.find((r) => r.geom.kind === 'poly' && pointInPoly({ x, y }, r.geom.pts));
+            // Already placed on the plan (label match, or unlabeled but sitting right on top of
+            // a placed same-type marker)? Queue for the replace-or-skip prompt — never stack.
+            const placedHit = (item.label ? placedByName[type]?.get(norm(item.label)) : undefined) ?? nearPlaced(type, x, y);
+            if (placedHit && !claimedPlaced.has(placedHit.id)) {
+              claimedPlaced.add(placedHit.id);
+              alreadyMapped.push({ unit: placedHit, patch: { room: room ? room.label : null, geom: { kind: 'point', x, y }, plan: state.planId } });
+              continue;
+            }
             // Tag to the ACTIVE plan tab (matching manual placement), not the unit's own type —
             // the canvas only renders a unit when its `plan` matches the currently-viewed tab.
             // Priority: the drawing's own label naming an existing record -> place exactly that
@@ -916,11 +954,31 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
         }
       }
 
+      // Already-mapped units: ask ONCE — replace their positions with the CAD ones, or skip
+      // them entirely. Either way nothing is ever stacked on top of an existing marker.
+      let replacedMapped = 0;
+      if (alreadyMapped.length > 0) {
+        const sample = alreadyMapped
+          .slice(0, 3)
+          .map((m) => `“${m.unit.label}”`)
+          .join(', ');
+        const replace = window.confirm(
+          `${alreadyMapped.length} CAD unit${alreadyMapped.length === 1 ? ' is' : 's are'} ALREADY mapped on this plan (${sample}${alreadyMapped.length > 3 ? ', …' : ''}).\n\n` +
+            'OK — move those existing markers to the CAD positions (replace).\n' +
+            'Cancel — leave them where they are (skipped; nothing gets stacked).'
+        );
+        if (replace) {
+          for (const m of alreadyMapped) updates.push({ id: m.unit.id, patch: m.patch });
+          replacedMapped = alreadyMapped.length;
+        }
+      }
+      const skippedMapped = alreadyMapped.length - replacedMapped;
+
       const totalMapped = created.length + placedFromPool.length + updates.length;
       if (totalMapped > 0) {
         dispatch({ type: 'APPLY_AUTOMAP', created, placedFromPool });
         // Name-matched org records already live in state.units (unplaced) — position them via
-        // patches rather than re-adding.
+        // patches rather than re-adding. Replaced already-mapped units ride the same path.
         if (updates.length) dispatch({ type: 'UPDATE_UNITS', updates });
         const patches = new Map(updates.map((u) => [u.id, u.patch]));
         saveUnitsBestEffort(state.floorId, [
@@ -930,10 +988,18 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
         ]);
       }
       dispatch({ type: 'SET_AUTOMAP_GROUPS', groups: null });
+      const extras = [
+        replacedMapped ? `${replacedMapped} already mapped — repositioned` : '',
+        skippedMapped ? `${skippedMapped} already mapped — skipped` : '',
+      ]
+        .filter(Boolean)
+        .join(', ');
       showToast(
         totalMapped > 0
-          ? `${totalMapped} units mapped from CAD metadata (${nameMatched} matched by name, ${placedFromPool.length + updates.length - nameMatched >= 0 ? placedFromPool.length + updates.length - nameMatched : 0} pooled, ${created.length} new) — review and Save changes`
-          : 'Nothing was mapped',
+          ? `${totalMapped} units mapped from CAD metadata (${nameMatched} matched by name, ${created.length} new${extras ? `, ${extras}` : ''}) — review and Save changes`
+          : skippedMapped > 0
+            ? `Nothing new mapped — ${skippedMapped} unit${skippedMapped === 1 ? ' was' : 's were'} already mapped and left untouched`
+            : 'Nothing was mapped',
       );
     },
     isNearFirstDraftPoint: (pt: [number, number]) => {
@@ -1305,6 +1371,15 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
     setMobAssignEdit: (value: boolean) => dispatch({ type: 'SET_MOB_ASSIGN_EDIT', value }),
 
     setUploadOpen: (open: boolean) => dispatch({ type: 'SET_UPLOAD_OPEN', open }),
+    /**
+     * Re-resolve which plan types exist for the current floor — called after an upload attaches
+     * a NEW indoorfloorplan record, so the plan-type switcher reflects it without a floor reload.
+     */
+    refreshPlanTypes: async () => {
+      if (!isFacilioApiConfigured) return;
+      const types = await getFloorPlanSummary(state.floorId).catch(() => []);
+      dispatch({ type: 'SET_FLOOR_PLAN_TYPES', floorId: state.floorId, types });
+    },
     setFloorImage: (floorId: string, planId: PlanId, dataUrl: string) => {
       dispatch({ type: 'SET_FLOOR_IMAGE', floorId, planId, dataUrl });
       // Persist the uploaded floorplan so a deployed app reloads it after a refresh. Best-effort

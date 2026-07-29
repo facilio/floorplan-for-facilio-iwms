@@ -59,6 +59,7 @@ export function FloorUploadModal() {
       let uploadedFileId: number | null = null;
       let attachedToFloorPlan = false;
       let serverImageUsed = false;
+      let uploadFailedMsg: string | null = null;
       if (isFacilioApiConfigured) {
         try {
           // Measured off the rendered preview when we have one (sizes the synthetic
@@ -77,8 +78,14 @@ export function FloorUploadModal() {
           if (!uploaded.attachedToFloorPlan) {
             // eslint-disable-next-line no-console
             console.warn('[FloorUploadModal] Uploaded to Facilio but could not attach to this floor\'s indoorfloorplan record:', uploaded.attachError);
+          } else {
+            // A create just changed which plan types this floor has — refresh the switcher.
+            void actions.refreshPlanTypes();
           }
         } catch (uploadErr) {
+          // The backend never received the file. The local preview still renders below, but
+          // this must NOT read as a successful "floorplan updated" — see uploadFailedMsg use.
+          uploadFailedMsg = (uploadErr as Error).message || 'upload failed';
           // eslint-disable-next-line no-console
           console.warn('[FloorUploadModal] Facilio upload failed', uploadErr);
         }
@@ -91,6 +98,17 @@ export function FloorUploadModal() {
       }
 
       if (previewUrl) actions.setFloorImage(state.floorId, state.planId, previewUrl);
+
+      // The backend upload FAILED but a local render exists: show it (better than nothing), but
+      // say so honestly — the old flow toasted "Floorplan updated" and closed, so the user only
+      // discovered the plan was never really replaced on the next reload/other device.
+      if (isFacilioApiConfigured && uploadFailedMsg && uploadedFileId == null) {
+        setStatus('error');
+        setError(`Upload to Facilio failed: ${uploadFailedMsg}. The image below is shown on THIS device only — retry to actually replace the floorplan.`);
+        actions.showToast('Floorplan NOT uploaded — shown locally only', { variant: 'error', description: uploadFailedMsg });
+        return; // keep the modal open for a retry
+      }
+
       actions.showToast(
         uploadedFileId
           ? serverImageUsed
@@ -111,7 +129,9 @@ export function FloorUploadModal() {
       }
       actions.setUploadOpen(false);
       setStatus('idle');
-      if (cad) actions.storeCadAnalysis(state.floorId, state.planId, cadGroups);
+      // ALWAYS store (even an empty list): replacing a CAD plan with a PNG/PDF must clear the
+      // stale analysis, or Edit › "Auto-map CAD units" keeps offering the OLD drawing's groups.
+      actions.storeCadAnalysis(state.floorId, state.planId, cadGroups);
       if (cadGroups.length > 0) {
         actions.openAutoMap(cadGroups);
       } else if (cad && !clientRenderFailed) {
