@@ -1994,6 +1994,8 @@ export interface RolePermRecord {
   fieldKeys: Partial<Record<keyof ModePerms, string>>;
 }
 
+/** The module's CONFIRMED field names (this org): assignment / booking / edit. */
+const PERM_EXACT_KEY: Record<keyof ModePerms, string> = { edit: 'edit', assign: 'assignment', book: 'booking' };
 const PERM_KEY_RX: Record<keyof ModePerms, RegExp> = { edit: /edit/i, assign: /assign/i, book: /book/i };
 const MODE_PERM_KEYS = ['edit', 'assign', 'book'] as const;
 const isBoolish = (v: unknown) => typeof v === 'boolean' || v === 0 || v === 1 || v === 'true' || v === 'false';
@@ -2005,6 +2007,11 @@ export async function fetchRolePermissionRecords(moduleName: string): Promise<Ro
   if (res.error || !res.list) throw new Error(res.error?.message || `facilio-api: ${moduleName} fetch failed`);
   return (res.list as any[]).map((r) => {
     const fieldKeys: Partial<Record<keyof ModePerms, string>> = {};
+    // Exact field names first (assignment/booking/edit — the org's confirmed schema)…
+    for (const p of MODE_PERM_KEYS) {
+      if (isBoolish(r[PERM_EXACT_KEY[p]])) fieldKeys[p] = PERM_EXACT_KEY[p];
+    }
+    // …then fuzzy discovery for any that didn't match (other orgs name fields their own way).
     for (const key of Object.keys(r)) {
       if (!isBoolish(r[key])) continue;
       for (const p of MODE_PERM_KEYS) {
