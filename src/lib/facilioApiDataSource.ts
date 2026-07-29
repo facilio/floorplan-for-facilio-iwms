@@ -561,7 +561,16 @@ function markerFeatureToUnit(
     ...(recordId == null ? { markerOnly: true } : {}),
   };
   if (type === 'workstation' && DESK_TYPE_BY_NUM[p.deskType]) unit.deskType = DESK_TYPE_BY_NUM[p.deskType];
+  const department = departmentName(p) ?? departmentName(p.desk);
+  if (department) unit.department = department;
   return unit;
+}
+
+/** The record's department lookup as a display string, whichever shape the projection used. */
+function departmentName(rec: Record<string, any> | undefined): string | undefined {
+  const d = rec?.department;
+  const name = typeof d === 'string' ? d : (d?.name ?? d?.primaryValue);
+  return typeof name === 'string' && name.trim() ? name.trim() : undefined;
 }
 
 /**
@@ -589,6 +598,7 @@ function zoneFeatureToUnit(
   const label = (typeof p.label === 'string' && p.label.trim()) || tooltipTitleLabel(f) || id;
   const secondary = typeof p.secondaryLabel === 'string' && p.secondaryLabel.trim() ? p.secondaryLabel.trim() : undefined;
   const reservable = p.isReservable ?? p.reservable ?? p.space?.reservable;
+  const department = departmentName(p) ?? departmentName(p.space);
 
   return {
     id,
@@ -599,6 +609,7 @@ function zoneFeatureToUnit(
     geom: { kind: 'poly', pts },
     floor: floorId,
     plan: planId,
+    ...(department ? { department } : {}),
     ...(typeof reservable === 'boolean' ? { isReservable: reservable } : {}),
     // Same objectId guard as markers — an id that isn't a real space record id must never be
     // linked as one on save (FloorPlan_MarkedZones.SPACE_ID is FK-constrained to BaseSpace).
@@ -668,6 +679,7 @@ async function fetchFloorModuleRecords(floorId: string): Promise<Unit[]> {
           unplaced: true,
           ...(type === 'workstation' && DESK_TYPE_BY_NUM[r.deskType] ? { deskType: DESK_TYPE_BY_NUM[r.deskType] } : {}),
           ...(type === 'room' && typeof r.reservable === 'boolean' ? { isReservable: r.reservable } : {}),
+          ...(departmentName(r) ? { department: departmentName(r) } : {}),
         })
       );
     })
@@ -740,10 +752,17 @@ async function viewerDataUnitsForFloor(floorId: string): Promise<Unit[]> {
   }
 
   // The floor's module records with NO marker yet ride along as `unplaced` — placed records
-  // (already in byId under the same record id) win.
+  // (already in byId under the same record id) win, but the MODULE record's richer projection
+  // backfills detail fields the viewerData feed doesn't project (department, desk type).
   const moduleRecords = await fetchFloorModuleRecords(floorId).catch(() => [] as Unit[]);
   for (const u of moduleRecords) {
-    if (!byId.has(u.id)) byId.set(u.id, u);
+    const placed = byId.get(u.id);
+    if (!placed) {
+      byId.set(u.id, u);
+    } else {
+      if (u.department && !placed.department) placed.department = u.department;
+      if (u.deskType && !placed.deskType) placed.deskType = u.deskType;
+    }
   }
 
   return [...byId.values()];

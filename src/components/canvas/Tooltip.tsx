@@ -69,6 +69,12 @@ export function Tooltip() {
           <div className={styles.value}>{unit.room}</div>
         </div>
       )}
+      {unit.department && (
+        <div className={styles.section}>
+          <div className={styles.eyebrow}>Department</div>
+          <div className={styles.value}>{unit.department}</div>
+        </div>
+      )}
 
       {/* Everything below is booking/assignment — irrelevant for amenities/assets. */}
       {!isAmenity && (

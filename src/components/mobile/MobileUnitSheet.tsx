@@ -66,6 +66,7 @@ export function MobileUnitSheet() {
                     : 'Amenity'
                 : TYPE_META[unit.type].name}
               {unit.room ? ` · ${unit.room}` : ''}
+              {unit.department ? ` · ${unit.department}` : ''}
             </div>
           </div>
           {!isAmenity && (

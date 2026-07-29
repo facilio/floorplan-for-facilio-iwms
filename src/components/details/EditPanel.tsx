@@ -690,6 +690,12 @@ function Inspector() {
           <span className={card.statLabel}>Type</span>
           <span className={card.statValue}>{TYPE_META[sel.type].name}</span>
         </div>
+        {sel.department && (
+          <div className={card.statRow}>
+            <span className={card.statLabel}>Department</span>
+            <span className={card.statValue}>{sel.department}</span>
+          </div>
+        )}
         {/* Real backend record status + approval state, read-only (no record is created just to
             check — units with no backing record render nothing here). */}
         <UnitStateflowSection unit={sel} readOnly />

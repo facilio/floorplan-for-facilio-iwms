@@ -69,6 +69,7 @@ export function AssignPanel() {
             </h3>
           </div>
           <div className={card.cardBody}>
+            {sel.department && <p className={card.helper}>Department · {sel.department}</p>}
             {isAssignable(sel) ? (
               <AssignBody unitId={sel.id} />
             ) : (

@@ -137,6 +137,8 @@ export interface Unit {
   unplaced?: boolean;
   /** Workstations only — see DeskType. Undefined = ASSIGNED. */
   deskType?: DeskType;
+  /** The record's department lookup (desks/lockers/parking/spaces), when the org sets one. */
+  department?: string;
   /**
    * Auto-mapped units (CAD auto-map) sync as a MARKER ONLY — no backing desk/locker/parkingstall
    * record is nested/created on save. The real record is minted lazily on first actual use
