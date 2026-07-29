@@ -1,5 +1,9 @@
+import { useEffect, useRef, useState } from 'react';
 import { IMG_H, IMG_W } from '../../lib/mockData';
 import { isFacilioApiConfigured } from '../../lib/facilioApi';
+import { useFloorplan } from '../../state/FloorplanContext';
+import { getCachedCadFile } from '../../lib/facilioApiDataSource';
+import { renderCadToDataUrl } from '../../lib/cadPreview';
 
 // The made-up architectural schematic below is a LOCAL-PROTOTYPE-ONLY fallback. In the deployed
 // app (VITE_DEV_MODE=false) there's no real backend tier, so `isFacilioApiConfigured` is false —
@@ -19,11 +23,76 @@ const isDevMode = import.meta.env.VITE_DEV_MODE === 'true';
  * a plain blank sheet — the real image renders when it exists, and while it's being fetched the
  * stage shows the shimmer skeleton instead of this component entirely (see MapStage).
  */
-export function FloorplanBackground({ imageUrl }: { imageUrl?: string }) {
-  if (imageUrl) {
+/**
+ * CAD-backed plans rasterize ONCE at the plan's base size (1492×1054) — crisp at fit zoom but
+ * visibly pixelated once zoomed in. When this session still holds the floor's original DWG/DXF
+ * (getCachedCadFile), crossing a zoom tier re-renders the VECTOR source at 2×/3× (debounced
+ * until the gesture settles) and swaps the sharper raster in. Tiers only ever upgrade — a
+ * higher-res image downscales fine at low zoom — and results cache per floor+plan+tier so each
+ * renders at most once a session. The cache is size-capped: a 3× PNG data URL is tens of MB.
+ */
+const tierForZoom = (z: number) => (z >= 2.2 ? 3 : z >= 1.15 ? 2 : 1);
+const CAD_TIER_CACHE_MAX = 4;
+const cadTierCache = new Map<string, string>();
+const cadTierInFlight = new Set<string>();
+
+function useCadZoomUpgrade(imageUrl: string | undefined, zoom: number | undefined): string | undefined {
+  const { state } = useFloorplan();
+  const planKey = `${state.floorId}:${state.planId}`;
+  // `forUrl` ties the upgrade to the base raster it sharpens — a re-uploaded plan changes the
+  // base image, which must immediately invalidate any hi-res tier of the OLD drawing.
+  const [hiRes, setHiRes] = useState<{ planKey: string; tier: number; url: string; forUrl: string } | null>(null);
+  // The render outlives debounce cleanups (it takes seconds) — apply its result iff the
+  // component is still mounted and still showing the same floor+plan.
+  const liveRef = useRef({ planKey, mounted: true });
+  liveRef.current.planKey = planKey;
+  useEffect(() => {
+    liveRef.current.mounted = true;
+    return () => {
+      liveRef.current.mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!imageUrl || !zoom) return;
+    const tier = tierForZoom(zoom);
+    if (tier <= 1) return; // base raster is already right for this zoom
+    if (hiRes && hiRes.planKey === planKey && hiRes.forUrl === imageUrl && hiRes.tier >= tier) return;
+    const file = getCachedCadFile(state.floorId, state.planId);
+    if (!file) return; // not a CAD-backed plan (or the source wasn't fetched this session)
+    // File size in the key: a re-uploaded plan for the same floor must not serve stale tiers.
+    const key = `${planKey}:${file.size}:${tier}`;
+    const timer = setTimeout(async () => {
+      const apply = (url: string) => {
+        if (liveRef.current.mounted && liveRef.current.planKey === planKey) setHiRes({ planKey, tier, url, forUrl: imageUrl });
+      };
+      const cached = cadTierCache.get(key);
+      if (cached) return apply(cached);
+      if (cadTierInFlight.has(key)) return; // the in-flight starter applies it on completion
+      cadTierInFlight.add(key);
+      try {
+        const url = await renderCadToDataUrl(file, tier);
+        while (cadTierCache.size >= CAD_TIER_CACHE_MAX) cadTierCache.delete(cadTierCache.keys().next().value!);
+        cadTierCache.set(key, url);
+        apply(url);
+      } catch {
+        // keep showing the base raster — the upgrade is strictly best-effort
+      } finally {
+        cadTierInFlight.delete(key);
+      }
+    }, 400); // let the zoom gesture settle before burning seconds on a render
+    return () => clearTimeout(timer);
+  }, [imageUrl, zoom, planKey, hiRes, state.floorId, state.planId]);
+
+  return hiRes && hiRes.planKey === planKey && hiRes.forUrl === imageUrl ? hiRes.url : imageUrl;
+}
+
+export function FloorplanBackground({ imageUrl, zoom }: { imageUrl?: string; zoom?: number }) {
+  const shownUrl = useCadZoomUpgrade(imageUrl, zoom);
+  if (shownUrl) {
     return (
       <img
-        src={imageUrl}
+        src={shownUrl}
         draggable={false}
         // contain, not cover: uploads rarely match the frame's 1492×1054
         // aspect, and cover silently crops the overflow (a squarer plan lost

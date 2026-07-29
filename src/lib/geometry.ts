@@ -130,6 +130,48 @@ export function isPolyGeom(g: UnitGeom): g is PolyGeom {
   return g.kind === 'poly';
 }
 
+/**
+ * 10th-percentile nearest-neighbour distance between the given POINT units, in PLAN pixels.
+ * This is the density measure the canvases use to cap marker screen size: markers render at a
+ * constant screen size (counter-scaled against zoom), so in dense desk pods they overlap each
+ * other once zoomed out — capping their size at ~the on-screen neighbour spacing keeps them
+ * separated at every zoom. The low percentile sizes for the DENSE areas without letting one
+ * accidentally-stacked pair collapse everything. Infinity when there's nothing to collide with.
+ */
+export function markerPlanSpacing(units: Pick<Unit, 'geom'>[]): number {
+  const pts: { x: number; y: number }[] = [];
+  for (const u of units) {
+    if (u.geom.kind === 'point') pts.push({ x: u.geom.x * IMG_W, y: u.geom.y * IMG_H });
+  }
+  if (pts.length < 2) return Infinity;
+  const nearest: number[] = [];
+  for (let i = 0; i < pts.length; i++) {
+    let best = Infinity;
+    for (let j = 0; j < pts.length; j++) {
+      if (i === j) continue;
+      const d = Math.hypot(pts[i].x - pts[j].x, pts[i].y - pts[j].y);
+      if (d < best) best = d;
+    }
+    if (Number.isFinite(best)) nearest.push(best);
+  }
+  nearest.sort((a, b) => a - b);
+  return nearest[Math.floor(nearest.length * 0.1)] ?? Infinity;
+}
+
+/**
+ * The zoom counter-scale a constant-size marker should ACTUALLY render at, given the plan-space
+ * spacing of its neighbours (see markerPlanSpacing): the plain 1/z, capped so the marker's
+ * screen footprint never exceeds ~the on-screen distance to its nearest neighbours, floored so
+ * markers stay tappable instead of vanishing at extreme zoom-out.
+ */
+export function markerCounterScale(z: number, planSpacing: number, footprintPx: number): number {
+  const invZ = 1 / z;
+  if (!Number.isFinite(planSpacing)) return invZ;
+  const cap = (planSpacing * 0.95) / footprintPx; // screen footprint ≤ neighbour spacing on screen
+  const floor = 12 / (footprintPx * z); // screen footprint ≥ ~12px (floor < invZ since 12 < footprintPx)
+  return Math.min(invZ, Math.max(cap, floor));
+}
+
 /** Natural sort (numeric-aware) — "WS-2" sorts before "WS-10". */
 export function naturalCompare(a: string, b: string): number {
   return a.localeCompare(b, undefined, { numeric: true });

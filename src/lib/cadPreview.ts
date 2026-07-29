@@ -21,24 +21,31 @@ export function cadWorkerUrls() {
  * (a pure client-side, WASM-backed CAD parser/renderer — no server round-trip).
  * The heavy parser bundle (~13MB for DWG via LibreDWG) is only fetched lazily,
  * the first time a CAD file is actually opened.
+ *
+ * `scale` multiplies the base 1492×1054 raster: the vector source re-renders crisply at any
+ * size, so the zoom-tier upgrade path (see FloorplanBackground) re-runs this at 2×/3× when the
+ * user zooms in past what the base raster can show. The camera fit is Extents both times, so a
+ * higher-scale render frames the identical content — only sharper.
  */
-export async function renderCadToDataUrl(file: File): Promise<string> {
+export async function renderCadToDataUrl(file: File, scale = 1): Promise<string> {
   const mod = await import('@mlightcad/cad-simple-viewer');
   const { AcApDocManager, AcApOpenViewMode } = mod;
 
+  const w = Math.round(1492 * scale);
+  const h = Math.round(1054 * scale);
   const container = document.createElement('div');
   container.style.position = 'fixed';
   container.style.left = '-10000px';
   container.style.top = '0';
-  container.style.width = '1492px';
-  container.style.height = '1054px';
+  container.style.width = `${w}px`;
+  container.style.height = `${h}px`;
   document.body.appendChild(container);
 
   try {
     const manager = AcApDocManager.createInstance({
       container,
-      width: 1492,
-      height: 1054,
+      width: w,
+      height: h,
       // Skip fetching the default CAD font manifest from the library's CDN — this app only
       // needs a snapshot of the drawing's geometry, not exact text-glyph fidelity, and that
       // fetch failing (e.g. no network access to cdn.jsdelivr.net) was throwing an uncaught

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
 import { floorMeta } from '../../state/selectors';
-import { fitView, fmtTime, polygonCentroid, zoomAt } from '../../lib/geometry';
+import { fitView, fmtTime, markerCounterScale, markerPlanSpacing, polygonCentroid, zoomAt } from '../../lib/geometry';
 import type { ViewTransform } from '../../lib/geometry';
 import { IMG_H, IMG_W } from '../../lib/mockData';
 import { FloorplanBackground } from '../canvas/FloorplanBackground';
@@ -339,6 +339,10 @@ function MobileMap({
 
   const v = view ?? { tx: 0, ty: 0, z: 0.2 };
   const invZ = 1 / v.z;
+  // Same density cap as the desktop canvas: constant-size dots overlap each other inside dense
+  // desk pods once zoomed out — cap their footprint at the on-screen neighbour spacing.
+  const markerSpacing = useMemo(() => markerPlanSpacing(markers), [markers]);
+  const markerScale = Math.min(3.5, markerCounterScale(v.z, markerSpacing, 26)); // 22px dot + 2×2px border
 
   return (
     <div ref={wrapRef} className={styles.mapCard} onMouseDown={onMouseDown} style={{ touchAction: 'none' }}>
@@ -353,7 +357,7 @@ function MobileMap({
           transformOrigin: '0 0',
         }}
       >
-        <FloorplanBackground imageUrl={state.floorImages[floorImageKey(state.floorId, state.planId)]} />
+        <FloorplanBackground imageUrl={state.floorImages[floorImageKey(state.floorId, state.planId)]} zoom={v.z} />
         <svg style={{ position: 'absolute', inset: 0 }} width={IMG_W} height={IMG_H} viewBox={`0 0 ${IMG_W} ${IMG_H}`}>
           {rooms.map((r) => {
             if (r.geom.kind !== 'poly') return null;
@@ -398,8 +402,9 @@ function MobileMap({
           // Same palette as the web: markerStyle keyed on a mode synced to the
           // mobile tab, so bg / border / fill are identical across views.
           const ms = markerStyle(paletteState, m);
-          // labels appear once zoomed in enough to not collide; the selected pin always shows
-          const showLabel = v.z >= 0.5 || selected;
+          // labels appear once their RENDERED scale is readable (they inherit the density-capped
+          // marker scale, so dense pods need more zoom); the selected pin always shows
+          const showLabel = selected || v.z * markerScale >= 0.55;
           return (
             <button
               key={m.id}
@@ -407,7 +412,7 @@ function MobileMap({
               style={{
                 left: `${m.geom.x * 100}%`,
                 top: `${m.geom.y * 100}%`,
-                transform: `translate(-50%, -50%) scale(${Math.min(invZ, 3.5)})`,
+                transform: `translate(-50%, -50%) scale(${markerScale})`,
                 zIndex: selected ? 3 : showLabel ? 2 : 1,
               }}
               onClick={() => actions.setMobSel(m.id)}
