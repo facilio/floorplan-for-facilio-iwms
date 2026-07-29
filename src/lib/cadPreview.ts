@@ -81,6 +81,21 @@ export async function renderCadToDataUrl(file: File, scale = 1): Promise<string>
     // enough on top of the isProcessingEntities wait above, so this is deliberately generous.
     await new Promise((r) => setTimeout(r, 1200));
 
+    // DETERMINISTIC framing on top of the async fit: zoomToFitDrawing routes through the
+    // library's progressive-open machinery (poll timers, incremental-fit state), so the FINAL
+    // camera can differ slightly run-to-run and scale-to-scale. Markers live as FRACTIONS of
+    // the rendered frame — a hi-res zoom tier framed even 1% differently than the base slides
+    // the whole drawing under every placed desk. `zoomTo(box, margin)` is proportional (margin
+    // is a factor of the box, no fixed-pixel padding — verified in the bundle), so pinning the
+    // camera to the scene's own box here yields the IDENTICAL world→frame mapping at every
+    // render size. Falls back to whatever the async fit produced when the box isn't exposed.
+    const view: any = manager.curView;
+    const fitBox = view.resolveLayoutFitBox?.();
+    if (fitBox) {
+      view.zoomTo(fitBox, 1.1);
+      await new Promise((r) => setTimeout(r, 300));
+    }
+
     const canvas = container.querySelector('canvas');
     if (!canvas) throw new Error('CAD viewer produced no canvas');
     const dataUrl = cadCanvasToLightSnapshot(canvas);
