@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
-import { clamp, markerCounterScale, markerPlanSpacing, polyAreaM2, polygonCentroid, toNorm, unitCenter } from '../../lib/geometry';
+import { clamp, markerCounterScale, markerNeighborSpacing, polyAreaM2, polygonCentroid, toNorm, unitCenter } from '../../lib/geometry';
 import { myAssignedUnit } from '../../state/selectors';
 import { IMG_H, IMG_W } from '../../lib/mockData';
 import { FloorplanBackground } from './FloorplanBackground';
@@ -497,14 +497,14 @@ export function Canvas() {
   const rooms = roomUnits.map((u) => ({ ...u, geom: previewedGeom(u) }));
   const markers = markerUnits.map((u) => ({ ...u, geom: previewedGeom(u) }));
   // Markers render at CONSTANT screen size (counter-scaled 1/z) — in dense desk pods that means
-  // they overlap each other as soon as the plan is zoomed out. Cap the counter-scale by the
-  // pod's own plan-space spacing so a marker's footprint never exceeds the on-screen distance to
-  // its neighbours: dense grids shrink together, sparse plans keep the full size.
-  const markerSpacing = useMemo(() => markerPlanSpacing(markerUnits), [markerUnits]);
-  const markerInv = markerCounterScale(state.view.z, markerSpacing, 28); // 24px chip + 2×2px border
-  // Labels scale with the (density-capped) marker — below ~55% rendered scale they're
-  // unreadable specks, so gate them off entirely instead of painting noise.
-  const labelsOn = state.view.z >= 0.53 && state.view.z * markerInv >= 0.55;
+  // they overlap each other as soon as the plan is zoomed out. Shrink each marker by ITS OWN
+  // neighbour spacing (never below 55% of full size): crowded pods compact together, isolated
+  // markers keep the full size. Per-marker, because a single global density number let one
+  // tight pair shrink every icon on the floor.
+  const markerSpacing = useMemo(() => markerNeighborSpacing(markerUnits), [markerUnits]);
+  const markerInvFor = (id: string) => markerCounterScale(state.view.z, markerSpacing.get(id) ?? Infinity, 28); // 24px chip + 2×2px border
+  // Same zoom gate labels always had (invZ ≤ 1.9): below ~53% zoom they're unreadable noise.
+  const labelsOn = state.view.z >= 0.53;
   // One assignments scan per render, not one per marker (Marker's isMine fallback).
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const myUnitId = useMemo(() => myAssignedUnit(state)?.id ?? null, [state.assignments, state.bookBy, state.units, state.myDesk]);
@@ -588,7 +588,7 @@ export function Canvas() {
           <Marker
             key={m.id}
             unit={dragPreview?.id === m.id ? { ...m, geom: { kind: 'point', x: dragPreview.x, y: dragPreview.y } } : m}
-            invZ={markerInv}
+            invZ={markerInvFor(m.id)}
             onDragStart={startMarkerDrag}
             myUnitId={myUnitId}
             labelVisible={labelsOn && labelVisibleIds.has(m.id)}

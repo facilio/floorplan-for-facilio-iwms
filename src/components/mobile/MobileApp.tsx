@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
 import { floorMeta } from '../../state/selectors';
-import { fitView, fmtTime, markerCounterScale, markerPlanSpacing, polygonCentroid, zoomAt } from '../../lib/geometry';
+import { fitView, fmtTime, markerCounterScale, markerNeighborSpacing, polygonCentroid, zoomAt } from '../../lib/geometry';
 import type { ViewTransform } from '../../lib/geometry';
 import { IMG_H, IMG_W } from '../../lib/mockData';
 import { FloorplanBackground } from '../canvas/FloorplanBackground';
@@ -344,10 +344,11 @@ function MobileMap({
 
   const v = view ?? { tx: 0, ty: 0, z: 0.2 };
   const invZ = 1 / v.z;
-  // Same density cap as the desktop canvas: constant-size dots overlap each other inside dense
-  // desk pods once zoomed out — cap their footprint at the on-screen neighbour spacing.
-  const markerSpacing = useMemo(() => markerPlanSpacing(markers), [markers]);
-  const markerScale = Math.min(3.5, markerCounterScale(v.z, markerSpacing, 26)); // 22px dot + 2×2px border
+  // Same per-marker density shrink as the desktop canvas: crowded pods compact (never below 55%
+  // of full size), isolated dots keep their size — a global density number let one tight desk
+  // pair shrink every icon on the floor.
+  const markerSpacing = useMemo(() => markerNeighborSpacing(markers), [markers]);
+  const markerScaleFor = (id: string) => Math.min(3.5, markerCounterScale(v.z, markerSpacing.get(id) ?? Infinity, 26)); // 22px dot + 2×2px border
 
   return (
     <div ref={wrapRef} className={styles.mapCard} onMouseDown={onMouseDown} style={{ touchAction: 'none' }}>
@@ -407,9 +408,9 @@ function MobileMap({
           // Same palette as the web: markerStyle keyed on a mode synced to the
           // mobile tab, so bg / border / fill are identical across views.
           const ms = markerStyle(paletteState, m);
-          // labels appear once their RENDERED scale is readable (they inherit the density-capped
-          // marker scale, so dense pods need more zoom); the selected pin always shows
-          const showLabel = selected || v.z * markerScale >= 0.55;
+          const markerScale = markerScaleFor(m.id);
+          // labels appear once zoomed in enough to be readable; the selected pin always shows
+          const showLabel = selected || v.z >= 0.5;
           return (
             <button
               key={m.id}

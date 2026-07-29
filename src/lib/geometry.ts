@@ -131,20 +131,18 @@ export function isPolyGeom(g: UnitGeom): g is PolyGeom {
 }
 
 /**
- * 10th-percentile nearest-neighbour distance between the given POINT units, in PLAN pixels.
- * This is the density measure the canvases use to cap marker screen size: markers render at a
- * constant screen size (counter-scaled against zoom), so in dense desk pods they overlap each
- * other once zoomed out — capping their size at ~the on-screen neighbour spacing keeps them
- * separated at every zoom. The low percentile sizes for the DENSE areas without letting one
- * accidentally-stacked pair collapse everything. Infinity when there's nothing to collide with.
+ * PER-MARKER nearest-neighbour distance between the given POINT units, in PLAN pixels — the
+ * density measure the canvases use to shrink markers against overlap. Per-marker (not one
+ * global number) on purpose: a global percentile let one tight desk pair drag EVERY icon on the
+ * floor down to the minimum size; per-marker, only the crowded pods shrink while isolated
+ * markers keep their full size. Markers absent from the map (or alone) get Infinity.
  */
-export function markerPlanSpacing(units: Pick<Unit, 'geom'>[]): number {
-  const pts: { x: number; y: number }[] = [];
+export function markerNeighborSpacing(units: Pick<Unit, 'id' | 'geom'>[]): Map<string, number> {
+  const pts: { id: string; x: number; y: number }[] = [];
   for (const u of units) {
-    if (u.geom.kind === 'point') pts.push({ x: u.geom.x * IMG_W, y: u.geom.y * IMG_H });
+    if (u.geom.kind === 'point') pts.push({ id: u.id, x: u.geom.x * IMG_W, y: u.geom.y * IMG_H });
   }
-  if (pts.length < 2) return Infinity;
-  const nearest: number[] = [];
+  const map = new Map<string, number>();
   for (let i = 0; i < pts.length; i++) {
     let best = Infinity;
     for (let j = 0; j < pts.length; j++) {
@@ -152,24 +150,24 @@ export function markerPlanSpacing(units: Pick<Unit, 'geom'>[]): number {
       const d = Math.hypot(pts[i].x - pts[j].x, pts[i].y - pts[j].y);
       if (d < best) best = d;
     }
-    if (Number.isFinite(best)) nearest.push(best);
+    map.set(pts[i].id, best);
   }
-  nearest.sort((a, b) => a - b);
-  return nearest[Math.floor(nearest.length * 0.1)] ?? Infinity;
+  return map;
 }
 
 /**
  * The zoom counter-scale a constant-size marker should ACTUALLY render at, given the plan-space
- * spacing of its neighbours (see markerPlanSpacing): the plain 1/z, capped so the marker's
- * screen footprint never exceeds ~the on-screen distance to its nearest neighbours, floored so
- * markers stay tappable instead of vanishing at extreme zoom-out.
+ * distance to its own nearest neighbour (see markerNeighborSpacing): full size while the
+ * on-screen gap is clear, shrinking as it closes — but never below 55% of full size.
+ * Legibility beats zero-overlap: past the floor, a little overlap is the lesser evil vs icons
+ * everyone reads as "very very small".
  */
 export function markerCounterScale(z: number, planSpacing: number, footprintPx: number): number {
   const invZ = 1 / z;
   if (!Number.isFinite(planSpacing)) return invZ;
-  const cap = (planSpacing * 0.95) / footprintPx; // screen footprint ≤ neighbour spacing on screen
-  const floor = 12 / (footprintPx * z); // screen footprint ≥ ~12px (floor < invZ since 12 < footprintPx)
-  return Math.min(invZ, Math.max(cap, floor));
+  // Rendered size relative to full: screen footprint = footprintPx × ratio, ratio ∈ [0.55, 1].
+  const ratio = Math.min(1, Math.max(0.55, (planSpacing * 0.95 * z) / footprintPx));
+  return ratio * invZ;
 }
 
 /** Natural sort (numeric-aware) — "WS-2" sorts before "WS-10". */
