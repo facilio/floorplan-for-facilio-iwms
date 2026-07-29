@@ -232,14 +232,19 @@ function MobileMap({
     if (!el) return;
     const fit = () => {
       const r = el.getBoundingClientRect();
-      if (r.width > 20) setView(fitView(r.width, r.height));
+      if (r.width <= 20) return;
+      // The plan's saved default viewport (Edit › Tools on desktop) wins over fit-to-screen.
+      const dv = state.floorCustomizations[floorImageKey(state.floorId, state.planId)]?.floorplanAppDefaultView;
+      setView(dv && dv.z > 0 ? { z: dv.z, tx: r.width / 2 - dv.cx * IMG_W * dv.z, ty: r.height / 2 - dv.cy * IMG_H * dv.z } : fitView(r.width, r.height));
     };
     fit();
     const ro = new ResizeObserver(fit);
     ro.observe(el);
     return () => ro.disconnect();
+    // The default-view dep: customization arrives async AFTER the floor loads — refit once it
+    // lands so the saved framing applies (it only changes on load/save, never mid-gesture).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.floorId, state.planId]);
+  }, [state.floorId, state.planId, state.floorCustomizations[floorImageKey(state.floorId, state.planId)]?.floorplanAppDefaultView]);
 
   // Native (non-passive) touch listeners — React's synthetic touch events are passive, so
   // preventDefault there can't stop the page/pull-to-refresh from scrolling with the gesture.

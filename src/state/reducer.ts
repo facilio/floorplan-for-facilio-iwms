@@ -1,7 +1,7 @@
 import { DEFAULT_PERMS, floorImageKey } from '../lib/types';
 import type { Booking, Building, Floor, FloorplanCustomization, MarkerDef, PlanId, Site, Unit } from '../lib/types';
 import { clamp, fitView } from '../lib/geometry';
-import { seedBookings } from '../lib/mockData';
+import { IMG_H, IMG_W, seedBookings } from '../lib/mockData';
 import { viewFromLocation } from '../lib/routes';
 import type { AppState } from './types';
 
@@ -592,10 +592,18 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, floorImageLoading: action.value };
     case 'SET_FLOOR_CUSTOMIZATION': {
       if (!action.customization) return state;
-      return {
+      const next = {
         ...state,
         floorCustomizations: { ...state.floorCustomizations, [floorImageKey(action.floorId, action.planId)]: action.customization },
       };
+      // The plan's SAVED default viewport applies the moment its customization arrives (floor
+      // load fetches it async, after the canvas has already auto-fitted) — but only for the
+      // active floor+plan and only while the user hasn't taken over the camera themselves.
+      const dv = action.customization.floorplanAppDefaultView;
+      if (dv && dv.z > 0 && !state.userZoomed && action.floorId === state.floorId && action.planId === state.planId && state.stage.w > 0) {
+        next.view = { z: dv.z, tx: state.stage.w / 2 - dv.cx * IMG_W * dv.z, ty: state.stage.h / 2 - dv.cy * IMG_H * dv.z };
+      }
+      return next;
     }
     case 'SET_MY_DESK':
       return { ...state, myDesk: action.myDesk };

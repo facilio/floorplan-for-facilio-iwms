@@ -6,7 +6,7 @@ import { renderPdfToDataUrl } from './pdfPreview';
 import { computeSyntheticGeometry, geometryStringToQuad, lngLatToFraction, quadToGeometryString, quadToLngLat, type GeoQuad } from './geoReference';
 import type { FloorplanDataSource } from './dataSource';
 import type { Asset } from './assets';
-import type { Assignments, Booking, Building, ClientContact, DeskType, Floor, FloorplanCustomization, MarkerDef, PlanId, PointGeom, PolyGeom, Site, Unit, UnitType } from './types';
+import type { Assignments, Booking, Building, ClientContact, DefaultPlanView, DeskType, Floor, FloorplanCustomization, MarkerDef, PlanId, PointGeom, PolyGeom, Site, Unit, UnitType } from './types';
 
 /**
  * Sniffs a DWG/DXF/PDF signature off the file's own leading bytes — the fallback when no
@@ -904,6 +904,46 @@ export async function fetchFloorplanCustomization(floorId: string, planId: PlanI
   if (!summary?.id) return null;
   const record = await fetchIndoorFloorPlanRecord(summary.id);
   return record?.customizationBooking ?? null;
+}
+
+/**
+ * Saves (or clears, with `view: null`) this app's default viewport for one floor+plan into the
+ * indoorfloorplan record's `customizationBooking` under a namespaced key
+ * (`floorplanAppDefaultView`) the native client ignores — riding alongside its rendering rules,
+ * never touching them. Full-record round trip (partial patches replace-and-wipe, see
+ * syncMarkersForIndoorFloorPlan), INCLUDING the zoneModuleId repair: the GET projection omits it
+ * on markedZones, and echoing zones back without it is exactly the payload shape that corrupts
+ * zone linkage. Both the object and its JSON-string twin are updated — the record carries both.
+ */
+export async function saveFloorplanDefaultView(floorId: string, planId: PlanId, view: DefaultPlanView | null): Promise<boolean> {
+  if (!isFacilioApiConfigured) return false;
+  const byType = await getFloorplanDetailsByType(floorId);
+  const summary = byType[String(FLOOR_PLAN_TYPE[planId])];
+  if (!summary?.id) return false;
+  const record = await fetchIndoorFloorPlanRecord(summary.id);
+  if (!record) return false;
+
+  const booking: Record<string, unknown> = { ...(record.customizationBooking ?? {}) };
+  if (view) booking.floorplanAppDefaultView = view;
+  else delete booking.floorplanAppDefaultView;
+
+  const spaceModuleId =
+    (record.markedZones ?? []).map((z: any) => z.zoneModuleId ?? z.space?.moduleId).find((v: any) => v != null) ?? null;
+  const markedZones = (record.markedZones ?? []).map((z: any) => {
+    const zoneModuleId = z.zoneModuleId ?? z.space?.moduleId ?? spaceModuleId;
+    return z.zoneModuleId == null && zoneModuleId != null ? { ...z, zoneModuleId } : z;
+  });
+
+  const res = await facilioApi.updateRecord('indoorfloorplan', {
+    id: summary.id,
+    data: { ...record, markedZones, customizationBooking: booking, customizationBookingJSON: JSON.stringify(booking) },
+  });
+  if (res.error) {
+    // eslint-disable-next-line no-console
+    console.warn(`[facilio-api] default-view save failed for plan ${summary.id}`, res.error);
+    return false;
+  }
+  return true;
 }
 
 /**

@@ -346,6 +346,18 @@ export interface AssignmentStateColors {
   assignedOpacity?: number;
 }
 
+/**
+ * This app's saved default viewport for one floor+plan: absolute zoom plus the normalized plan
+ * point that should sit at the screen centre. Stored inside the indoorfloorplan record's
+ * customization JSON under `floorplanAppDefaultView` (a namespaced key the native client
+ * ignores), so it persists per plan and travels to every user/device.
+ */
+export interface DefaultPlanView {
+  z: number;
+  cx: number;
+  cy: number;
+}
+
 export interface FloorplanCustomization {
   deskPrimaryLabel?: LabelSpec;
   deskSecondaryLabel?: LabelSpec;
@@ -354,6 +366,8 @@ export interface FloorplanCustomization {
   spaceSecondaryLabel?: LabelSpec;
   spaceBookingState?: BookingStateColors;
   assignmentState?: AssignmentStateColors;
+  /** See DefaultPlanView — applied on floor load instead of fit-to-screen when present. */
+  floorplanAppDefaultView?: DefaultPlanView;
 }
 
 export const OPT_DEFS: Record<UnitType, OptDef[]> = {

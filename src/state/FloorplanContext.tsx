@@ -3,13 +3,13 @@ import type { Dispatch, MutableRefObject, ReactNode } from 'react';
 import { dataSource, clearLocalData, setAllowLocalFallback as dataSourceSetAllowLocalFallback } from '../lib/dataSource';
 import type { CreateSpaceLoc } from '../lib/dataSource';
 import type { ToastVariant } from '../components/primitives/Toast';
-import { seedBookings, seedUnits, seedAssignments } from '../lib/mockData';
+import { IMG_H, IMG_W, seedBookings, seedUnits, seedAssignments } from '../lib/mockData';
 import { floorImageKey, resolveMarkerDef, TYPE_META } from '../lib/types';
-import type { AmenityIcon, Assignments, Booking, ClientContact, MarkerDef, PlanId, Role, Site, Unit, UnitType } from '../lib/types';
+import type { AmenityIcon, Assignments, Booking, ClientContact, DefaultPlanView, MarkerDef, PlanId, Role, Site, Unit, UnitType } from '../lib/types';
 import type { CadGroup } from '../lib/cadAnalyze';
 import type { Asset } from '../lib/assets';
 import { isFacilioApiConfigured } from '../lib/facilioApi';
-import { assignUnitReal, createRealBooking, fetchFloorplanCustomization, fetchFloorplanImage, fetchMyDesk, findFloorParents, findUnitIdForDeskRecord, getAnyFloor, getFloorPlanSummary, patchUnitContact, saveFloorplanMarkers, vacateUnitReal } from '../lib/facilioApiDataSource';
+import { assignUnitReal, createRealBooking, fetchFloorplanCustomization, fetchFloorplanImage, fetchMyDesk, findFloorParents, findUnitIdForDeskRecord, getAnyFloor, getFloorPlanSummary, patchUnitContact, saveFloorplanDefaultView, saveFloorplanMarkers, vacateUnitReal } from '../lib/facilioApiDataSource';
 import { listFloorplanFloorIds, loadFloorplanFile, persistFloorplanFile } from '../lib/floorplanFileStore';
 import { loadSettings, saveSettings, settingsFromState } from '../lib/settingsStore';
 import { pathForView, viewFromLocation } from '../lib/routes';
@@ -469,7 +469,38 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
 
     fitView: (rectW: number, rectH: number) => {
       dispatch({ type: 'MARK_USER_ZOOMED', value: false });
-      dispatch({ type: 'SET_VIEW', view: fitViewFn(rectW, rectH, viewInsets(state)) });
+      // A saved default viewport for this plan REPLACES fit-to-screen — the fit button and
+      // auto-refits all land on the curated framing (clear it in Edit › Tools to get fit back).
+      const dv = state.floorCustomizations[floorImageKey(state.floorId, state.planId)]?.floorplanAppDefaultView;
+      const view =
+        dv && dv.z > 0
+          ? { z: dv.z, tx: rectW / 2 - dv.cx * IMG_W * dv.z, ty: rectH / 2 - dv.cy * IMG_H * dv.z }
+          : fitViewFn(rectW, rectH, viewInsets(state));
+      dispatch({ type: 'SET_VIEW', view });
+    },
+    /**
+     * Persists the CURRENT camera (zoom + centre) as this floor+plan's default viewport — or
+     * clears it with `null` — locally right away (so Reset/fit uses it immediately) and into the
+     * indoorfloorplan record's customization JSON for everyone else.
+     */
+    setDefaultView: (dv: DefaultPlanView | null) => {
+      const key = floorImageKey(state.floorId, state.planId);
+      const cust = { ...(state.floorCustomizations[key] ?? {}) };
+      if (dv) cust.floorplanAppDefaultView = dv;
+      else delete cust.floorplanAppDefaultView;
+      dispatch({ type: 'SET_FLOOR_CUSTOMIZATION', floorId: state.floorId, planId: state.planId, customization: cust });
+      if (!isFacilioApiConfigured) {
+        // Local/prototype mode has no indoorfloorplan record — the local customization above
+        // still makes it work for this session.
+        showToastVia(dispatch, dv ? 'Default view set for this session' : 'Default view cleared', { variant: 'info' });
+        return;
+      }
+      void saveFloorplanDefaultView(state.floorId, state.planId, dv)
+        .then((ok) => {
+          if (ok) showToastVia(dispatch, dv ? 'Default view saved' : 'Default view cleared');
+          else showToastVia(dispatch, "Couldn't save the default view", { variant: 'error' });
+        })
+        .catch(() => showToastVia(dispatch, "Couldn't save the default view", { variant: 'error' }));
     },
     zoomIn: (rectW: number, rectH: number) => {
       dispatch({ type: 'MARK_USER_ZOOMED', value: true });

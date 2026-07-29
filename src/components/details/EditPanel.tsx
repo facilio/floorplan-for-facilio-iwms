@@ -3,6 +3,7 @@ import type { DragEvent as ReactDragEvent, ReactNode } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
 import { unitById } from '../../state/selectors';
 import { polyAreaM2 } from '../../lib/geometry';
+import { IMG_H, IMG_W } from '../../lib/mockData';
 import { BUILTIN_MARKERS, DESK_TYPES, floorImageKey, TYPE_META } from '../../lib/types';
 import type { EditTool, MarkerDef } from '../../lib/types';
 import { MARKER_ICONS } from '../canvas/markerIcons';
@@ -269,7 +270,48 @@ function ToolsTab() {
             </div>
           )}
         </div>
+
+        <DefaultViewSection />
       </div>
+    </div>
+  );
+}
+
+/**
+ * Plan-level default viewport: pan/zoom the canvas to the framing the plan should open with,
+ * then save it — persisted in the plan's customization JSON, so it applies for everyone. The
+ * fit/reset button also returns to it; clearing goes back to plain fit-to-screen.
+ */
+function DefaultViewSection() {
+  const { state, actions } = useFloorplan();
+  const dv = state.floorCustomizations[floorImageKey(state.floorId, state.planId)]?.floorplanAppDefaultView;
+  const setFromCurrent = () => {
+    const { z, tx, ty } = state.view;
+    actions.setDefaultView({
+      z,
+      cx: (state.stage.w / 2 - tx) / (IMG_W * z),
+      cy: (state.stage.h / 2 - ty) / (IMG_H * z),
+    });
+  };
+  return (
+    <div style={{ marginTop: 14 }}>
+      <div className={card.statRow}>
+        <span className={card.statLabel}>Default view</span>
+        <span className={card.statValue}>{dv ? `Saved · ${Math.round(dv.z * 100)}% zoom` : 'Fit to screen'}</span>
+      </div>
+      <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+        <Button variant="secondary" fullWidth onClick={setFromCurrent}>
+          Use current view
+        </Button>
+        {dv && (
+          <Button variant="secondary" fullWidth onClick={() => actions.setDefaultView(null)}>
+            Clear
+          </Button>
+        )}
+      </div>
+      <p className={card.helper} style={{ marginTop: 6 }}>
+        Pan/zoom the plan to how it should open, then save it as this plan's starting view for everyone.
+      </p>
     </div>
   );
 }
