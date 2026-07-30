@@ -2060,7 +2060,7 @@ export async function fetchCurrentPeopleId(): Promise<number | null> {
  * Read from the URL (the connected-app host passes it through) or a global the SDK exposes;
  * null whenever it isn't present, e.g. dev mode.
  */
-function readConnectedAppId(): number | null {
+function readConnectedAppToken(): { i?: number; a?: string; w?: string; t?: string } | null {
   const candidates: (string | null | undefined)[] = [];
   try {
     const q = new URLSearchParams(window.location.search);
@@ -2074,13 +2074,47 @@ function readConnectedAppId(): number | null {
     if (typeof raw !== 'string' || !raw) continue;
     try {
       const parsed = JSON.parse(atob(raw));
-      const id = Number(parsed?.i);
-      if (Number.isFinite(id) && id > 0) return id;
+      if (parsed && (parsed.i != null || parsed.a != null)) return parsed;
     } catch {
       /* not a base64 connected-app token — try the next candidate */
     }
   }
   return null;
+}
+
+function readConnectedAppId(): number | null {
+  const id = Number(readConnectedAppToken()?.i);
+  return Number.isFinite(id) && id > 0 ? id : null;
+}
+
+/**
+ * The current app's LINK NAME (`maintenance`, `appgallerytesting`, a tenant/vendor portal, …).
+ * Sources, in order: the connected-app token's `a` claim (confirmed shape:
+ * `{"i":<appId>,"a":"<appLinkName>","w":"<widget>","t":"WEB_TAB"}`), then the first path segment
+ * of the embedding URL — which is how clientV2 itself derives the current app. Null when neither
+ * is available (plain local dev).
+ */
+export function currentAppLinkName(): string | null {
+  const fromToken = readConnectedAppToken()?.a;
+  if (typeof fromToken === 'string' && fromToken.trim()) return fromToken.trim().toLowerCase();
+  try {
+    // Embedded: the parent frame's URL carries the app segment; same-origin access can throw.
+    const href = window.top && window.top !== window ? window.top.location.pathname : window.location.pathname;
+    for (const seg of href.split('/')) {
+      const s = seg.trim().toLowerCase();
+      // 'legacy'/'api'-style prefixes and the org subdomain segment aren't app link names; the
+      // maintenance app is the one we actually need to recognize, so match it explicitly.
+      if (s === 'maintenance') return s;
+    }
+  } catch {
+    /* cross-origin parent — fall through */
+  }
+  return null;
+}
+
+/** True when this app is embedded in the MAINTENANCE (admin) app — gates admin-only surfaces. */
+export function isMaintenanceApp(): boolean {
+  return currentAppLinkName() === 'maintenance';
 }
 
 let currentAppIdCache: Promise<number | null> | null = null;

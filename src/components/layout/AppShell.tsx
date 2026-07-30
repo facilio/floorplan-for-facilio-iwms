@@ -1,7 +1,7 @@
 import { useRef } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
-import { BottomNav } from './BottomNav';
+import { BottomNav, settingsAllowed } from './BottomNav';
 import { MapStage } from './MapStage';
 import { SettingsScreen } from '../settings/SettingsScreen';
 import { BookingsView } from '../bookings/BookingsView';
@@ -36,7 +36,9 @@ export function AppShell() {
 
   return (
     <div className={styles.root}>
-      {state.activeView === 'settings' ? (
+      {/* Settings is maintenance-app-only (see BottomNav.showSettingsTab) — gate the ROUTE too,
+          so a deep link / saved URL can't open admin setup from a portal embed. */}
+      {state.activeView === 'settings' && settingsAllowed ? (
         <SettingsScreen />
       ) : state.activeView === 'bookings' ? (
         <BookingsView />
