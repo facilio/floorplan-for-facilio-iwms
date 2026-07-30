@@ -1,4 +1,4 @@
-import { apiOrigin, customDelete, customGet, customPost, facilioApi, fetchFilePreview, isFacilioApiConfigured } from './facilioApi';
+import { apiOrigin, customDelete, customGet, customPost, facilioApi, fetchFilePreview, isFacilioApiConfigured, sdkProperties } from './facilioApi';
 import { executeStateTransition, fetchAvailableStates, findCancelTransition, isPendingApprovalName, stateName } from './stateflowApi';
 import { renderCadToDataUrl } from './cadPreview';
 import { renderPdfToDataUrl } from './pdfPreview';
@@ -2014,6 +2014,18 @@ export function fetchSessionUser(): Promise<SessionUser> {
   if (!sessionUserCache) {
     sessionUserCache = (async () => {
       const asId = (v: any) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : null);
+      // The HOST's properties carry the logged-in user in connected mode — try that first.
+      const props = await sdkProperties().catch(() => null);
+      if (props) {
+        for (const p of Object.values(props) as any[]) {
+          const u = p?.user ?? p?.currentUser ?? p?.account?.user ?? p;
+          const peopleId = asId(u?.peopleId ?? u?.people?.id);
+          const roleId = asId(u?.roleId ?? u?.role?.roleId ?? u?.role?.id);
+          if (peopleId || roleId) {
+            return { peopleId, roleId, appId: asId(u?.applicationId ?? p?.appId ?? p?.applicationId) };
+          }
+        }
+      }
       // `v2/account` and `v2/fetchAccount` both exist across versions; try both before giving up
       // (the first returning a usable payload wins).
       let user: any = null;
@@ -2112,9 +2124,72 @@ export function currentAppLinkName(): string | null {
   return null;
 }
 
-/** True when this app is embedded in the MAINTENANCE (admin) app — gates admin-only surfaces. */
+/**
+ * True when this app is embedded in the MAINTENANCE (admin) app, per the token/URL heuristic
+ * only — a synchronous best-guess used as the initial value before `fetchCurrentApp` answers
+ * authoritatively.
+ */
 export function isMaintenanceApp(): boolean {
   return currentAppLinkName() === 'maintenance';
+}
+
+export interface CurrentApp {
+  id: number | null;
+  /** `linkName` — 'maintenance', a portal's link name, an app-gallery app's, … */
+  linkName: string | null;
+  name: string | null;
+}
+
+/**
+ * The CURRENT application, from the org itself: `application/fetchDetails` (the endpoint clientV2
+ * boots the active app from, same params). Tried unversioned first then `v2/`-prefixed, since the
+ * app base already carries a version for some paths (see the setup/roles lesson). Session-cached;
+ * falls back to the token/URL-derived link name when the endpoint can't be reached, so callers
+ * always get an answer.
+ */
+let currentAppCache: Promise<CurrentApp> | null = null;
+export function fetchCurrentApp(): Promise<CurrentApp> {
+  if (!isFacilioApiConfigured) return Promise.resolve({ id: null, linkName: null, name: null });
+  if (!currentAppCache) {
+    currentAppCache = (async () => {
+      const asId = (v: any) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : null);
+      const asName = (v: any) => (typeof v === 'string' && v.trim() ? v.trim().toLowerCase() : null);
+
+      // 1) The HOST's own properties — the connected-app SDK hands the embed its current
+      // application, so no request is needed at all when it's there.
+      const props = await sdkProperties().catch(() => null);
+      if (props) {
+        const flat = Object.values(props) as any[];
+        for (const p of flat) {
+          const app = p?.app ?? p?.application ?? p?.currentApp ?? p;
+          const linkName = asName(app?.linkName ?? app?.appLinkName ?? p?.appLinkName);
+          const id = asId(app?.id ?? app?.applicationId ?? p?.appId ?? p?.applicationId);
+          if (linkName || id) return { id, linkName, name: asName(app?.name) };
+        }
+      }
+
+      // 2) Ask the org.
+      for (const path of ['application/fetchDetails', 'v2/application/fetchDetails']) {
+        const body = await customGet(path, { considerRole: true, optimised: true }).catch(() => null);
+        const data = body?.data ?? body?.result ?? body ?? null;
+        const app = data?.application ?? data?.applicationDetails ?? data ?? null;
+        const linkName = asName(app?.linkName ?? app?.appLinkName ?? data?.appLinkName);
+        const id = asId(app?.id ?? app?.applicationId ?? data?.applicationId);
+        if (linkName || id) return { id, linkName, name: asName(app?.name) };
+      }
+      // Endpoint unreachable — fall back to what the embed itself tells us. `null` linkName is
+      // treated as MAINTENANCE by callers (fail-open): the maintenance app is where admins work,
+      // and hiding its admin tabs because a probe failed is the worse error.
+      const linkName = currentAppLinkName();
+      // eslint-disable-next-line no-console
+      console.warn('[facilio-api] application/fetchDetails unavailable — using the embed-derived app link name', linkName);
+      return { id: readConnectedAppId(), linkName, name: null };
+    })();
+    currentAppCache.catch(() => {
+      currentAppCache = null;
+    });
+  }
+  return currentAppCache;
 }
 
 let currentAppIdCache: Promise<number | null> | null = null;

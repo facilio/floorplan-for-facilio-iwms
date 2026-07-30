@@ -1,7 +1,7 @@
 import { useRef } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
-import { BottomNav, settingsAllowed } from './BottomNav';
+import { BottomNav, useAdminSurfacesAllowed } from './BottomNav';
 import { MapStage } from './MapStage';
 import { SettingsScreen } from '../settings/SettingsScreen';
 import { BookingsView } from '../bookings/BookingsView';
@@ -14,6 +14,9 @@ import styles from './AppShell.module.css';
 export function AppShell() {
   const { state, actions } = useFloorplan();
   const isMobileViewport = useMediaQuery('(max-width: 720px)');
+  // Settings + People are maintenance-app surfaces (see useAdminSurfacesAllowed) — gate the
+  // ROUTES too, so a deep link / saved URL can't open them from a portal embed.
+  const adminAllowed = useAdminSurfacesAllowed();
   const stageRef = useRef<HTMLDivElement>(null);
 
   if (state.loading && state.portfolio.length === 0) {
@@ -36,13 +39,11 @@ export function AppShell() {
 
   return (
     <div className={styles.root}>
-      {/* Settings is maintenance-app-only (see BottomNav.showSettingsTab) — gate the ROUTE too,
-          so a deep link / saved URL can't open admin setup from a portal embed. */}
-      {state.activeView === 'settings' && settingsAllowed ? (
+      {state.activeView === 'settings' && adminAllowed ? (
         <SettingsScreen />
       ) : state.activeView === 'bookings' ? (
         <BookingsView />
-      ) : state.activeView === 'people' ? (
+      ) : state.activeView === 'people' && adminAllowed ? (
         <PeopleView />
       ) : (
         <MapStage stageRef={stageRef} />

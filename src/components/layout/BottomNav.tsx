@@ -1,21 +1,44 @@
+import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
 import { isFacilioApiConfigured } from '../../lib/facilioApi';
-import { isMaintenanceApp } from '../../lib/facilioApiDataSource';
+import { fetchCurrentApp } from '../../lib/facilioApiDataSource';
 import styles from './BottomNav.module.css';
 
 /**
- * Settings is ADMIN setup (permissions module, module colors, booking module, local data) — it
- * belongs to the maintenance app only. Embedded anywhere else (tenant/vendor/employee portals,
- * app-gallery widgets) the tab is hidden. Local/prototype mode keeps it so the app stays fully
- * configurable without a backend.
+ * Settings (admin setup: permissions module, module colors, booking module, local data) and
+ * People (the org's directory) are MAINTENANCE-app surfaces — hidden in portals/app-gallery
+ * embeds. Resolved from the ORG (application/fetchDetails → linkName), not guessed from the URL.
+ *
+ * FAIL-OPEN: unknown/unreachable app identity counts as maintenance. Admins live in the
+ * maintenance app, and hiding their tabs because a probe failed is worse than showing them
+ * somewhere they'd be harmless — the actual data operations stay permission-gated regardless.
+ * Local/prototype mode is always allowed (no org to ask).
  */
-export const settingsAllowed = !isFacilioApiConfigured || isMaintenanceApp();
+export function useAdminSurfacesAllowed(): boolean {
+  const [allowed, setAllowed] = useState(true);
+  useEffect(() => {
+    if (!isFacilioApiConfigured) return;
+    let cancelled = false;
+    fetchCurrentApp()
+      .then((app) => {
+        if (!cancelled) setAllowed(!app.linkName || app.linkName === 'maintenance');
+      })
+      .catch(() => {
+        /* keep the fail-open default */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return allowed;
+}
 
 /** App-level navigation, moved out of the (removed) left sidebar into a floating bottom bar. */
 export function BottomNav() {
   const { state, actions } = useFloorplan();
   const view = state.activeView;
+  const adminAllowed = useAdminSurfacesAllowed();
 
   return (
     <nav className={styles.bar} aria-label="Primary">
@@ -32,13 +55,15 @@ export function BottomNav() {
         onClick={actions.openBookings}
         icon={<><rect x="3" y="4" width="18" height="17" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></>}
       />
+      {adminAllowed && (
       <NavBtn
         active={view === 'people'}
         label="People"
         onClick={actions.openPeople}
         icon={<><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></>}
       />
-      {settingsAllowed && (
+      )}
+      {adminAllowed && (
       <NavBtn
         active={view === 'settings'}
         label="Settings"

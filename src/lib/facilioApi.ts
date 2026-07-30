@@ -358,6 +358,47 @@ function parseSdkJson(raw: unknown, path: string): any {
   }
 }
 
+/**
+ * The connected-app SDK's own PROPERTIES/context — the host hands the embed its current
+ * application and logged-in user, so this is the authoritative (and free) source for both,
+ * ahead of any endpoint probing. The exact accessor isn't documented consistently across SDK
+ * versions, so every plausible shape is tried: a plain `properties`/`context`/`data` object, or
+ * a `getProperties()`/`getContext()`/`getCurrentUser()`-style getter (sync or promised).
+ *
+ * Returns `{}` (never null) in connected mode so callers can just read optional chains, and null
+ * outside connected mode where there's no host to ask.
+ */
+let sdkPropsCache: Promise<any> | null = null;
+export function sdkProperties(): Promise<any | null> {
+  if (!isConnectedApp) return Promise.resolve(null);
+  if (!sdkPropsCache) {
+    sdkPropsCache = (async () => {
+      const app: any = await facilioAppReady();
+      const out: Record<string, unknown> = {};
+      for (const key of ['properties', 'context', 'data', 'appProperties', 'currentApp', 'user', 'account']) {
+        const v = app?.[key];
+        if (v && typeof v === 'object') Object.assign(out, { [key]: v });
+      }
+      for (const fn of ['getProperties', 'getContext', 'getCurrentUser', 'getCurrentApp', 'getAppProperties']) {
+        if (typeof app?.[fn] !== 'function') continue;
+        try {
+          const v = await app[fn]();
+          if (v && typeof v === 'object') Object.assign(out, { [fn]: v });
+        } catch {
+          /* accessor unavailable in this SDK version — skip */
+        }
+      }
+      // eslint-disable-next-line no-console
+      console.debug('[facilioApi] SDK properties keys', Object.keys(out), Object.keys(app ?? {}));
+      return out;
+    })();
+    sdkPropsCache.catch(() => {
+      sdkPropsCache = null;
+    });
+  }
+  return sdkPropsCache;
+}
+
 export async function customGet(path: string, params?: Record<string, unknown>, opts?: { devAbsoluteUrl?: string }): Promise<any> {
   if (isConnectedApp) {
     const app = await facilioAppReady();
