@@ -15,11 +15,13 @@ import type { Assignments, Booking, Building, ClientContact, DefaultPlanView, De
  * produces/consumes the ASCII variant) opens with a "0" group code then "SECTION".
  */
 async function sniffCadOrPdfType(blob: Blob): Promise<string> {
-  const head = new Uint8Array(await blob.slice(0, 64).arrayBuffer());
+  const head = new Uint8Array(await blob.slice(0, 256).arrayBuffer());
   if (head.length >= 2 && head[0] === 0x41 && head[1] === 0x43) return 'image/vnd.dwg';
   if (head.length >= 4 && head[0] === 0x25 && head[1] === 0x50 && head[2] === 0x44 && head[3] === 0x46) return 'application/pdf';
   const text = new TextDecoder('ascii', { fatal: false }).decode(head);
   if (/^\s*0\s*[\r\n]+\s*SECTION/i.test(text)) return 'image/vnd.dxf';
+  // SVG: bare `<svg` root, or an XML prolog with an <svg …> shortly after.
+  if (/^\s*(<\?xml[^>]*\?>\s*)?(<!--[\s\S]*?-->\s*)?(<!DOCTYPE[^>]*>\s*)?<svg[\s>]/i.test(text)) return 'image/svg+xml';
   return '';
 }
 
@@ -44,6 +46,11 @@ async function blobToRenderableDataUrl(blob: Blob, contentType: string | undefin
   if (type.includes('pdf')) {
     const file = new File([blob], 'floorplan.pdf', { type });
     return renderPdfToDataUrl(file);
+  }
+  if (type.includes('svg')) {
+    // Re-wrap with the EXACT MIME — a browser only renders an <img src=blob:…> as SVG when the
+    // blob's own type says image/svg+xml; server responses often come back typeless or generic.
+    return URL.createObjectURL(new Blob([await blob.arrayBuffer()], { type: 'image/svg+xml' }));
   }
   return URL.createObjectURL(blob);
 }

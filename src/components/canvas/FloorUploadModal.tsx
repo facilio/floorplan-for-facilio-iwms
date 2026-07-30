@@ -12,7 +12,7 @@ import { uploadFloorplanFile } from '../../lib/facilioApiDataSource';
 import { measureImageDataUrl } from '../../lib/geoReference';
 import styles from './FloorUploadModal.module.css';
 
-const ACCEPT = '.png,.jpg,.jpeg,.pdf,.dwg,.dxf,image/png,image/jpeg,application/pdf';
+const ACCEPT = '.png,.jpg,.jpeg,.svg,.pdf,.dwg,.dxf,image/png,image/jpeg,image/svg+xml,application/pdf';
 
 export function FloorUploadModal() {
   const { state, actions } = useFloorplan();
@@ -29,7 +29,8 @@ export function FloorUploadModal() {
     setError(null);
     const cad = isCadFile(file.name);
     try {
-      const isPlainImage = /\.(png|jpe?g)$/i.test(file.name);
+      const isSvg = /\.svg$/i.test(file.name);
+      const isPlainImage = /\.(png|jpe?g|svg)$/i.test(file.name);
       // previewUrl stays null when the browser can't render the file (a DWG the CAD engine
       // chokes on) — we then rely on Facilio's server-rendered image fetched by file id.
       let previewUrl: string | null = null;
@@ -64,12 +65,17 @@ export function FloorUploadModal() {
         try {
           // Measured off the rendered preview when we have one (sizes the synthetic
           // geo-reference quad). No local render (CAD failed) → skip; the server sizes it.
-          const dimensions = previewUrl ? await measureImageDataUrl(previewUrl).catch(() => undefined) : undefined;
+          // SVGs without width/height attributes measure as 0×0 (or a browser default) —
+          // treat anything implausible as unmeasured rather than sizing geometry from it.
+          const measured = previewUrl ? await measureImageDataUrl(previewUrl).catch(() => undefined) : undefined;
+          const dimensions = measured && measured.width > 10 && measured.height > 10 ? measured : undefined;
           const uploaded = await uploadFloorplanFile(state.floorId, state.planId, file, dimensions);
           uploadedFileId = uploaded.fileId;
           attachedToFloorPlan = uploaded.attachedToFloorPlan;
-          // Plain image: use the round-tripped original (proves the real round-trip).
-          if (isPlainImage) previewUrl = uploaded.previewUrl;
+          // Plain raster: use the round-tripped original (proves the real round-trip). SVG keeps
+          // the LOCAL data URL — a round-tripped blob only renders as SVG when its MIME survived
+          // the trip, and the local read is guaranteed correct either way.
+          if (isPlainImage && !isSvg) previewUrl = uploaded.previewUrl;
           // No browser render (or CAD that failed) → use Facilio's server-RENDERED image by id.
           if (!previewUrl && uploaded.serverImageUrl) {
             previewUrl = uploaded.serverImageUrl;
@@ -156,7 +162,7 @@ export function FloorUploadModal() {
 
   return (
     <Modal onClose={() => actions.setUploadOpen(false)} width={460}>
-      <ModalHeader title="Upload floorplan" subtitle="PNG, JPG, PDF, DWG, or DXF" onClose={() => actions.setUploadOpen(false)} />
+      <ModalHeader title="Upload floorplan" subtitle="PNG, JPG, SVG, PDF, DWG, or DXF" onClose={() => actions.setUploadOpen(false)} />
       <div className={styles.body}>
         <div
           className={styles.dropzone}
@@ -169,7 +175,7 @@ export function FloorUploadModal() {
             <path d="M17 8l-5-5-5 5M12 3v12" />
           </svg>
           <div className={styles.dzText}>Drag a file here, or click to browse</div>
-          <div className={styles.dzSub}>Supports .png .jpg .pdf .dwg .dxf</div>
+          <div className={styles.dzSub}>Supports .png .jpg .svg .pdf .dwg .dxf</div>
           <input
             ref={inputRef}
             type="file"
