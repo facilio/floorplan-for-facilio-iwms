@@ -1948,22 +1948,26 @@ export interface MyDeskInfo {
 export interface SessionUser {
   peopleId: number | null;
   roleId: number | null;
+  /** The CURRENT application id — some setup endpoints (e.g. setup/roles) scope by it. */
+  appId: number | null;
 }
 let sessionUserCache: Promise<SessionUser> | null = null;
 export function fetchSessionUser(): Promise<SessionUser> {
-  if (!isFacilioApiConfigured) return Promise.resolve({ peopleId: null, roleId: null });
+  if (!isFacilioApiConfigured) return Promise.resolve({ peopleId: null, roleId: null, appId: null });
   if (!sessionUserCache) {
     sessionUserCache = (async () => {
       const body = await customGet('v2/account').catch(() => null);
-      const user = body?.result?.account?.user ?? body?.account?.user ?? body?.data?.account?.user ?? body?.result?.user ?? body?.user ?? null;
+      const account = body?.result?.account ?? body?.account ?? body?.data?.account ?? null;
+      const user = account?.user ?? body?.result?.user ?? body?.user ?? null;
       const asId = (v: any) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : null);
       const peopleId = asId(user?.peopleId ?? user?.people?.id);
       const roleId = asId(user?.roleId ?? user?.role?.roleId ?? user?.role?.id);
+      const appId = asId(user?.applicationId ?? user?.appId ?? account?.app?.id ?? account?.appId);
       if (!peopleId) {
         // eslint-disable-next-line no-console
         console.warn('[facilio-api] account fetch carried no peopleId', user ? Object.keys(user) : body);
       }
-      return { peopleId, roleId };
+      return { peopleId, roleId, appId };
     })();
     sessionUserCache.catch(() => {
       sessionUserCache = null;
@@ -2015,12 +2019,17 @@ export function fetchOrgRoles(): Promise<OrgRole[]> {
           .map((r) => ({ id: Number(r.roleId ?? r.id), name: (typeof r.name === 'string' && r.name.trim()) || `#${r.roleId ?? r.id}` }))
           .filter((r) => Number.isFinite(r.id) && r.id > 0);
 
-      let roles = extract(await customGet('v2/setup/roles').catch(() => null));
+      // setup/roles scopes by the CURRENT app — pass appId as a URL param (same as the native
+      // client's role pickers: GET /setup/roles?appId=<current app>).
+      const { appId } = await fetchSessionUser();
+      const params = appId ? { appId } : undefined;
+      let roles = extract(await customGet('v2/setup/roles', params).catch(() => null));
       if (!roles.length) {
         // The SDK/app base resolves custom paths under the APP scope (/maintenance/api/...),
         // where setup/roles 404s (confirmed live on app.facilio.ae). Roles is a PLATFORM
         // endpoint — hit it same-origin with the session instead.
-        const res = await fetch('/api/v2/setup/roles', { credentials: 'include' }).catch(() => null);
+        const qs = appId ? `?appId=${appId}` : '';
+        const res = await fetch(`/api/v2/setup/roles${qs}`, { credentials: 'include' }).catch(() => null);
         const alt = res?.ok ? await res.json().catch(() => null) : null;
         roles = extract(alt);
       }
