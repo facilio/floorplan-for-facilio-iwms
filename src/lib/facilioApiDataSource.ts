@@ -1,4 +1,4 @@
-import { apiOrigin, customGet, customPost, facilioApi, fetchFilePreview, isFacilioApiConfigured } from './facilioApi';
+import { apiOrigin, customDelete, customGet, customPost, facilioApi, fetchFilePreview, isFacilioApiConfigured } from './facilioApi';
 import { executeStateTransition, fetchAvailableStates, findCancelTransition, isPendingApprovalName, stateName } from './stateflowApi';
 import { renderCadToDataUrl } from './cadPreview';
 import { renderPdfToDataUrl } from './pdfPreview';
@@ -1436,8 +1436,16 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
   // units came from a fallback tier rather than viewerData, nothing joins by recordId/objectId,
   // and dropping would wipe every native marker). Consumed ones are already in nextMarkers —
   // re-pushing them here was the old double-push bug.
+  const droppedMarkerRowIds: number[] = [];
   for (const m of existingMarkers) {
-    if (!consumedMarkers.has(m) && !m.geoId) nextMarkers.push(m);
+    if (consumedMarkers.has(m)) continue;
+    if (m.geoId) {
+      // Dropping it from the array removes it from the plan, but the floorplanmarker ROW itself
+      // lingers in the module — collect its id for the bulk delete below.
+      if (typeof m.id === 'number' && m.id > 0) droppedMarkerRowIds.push(m.id);
+    } else {
+      nextMarkers.push(m);
+    }
   }
 
   // ---- markedZones: rooms (polygon geometry) ----
@@ -1525,8 +1533,14 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
   }
   // Same preservation rule as markers: drop only our own (geoId-tagged) zones whose unit is gone;
   // preserve unmatched native zones; never re-push consumed ones.
+  const droppedZoneRowIds: number[] = [];
   for (const z of existingZones) {
-    if (!consumedZones.has(z) && !z.geoId) nextZones.push(z);
+    if (consumedZones.has(z)) continue;
+    if (z.geoId) {
+      if (typeof z.id === 'number' && z.id > 0) droppedZoneRowIds.push(z.id);
+    } else {
+      nextZones.push(z);
+    }
   }
 
   // Round-trip the WHOLE fetched record, not just {markers, markedZones} — a live capture of the
@@ -1542,9 +1556,45 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
     // Throw (not just warn) — the save UI must be able to report this instead of "saved".
     throw new Error(res.error.message || `indoorfloorplan ${indoorFloorPlanId} update failed (code ${res.error.code ?? '?'})`);
   }
+  // Markers/zones removed from the plan above are gone from the RECORD, but their own module rows
+  // (floorplanmarker / floorplanmarkedzone) survive — the real web client deletes them explicitly.
+  // Best-effort AFTER the plan update landed: a failed delete leaves an orphan row, never a
+  // half-saved plan.
+  await deleteFloorplanRows('floorplanmarker', droppedMarkerRowIds);
+  await deleteFloorplanRows(ZONE_ROW_MODULE, droppedZoneRowIds);
   // The plan's markers just changed — a viewerData response cached before this write is stale
   // (e.g. brand-new desks would come back without their recordIds for up to the TTL).
   viewerDataCache.clear();
+}
+
+/** The marked-zone rows' own module (markers live in `floorplanmarker`). */
+const ZONE_ROW_MODULE = 'floorplanmarkedzone';
+
+/**
+ * Bulk-deletes plan row records via `DELETE v3/modules/data/delete?skipPermission=true` with body
+ * `{moduleName, data: {<moduleName>: [ids…]}}` — the exact endpoint/payload the real web client
+ * uses when markers are removed from a plan (confirmed live capture). Falls back to per-id
+ * `deleteRecord` when the bulk endpoint isn't available (connected-mode DELETE-with-body isn't
+ * independently verified). Best-effort throughout: an undeleted row is an orphan, not a
+ * correctness problem for the plan itself, so failures warn instead of throwing.
+ */
+async function deleteFloorplanRows(moduleName: string, ids: number[]): Promise<void> {
+  if (!isFacilioApiConfigured || !ids.length) return;
+  try {
+    const body = await customDelete('v3/modules/data/delete', { moduleName, data: { [moduleName]: ids } }, { skipPermission: true });
+    if (body?.code === 0 || body?.code === undefined) return;
+    throw new Error(body?.message || `code ${body?.code}`);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn(`[facilio-api] bulk delete failed for ${moduleName} [${ids.join(',')}] — falling back to per-id delete`, err);
+    for (const id of ids) {
+      const res = await facilioApi.deleteRecord(moduleName, id).catch((e) => ({ error: e }) as any);
+      if (res?.error) {
+        // eslint-disable-next-line no-console
+        console.warn(`[facilio-api] ${moduleName} ${id} delete failed`, res.error);
+      }
+    }
+  }
 }
 
 /**
@@ -1963,16 +2013,28 @@ export function fetchSessionUser(): Promise<SessionUser> {
   if (!isFacilioApiConfigured) return Promise.resolve({ peopleId: null, roleId: null, appId: null });
   if (!sessionUserCache) {
     sessionUserCache = (async () => {
-      const body = await customGet('v2/account').catch(() => null);
-      const account = body?.result?.account ?? body?.account ?? body?.data?.account ?? null;
-      const user = account?.user ?? body?.result?.user ?? body?.user ?? null;
       const asId = (v: any) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : null);
-      const peopleId = asId(user?.peopleId ?? user?.people?.id);
+      // `v2/account` and `v2/fetchAccount` both exist across versions; try both before giving up
+      // (the first returning a usable payload wins).
+      let user: any = null;
+      let account: any = null;
+      for (const path of ['v2/account', 'v2/fetchAccount']) {
+        const body = await customGet(path).catch(() => null);
+        if (!body) continue;
+        account = body?.result?.account ?? body?.account ?? body?.data?.account ?? body?.result ?? body?.data ?? body;
+        user = account?.user ?? body?.result?.user ?? body?.user ?? null;
+        if (user) break;
+      }
+      const peopleId = asId(user?.peopleId ?? user?.people?.id ?? user?.peopleID);
       const roleId = asId(user?.roleId ?? user?.role?.roleId ?? user?.role?.id);
       const appId = asId(user?.applicationId ?? user?.appId ?? account?.app?.id ?? account?.appId);
       if (!peopleId) {
+        // Log the actual SHAPE (keys), not the value — "null" told us nothing last time.
         // eslint-disable-next-line no-console
-        console.warn('[facilio-api] account fetch carried no peopleId', user ? Object.keys(user) : body);
+        console.warn(
+          '[facilio-api] account fetch carried no peopleId',
+          user ? { userKeys: Object.keys(user) } : account ? { accountKeys: Object.keys(account) } : 'no account payload'
+        );
       }
       return { peopleId, roleId, appId };
     })();
@@ -1992,6 +2054,35 @@ export async function fetchCurrentPeopleId(): Promise<number | null> {
  * (confirmed live), so this falls back to `v2/application/fetchDetails` — the endpoint
  * clientV2 itself boots the current application from (same params). Session-cached.
  */
+/**
+ * The app id out of the embed's own `x-connected-app` token — base64 of
+ * `{"i":<appId>,"a":"<org>","w":"<widget>","t":"WEB_TAB"}` (confirmed across live captures).
+ * Read from the URL (the connected-app host passes it through) or a global the SDK exposes;
+ * null whenever it isn't present, e.g. dev mode.
+ */
+function readConnectedAppId(): number | null {
+  const candidates: (string | null | undefined)[] = [];
+  try {
+    const q = new URLSearchParams(window.location.search);
+    candidates.push(q.get('connectedApp'), q.get('x-connected-app'), q.get('connected_app'));
+  } catch {
+    /* no URL access — ignore */
+  }
+  const g = window as any;
+  candidates.push(g.__FACILIO_CONNECTED_APP__, g.connectedApp);
+  for (const raw of candidates) {
+    if (typeof raw !== 'string' || !raw) continue;
+    try {
+      const parsed = JSON.parse(atob(raw));
+      const id = Number(parsed?.i);
+      if (Number.isFinite(id) && id > 0) return id;
+    } catch {
+      /* not a base64 connected-app token — try the next candidate */
+    }
+  }
+  return null;
+}
+
 let currentAppIdCache: Promise<number | null> | null = null;
 export function fetchCurrentAppId(): Promise<number | null> {
   if (!isFacilioApiConfigured) return Promise.resolve(null);
@@ -2000,13 +2091,18 @@ export function fetchCurrentAppId(): Promise<number | null> {
       const asId = (v: any) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : null);
       const fromAccount = (await fetchSessionUser()).appId;
       if (fromAccount) return fromAccount;
+      // The connected-app token itself carries the app id — the `x-connected-app` payload this
+      // app is embedded with is base64 `{"i":<appId>,"a":<org>,"w":<widget>,…}` (confirmed in the
+      // live captures). Cheapest and most reliable source, no extra request.
+      const fromToken = asId(readConnectedAppId());
+      if (fromToken) return fromToken;
       const body = await customGet('v2/application/fetchDetails', { considerRole: true, optimised: true }).catch(() => null);
       const data = body?.data ?? body?.result ?? body ?? null;
-      const app = data?.application ?? null;
+      const app = data?.application ?? data?.applicationDetails ?? null;
       const id = asId(app?.id ?? app?.applicationId ?? data?.applicationId ?? data?.appId ?? data?.id);
       if (!id) {
         // eslint-disable-next-line no-console
-        console.warn('[facilio-api] current appId unresolvable', data ? Object.keys(data) : body);
+        console.warn('[facilio-api] current appId unresolvable', data ? { keys: Object.keys(data) } : 'no fetchDetails payload');
       }
       return id;
     })();

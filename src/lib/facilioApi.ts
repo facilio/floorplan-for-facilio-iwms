@@ -416,6 +416,31 @@ export async function customPatch(
   return res.data;
 }
 
+/**
+ * DELETE sibling of `customPost` — for `v3/modules/data/delete`, the bulk record-delete endpoint
+ * the real web client uses (confirmed live capture: `DELETE
+ * v3/modules/data/delete?skipPermission=true` with body
+ * `{moduleName, data: {<moduleName>: [ids…]}}`). A DELETE-with-body, which is why the module-CRUD
+ * `deleteRecord(id)` helper can't express it.
+ *
+ * Connected-mode `invokeFacilioAPI` with DELETE carries the same not-independently-verified
+ * caveat as POST/PATCH; callers fall back to per-id `deleteRecord` when it fails.
+ */
+export async function customDelete(
+  path: string,
+  body?: unknown,
+  params?: Record<string, unknown>,
+  opts?: { devAbsoluteUrl?: string }
+): Promise<any> {
+  if (isConnectedApp) {
+    const app = await facilioAppReady();
+    const raw = await app.request.invokeFacilioAPI(`${path}${toQueryString(params)}`, { method: 'DELETE', data: body });
+    return parseSdkJson(raw, path);
+  }
+  const res = await devInstance!.delete(opts?.devAbsoluteUrl ?? path, { params, data: body });
+  return res.data;
+}
+
 function base64ToBlob(base64: string): Blob {
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
