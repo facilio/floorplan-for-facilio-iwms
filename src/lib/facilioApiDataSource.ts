@@ -2010,11 +2010,25 @@ export function fetchOrgRoles(): Promise<OrgRole[]> {
   if (!isFacilioApiConfigured) return Promise.resolve([]);
   if (!orgRolesCache) {
     orgRolesCache = (async () => {
-      const body = await customGet('v2/setup/roles').catch(() => null);
-      const roles = body?.data?.roles ?? body?.roles ?? body?.result?.roles ?? [];
-      return (roles as any[])
-        .map((r) => ({ id: Number(r.roleId ?? r.id), name: (typeof r.name === 'string' && r.name.trim()) || `#${r.roleId ?? r.id}` }))
-        .filter((r) => Number.isFinite(r.id) && r.id > 0);
+      const extract = (body: any): OrgRole[] =>
+        ((body?.data?.roles ?? body?.roles ?? body?.result?.roles ?? []) as any[])
+          .map((r) => ({ id: Number(r.roleId ?? r.id), name: (typeof r.name === 'string' && r.name.trim()) || `#${r.roleId ?? r.id}` }))
+          .filter((r) => Number.isFinite(r.id) && r.id > 0);
+
+      let roles = extract(await customGet('v2/setup/roles').catch(() => null));
+      if (!roles.length) {
+        // The SDK/app base resolves custom paths under the APP scope (/maintenance/api/...),
+        // where setup/roles 404s (confirmed live on app.facilio.ae). Roles is a PLATFORM
+        // endpoint — hit it same-origin with the session instead.
+        const res = await fetch('/api/v2/setup/roles', { credentials: 'include' }).catch(() => null);
+        const alt = res?.ok ? await res.json().catch(() => null) : null;
+        roles = extract(alt);
+      }
+      if (!roles.length) {
+        // eslint-disable-next-line no-console
+        console.warn('[facilio-api] roles list unavailable — role pickers will show ids only');
+      }
+      return roles;
     })();
     orgRolesCache.catch(() => {
       orgRolesCache = null;
