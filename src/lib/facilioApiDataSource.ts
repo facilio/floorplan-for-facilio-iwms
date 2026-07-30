@@ -1987,6 +1987,36 @@ export async function fetchCurrentPeopleId(): Promise<number | null> {
   return (await fetchSessionUser()).peopleId;
 }
 
+/**
+ * The CURRENT application id. The account payload's `applicationId` is often 0/absent
+ * (confirmed live), so this falls back to `v2/application/fetchDetails` — the endpoint
+ * clientV2 itself boots the current application from (same params). Session-cached.
+ */
+let currentAppIdCache: Promise<number | null> | null = null;
+export function fetchCurrentAppId(): Promise<number | null> {
+  if (!isFacilioApiConfigured) return Promise.resolve(null);
+  if (!currentAppIdCache) {
+    currentAppIdCache = (async () => {
+      const asId = (v: any) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : null);
+      const fromAccount = (await fetchSessionUser()).appId;
+      if (fromAccount) return fromAccount;
+      const body = await customGet('v2/application/fetchDetails', { considerRole: true, optimised: true }).catch(() => null);
+      const data = body?.data ?? body?.result ?? body ?? null;
+      const app = data?.application ?? null;
+      const id = asId(app?.id ?? app?.applicationId ?? data?.applicationId ?? data?.appId ?? data?.id);
+      if (!id) {
+        // eslint-disable-next-line no-console
+        console.warn('[facilio-api] current appId unresolvable', data ? Object.keys(data) : body);
+      }
+      return id;
+    })();
+    currentAppIdCache.catch(() => {
+      currentAppIdCache = null;
+    });
+  }
+  return currentAppIdCache;
+}
+
 // ---------------------------------------------------------------------------
 // Role-permissions CUSTOM MODULE (Settings › Permissions): one record per role — a `role`
 // lookup plus BOOLEAN fields whose names contain edit/assign/book (field names are org-defined,
@@ -2027,8 +2057,9 @@ export function fetchOrgRoles(): Promise<OrgRole[]> {
           .filter((r) => Number.isFinite(r.id) && r.id > 0);
 
       // setup/roles scopes by the CURRENT app — pass appId as a URL param (same as the native
-      // client's role pickers: GET /setup/roles?appId=<current app>).
-      const { appId } = await fetchSessionUser();
+      // client's role pickers: GET /setup/roles?appId=<current app>). Resolved via
+      // fetchCurrentAppId (account payload first, then application/fetchDetails).
+      const appId = await fetchCurrentAppId().catch(() => null);
       const params = appId ? { appId } : undefined;
       let roles = extract(await customGet('v2/setup/roles', params).catch(() => null));
       if (!roles.length) {
