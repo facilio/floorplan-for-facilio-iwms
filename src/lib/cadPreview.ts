@@ -81,18 +81,8 @@ export async function renderCadToDataUrl(file: File, scale = 1): Promise<string>
     // enough on top of the isProcessingEntities wait above, so this is deliberately generous.
     await new Promise((r) => setTimeout(r, 1200));
 
-    // DETERMINISTIC framing on top of the async fit: zoomToFitDrawing routes through the
-    // library's progressive-open machinery (poll timers, incremental-fit state), so the FINAL
-    // camera can differ slightly run-to-run and scale-to-scale. Markers live as FRACTIONS of
-    // the rendered frame — a hi-res zoom tier framed even 1% differently than the base slides
-    // the whole drawing under every placed desk. `zoomTo(box, margin)` is proportional (margin
-    // is a factor of the box, no fixed-pixel padding — verified in the bundle), so pinning the
-    // camera to the scene's own box here yields the IDENTICAL world→frame mapping at every
-    // render size. Falls back to whatever the async fit produced when the box isn't exposed.
-    const view: any = manager.curView;
-    const fitBox = view.resolveLayoutFitBox?.();
-    if (fitBox) {
-      view.zoomTo(fitBox, 1.1);
+    // DETERMINISTIC framing on top of the async fit — see pinCadCamera.
+    if (pinCadCamera(manager.curView, file)) {
       await new Promise((r) => setTimeout(r, 300));
     }
 
@@ -109,6 +99,34 @@ export async function renderCadToDataUrl(file: File, scale = 1): Promise<string>
 
 export function isCadFile(filename: string): boolean {
   return /\.(dwg|dxf)$/i.test(filename);
+}
+
+/**
+ * DETERMINISTIC camera framing, shared by EVERY render pass of a given file (base snapshot,
+ * 2×/3× zoom tiers, the auto-map analysis).
+ *
+ * zoomToFitDrawing routes through the library's async progressive-open machinery, so the final
+ * camera can differ run-to-run; and even an explicit fit differs when one pass snapshots before
+ * entity conversion fully finished (its scene box is smaller — the first parse of a session is
+ * the slowest, so exactly the base render risked this). Markers live as FRACTIONS of the frame:
+ * any framing drift slides the whole drawing under every placed desk on tier swap/zoom.
+ *
+ * Fix: resolve the fit box ONCE per file and reuse that exact box for every subsequent pass.
+ * `zoomTo(box, margin)` is proportional (margin is a factor of the box, no fixed-pixel padding
+ * — verified in the bundle), so same box + same aspect = the identical world→frame mapping at
+ * every render size, by construction.
+ */
+const cadFitBoxCache = new Map<string, unknown>();
+export function pinCadCamera(view: any, file: File): boolean {
+  const key = `${file.name}:${file.size}`;
+  let box = cadFitBoxCache.get(key);
+  if (!box) {
+    box = view.resolveLayoutFitBox?.();
+    if (box) cadFitBoxCache.set(key, box);
+  }
+  if (!box) return false; // fall back to whatever the async fit produced
+  view.zoomTo(box, 1.1);
+  return true;
 }
 
 /**

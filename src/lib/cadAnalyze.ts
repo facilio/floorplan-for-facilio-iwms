@@ -1,5 +1,5 @@
 import type { UnitType } from './types';
-import { cadCanvasToLightSnapshot, cadWorkerUrls } from './cadPreview';
+import { cadCanvasToLightSnapshot, cadWorkerUrls, pinCadCamera } from './cadPreview';
 
 /**
  * Opens a DWG/DXF once and produces BOTH the rendered preview snapshot and
@@ -98,17 +98,11 @@ export async function analyzeCadFile(file: File): Promise<CadAnalysis> {
     }
     manager.curView.zoomToFitDrawing();
     await new Promise((r) => setTimeout(r, 1200));
-    // Same DETERMINISTIC camera pin as renderCadToDataUrl (see cadPreview.ts): the analysis
-    // projects entity positions through this camera (worldToScreen below), and those fractions
-    // must line up with the SEPARATELY-rendered plan image — both passes pinning to the scene
-    // box with the proportional zoomTo is what guarantees they share one framing.
-    {
-      const v: any = manager.curView;
-      const fitBox = v.resolveLayoutFitBox?.();
-      if (fitBox) {
-        v.zoomTo(fitBox, 1.1);
-        await new Promise((r) => setTimeout(r, 300));
-      }
+    // Same DETERMINISTIC camera pin as renderCadToDataUrl — pinCadCamera reuses the FILE's one
+    // cached fit box, so the fractions projected below (worldToScreen) line up with the
+    // separately-rendered plan image by construction.
+    if (pinCadCamera(manager.curView, file)) {
+      await new Promise((r) => setTimeout(r, 300));
     }
 
     const canvas = container.querySelector('canvas');

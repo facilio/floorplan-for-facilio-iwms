@@ -156,18 +156,20 @@ export function markerNeighborSpacing(units: Pick<Unit, 'id' | 'geom'>[]): Map<s
 }
 
 /**
- * The zoom counter-scale a constant-size marker should ACTUALLY render at, given the plan-space
- * distance to its own nearest neighbour (see markerNeighborSpacing): full size while the
- * on-screen gap is clear, shrinking as it closes — but never below 55% of full size.
- * Legibility beats zero-overlap: past the floor, a little overlap is the lesser evil vs icons
- * everyone reads as "very very small".
+ * The zoom counter-scale a marker should render at. PLAN-ANCHORED, not constant: a marker that
+ * stays 24 screen-px while the drawing grows underneath reads as "shrinking" the deeper you
+ * zoom (it becomes a speck against ever-larger desks). So the target footprint follows the
+ * drawing (footprint × z), CLAMPED to a readable range — never below ~58% of nominal when
+ * zoomed out, never above ~160% when zoomed in — and finally capped by the on-screen gap to
+ * the marker's own nearest neighbour so dense pods still compact instead of overlapping.
  */
 export function markerCounterScale(z: number, planSpacing: number, footprintPx: number): number {
-  const invZ = 1 / z;
-  if (!Number.isFinite(planSpacing)) return invZ;
-  // Rendered size relative to full: screen footprint = footprintPx × ratio, ratio ∈ [0.55, 1].
-  const ratio = Math.min(1, Math.max(0.55, (planSpacing * 0.95 * z) / footprintPx));
-  return ratio * invZ;
+  const anchored = footprintPx * z; // scales exactly with the drawing
+  let target = Math.min(Math.max(anchored, footprintPx * 0.58), footprintPx * 1.6);
+  if (Number.isFinite(planSpacing)) {
+    target = Math.min(target, Math.max(planSpacing * z * 0.95, footprintPx * 0.58));
+  }
+  return target / (footprintPx * z);
 }
 
 /** Natural sort (numeric-aware) — "WS-2" sorts before "WS-10". */
