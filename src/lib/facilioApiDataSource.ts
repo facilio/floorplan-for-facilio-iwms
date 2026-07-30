@@ -2152,18 +2152,17 @@ export function fetchOrgRoles(): Promise<OrgRole[]> {
           .map((r) => ({ id: Number(r.roleId ?? r.id), name: (typeof r.name === 'string' && r.name.trim()) || `#${r.roleId ?? r.id}` }))
           .filter((r) => Number.isFinite(r.id) && r.id > 0);
 
-      // setup/roles scopes by the CURRENT app — pass appId as a URL param (same as the native
-      // client's role pickers: GET /setup/roles?appId=<current app>). Resolved via
-      // fetchCurrentAppId (account payload first, then application/fetchDetails).
+      // The roles endpoint is UNVERSIONED — `setup/roles`, NOT `v2/setup/roles` (that 404s), and
+      // it scopes by the CURRENT app, so appId rides as a URL param (same as the native client's
+      // role pickers: GET /setup/roles?appId=<current app>).
       const appId = await fetchCurrentAppId().catch(() => null);
       const params = appId ? { appId } : undefined;
-      let roles = extract(await customGet('v2/setup/roles', params).catch(() => null));
+      let roles = extract(await customGet('setup/roles', params).catch(() => null));
       if (!roles.length) {
-        // The SDK/app base resolves custom paths under the APP scope (/maintenance/api/...),
-        // where setup/roles 404s (confirmed live on app.facilio.ae). Roles is a PLATFORM
-        // endpoint — hit it same-origin with the session instead.
+        // Same-origin session fallback for when the SDK/app base resolves the path under a scope
+        // the endpoint doesn't live in.
         const qs = appId ? `?appId=${appId}` : '';
-        const res = await fetch(`/api/v2/setup/roles${qs}`, { credentials: 'include' }).catch(() => null);
+        const res = await fetch(`/api/setup/roles${qs}`, { credentials: 'include' }).catch(() => null);
         const alt = res?.ok ? await res.json().catch(() => null) : null;
         roles = extract(alt);
       }
