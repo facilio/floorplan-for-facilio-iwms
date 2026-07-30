@@ -12,6 +12,11 @@ export function Tooltip() {
   const { state, actions } = useFloorplan();
   const unit = unitById(state, state.selected);
   if (!unit) return null;
+  // EDIT mode: no popover. It floated right over the selected room and its corner handles,
+  // blocking dimension edits — and closing it deselected the unit, which killed the handles
+  // anyway. Editing has its own surface (the Edit panel inspector); selection on the canvas
+  // must stay purely about dragging/reshaping there.
+  if (state.mode === 'edit') return null;
 
   const { cx, cy } = unitCenter(unit);
   const place = tooltipPlacement(cx, cy, state.view);
