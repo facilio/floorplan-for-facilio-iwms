@@ -379,9 +379,11 @@ function PermissionsTab() {
                 ))}
               </div>
             ))}
-            {/* Batched save on request: toggles/roles above only edit locally; this writes the diff. */}
+            {/* Batched save on request: toggles/roles above only edit locally; this writes the
+                diff. Padded like every other card section — the card has no inner padding of its
+                own, so an unpadded row bled the button into the card corner. */}
             {records.length > 0 && (
-              <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12, marginTop: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12, padding: '14px 20px', borderTop: '1px solid var(--ink-100)' }}>
                 {pendingCount > 0 && (
                   <span className={styles.rowDesc}>
                     {pendingCount} unsaved change{pendingCount === 1 ? '' : 's'}
