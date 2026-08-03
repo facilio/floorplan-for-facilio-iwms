@@ -4,6 +4,8 @@ import styles from './Toolbar.module.css';
 
 export function Toolbar({ leftPad, rightPad }: { leftPad: number; rightPad: number }) {
   const { state, actions } = useFloorplan();
+  // No mode tabs at all -> no floating bar. A view-only user just gets the plan.
+  if (!state.modePerms.edit && !state.modePerms.assign && !state.modePerms.book) return null;
   const myUnit = myAssignedUnit(state);
   // Mock tier derives "my desk" from local assignments; the real backend provides it via
   // servicePortalHome (state.myDesk). Either one lights the button up.

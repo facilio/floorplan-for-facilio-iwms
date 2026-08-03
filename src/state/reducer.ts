@@ -542,7 +542,9 @@ export function reducer(state: AppState, action: Action): AppState {
       const modeKey = state.mode === 'edit' ? 'edit' : state.mode === 'book' ? 'book' : 'assign';
       // The active mode must stay a VISIBLE one — kick to the first allowed tab otherwise.
       const mode = perms[modeKey] ? state.mode : perms.assign ? 'assign' : perms.book ? 'book' : perms.edit ? 'edit' : state.mode;
-      return { ...state, modePerms: perms, modePermsFromModule: action.fromModule, mode };
+      // Same rule for the mobile Book/Assign tab.
+      const mobileTab = perms[state.mobileTab === 'book' ? 'book' : 'assign'] ? state.mobileTab : perms.book ? ('book' as const) : perms.assign ? ('assign' as const) : state.mobileTab;
+      return { ...state, modePerms: perms, modePermsFromModule: action.fromModule, mode, mobileTab };
     }
 
     case 'SET_ACTIVE_VIEW':
