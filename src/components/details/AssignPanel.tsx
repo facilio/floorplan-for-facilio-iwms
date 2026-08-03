@@ -103,7 +103,9 @@ export function AssignPanel() {
         </div>
         <div className={styles.peopleSearchWrap}>
           <input className={card.input} placeholder="Search people" value={state.contactSearch} onChange={(e) => actions.setContactSearch(e.target.value)} />
-          <p className={styles.dragHint}>Drag a person onto a desk, locker, or parking stall to assign it.</p>
+          <p className={styles.dragHint}>
+            {state.modePerms.edit ? 'Drag a person onto a desk, locker, or parking stall to assign it.' : 'View only — changing assignments needs edit access.'}
+          </p>
         </div>
         <div className={styles.peopleList}>
           {state.loading && state.clientContacts.length === 0 && <SkeletonRows rows={6} avatar />}
@@ -116,10 +118,10 @@ export function AssignPanel() {
               <div
                 key={contact.id}
                 className={styles.personRow}
-                draggable
+                draggable={state.modePerms.edit}
                 onDragStart={(e) => onDragStart(e, contact.id, contact.name)}
                 onDragEnd={onDragEnd}
-                style={{ opacity: dragId === contact.id ? 0.45 : 1, cursor: 'grab' }}
+                style={{ opacity: dragId === contact.id ? 0.45 : 1, cursor: state.modePerms.edit ? 'grab' : 'default' }}
               >
                 <span className={styles.avatar}>{initials(contact.name)}</span>
                 <div className={styles.personText}>
@@ -162,11 +164,12 @@ function AssignBody({ unitId }: { unitId: string }) {
   const reassigning = state.webReassign === unitId;
 
   if (contactId && !reassigning) {
+    const name = contactName(state, contactId) || 'Occupied';
     return (
       <div>
         <div className={styles.assignedRow}>
-          <span className={styles.avatar}>{initials(contactName(state, contactId))}</span>
-          <span className={styles.assignedName} title={contactName(state, contactId)}>{contactName(state, contactId)}</span>
+          <span className={styles.avatar}>{initials(name)}</span>
+          <span className={styles.assignedName} title={name}>{name}</span>
         </div>
         {/* No hardcoded Vacate/Reassign — state actions come exclusively from the record's own
             stateflow buttons rendered below this card body (UnitStateflowSection), so only what
@@ -174,6 +177,10 @@ function AssignBody({ unitId }: { unitId: string }) {
             still possible by dragging a person from the list onto it. */}
       </div>
     );
+  }
+
+  if (!state.modePerms.edit) {
+    return <p className={styles.dragHint}>Unassigned. Changing assignments needs edit access.</p>;
   }
 
   return (

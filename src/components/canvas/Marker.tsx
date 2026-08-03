@@ -45,7 +45,7 @@ export function Marker({ unit, invZ, onDragStart, myUnitId, labelVisible }: { un
       if (state.dragOverId !== unit.id) actions.dragOverUnit(unit.id);
       return;
     }
-    if (state.mode !== 'assign') return;
+    if (state.mode !== 'assign' || !state.modePerms.edit) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     if (state.dragOverId !== unit.id) actions.dragOverUnit(unit.id);
@@ -63,7 +63,7 @@ export function Marker({ unit, invZ, onDragStart, myUnitId, labelVisible }: { un
       if (unitId && unitId !== unit.id) actions.placeUnitOnUnit(unitId, unit.id);
       return;
     }
-    if (state.mode !== 'assign') return;
+    if (state.mode !== 'assign' || !state.modePerms.edit) return;
     e.preventDefault();
     const contactId = state.dragContactId || e.dataTransfer.getData('text/plain');
     if (contactId) actions.assign(contactId, unit.id);

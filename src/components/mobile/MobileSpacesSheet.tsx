@@ -101,7 +101,7 @@ function SpaceRow({ unit, onShow, onClose }: { unit: Unit; onShow: () => void; o
   const bookTab = state.mobileTab === 'book';
 
   const canBook = bookTab && isBookable(unit) && status.key !== 'booked';
-  const canAssign = !bookTab && isAssignable(unit) && !contactId;
+  const canAssign = !bookTab && isAssignable(unit) && !contactId && state.modePerms.edit;
 
   return (
     <div className={styles.row}>
@@ -111,7 +111,7 @@ function SpaceRow({ unit, onShow, onClose }: { unit: Unit; onShow: () => void; o
           <span className={styles.rowLabel}>{unit.label}</span>
           <span className={styles.rowSub}>
             {[TYPE_META[unit.type].name, unit.room].filter(Boolean).join(' · ')}
-            {contactId ? ` · ${contactName(state, contactId)}` : ''}
+            {contactId ? ` · ${contactName(state, contactId) || 'Occupied'}` : ''}
           </span>
         </span>
         <span className={styles.statusPill} style={{ background: status.bg, color: status.fg }}>

@@ -129,7 +129,7 @@ function ScheduleList({ unitId }: { unitId: string }) {
               {fmtTime(b.start)}–{fmtTime(b.end)}
             </div>
             <div className={styles.listMeta}>
-              <div className={styles.listBy}>{contactName(state, b.by)}</div>
+              <div className={styles.listBy}>{contactName(state, b.by) || 'Booked'}</div>
               {b.purpose && <div className={styles.listPurpose}>{b.purpose}</div>}
               {b.approvalPending && <StatusPill label={b.approvalStatusName ?? 'Pending approval'} bg="var(--warning-050)" fg="var(--warning-700)" />}
             </div>
@@ -223,7 +223,7 @@ function DayTimeline({ unitId }: { unitId: string }) {
               borderColor: mine ? 'var(--blue-400)' : 'var(--danger-500)',
               color: mine ? 'var(--blue-700)' : 'var(--danger-700)',
             }}
-            title={`${label} · ${fmtTime(b.start)}–${fmtTime(b.end)} · ${contactName(state, b.by)}${b.purpose ? ' · ' + b.purpose : ''}`}
+            title={[`${label} · ${fmtTime(b.start)}–${fmtTime(b.end)}`, contactName(state, b.by), b.purpose].filter(Boolean).join(' · ')}
           >
             {h >= 22 && (
               <span className={styles.blockLabel}>

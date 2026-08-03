@@ -31,6 +31,9 @@ export interface SettingsConfig {
 
 const LS_KEY = 'facilio_floorplan_settings_v1';
 
+/** Org custom module holding per-role floorplan mode permissions, used when none is configured. */
+export const DEFAULT_PERMS_MODULE_NAME = 'assignment_custom_floorplanpermissions';
+
 /** Extract the persisted slice of app state. */
 export function settingsFromState(state: AppState): SettingsConfig {
   return {

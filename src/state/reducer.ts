@@ -3,6 +3,7 @@ import type { Booking, Building, Floor, FloorplanCustomization, MarkerDef, ModeP
 import { clamp, fitView } from '../lib/geometry';
 import { IMG_H, IMG_W, seedBookings } from '../lib/mockData';
 import { viewFromLocation } from '../lib/routes';
+import { DEFAULT_PERMS_MODULE_NAME } from '../lib/settingsStore';
 import type { AppState } from './types';
 
 function todayIso(): string {
@@ -106,7 +107,7 @@ export function buildInitialState(): AppState {
 
     role: 'admin',
     perms: { ...DEFAULT_PERMS },
-    permsModuleName: '',
+    permsModuleName: DEFAULT_PERMS_MODULE_NAME,
     defaultModePerms: { ...ALL_MODES_ALLOWED },
     modePerms: { ...ALL_MODES_ALLOWED },
     modePermsFromModule: false,
@@ -168,6 +169,7 @@ export type Action =
   | { type: 'SET_SPACE_FILTER'; filter: AppState['spaceFilter'] }
   | { type: 'SET_SPACE_SEARCH'; value: string }
   | { type: 'PORTFOLIO_LOADED'; portfolio: Site[]; clientContacts: AppState['clientContacts']; assets: AppState['assets'] }
+  | { type: 'UPSERT_CLIENT_CONTACT'; contact: AppState['clientContacts'][number] }
   | { type: 'SELECT_UNIT'; id: string | null }
   | { type: 'HIGHLIGHT_UNIT'; id: string | null }
   | { type: 'ADD_UNIT'; unit: Unit }
@@ -346,6 +348,8 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, spaceSearch: action.value };
     case 'PORTFOLIO_LOADED':
       return { ...state, portfolio: action.portfolio, clientContacts: action.clientContacts, assets: action.assets };
+    case 'UPSERT_CLIENT_CONTACT':
+      return { ...state, clientContacts: [...state.clientContacts.filter((c) => c.id !== action.contact.id), action.contact] };
 
     case 'SELECT_UNIT':
       return { ...state, selected: action.id, webReassign: null, ...(action.id ? { multiSelected: [] } : {}) };
@@ -491,7 +495,8 @@ export function reducer(state: AppState, action: Action): AppState {
         bookingModule: c.bookingModule ?? state.bookingModule,
         customMarkers: c.customMarkers ?? state.customMarkers,
         allowLocalFallback: c.allowLocalFallback ?? state.allowLocalFallback,
-        permsModuleName: c.permsModuleName ?? state.permsModuleName,
+        // An empty persisted value (saved before a default existed) must not wipe the default.
+        permsModuleName: c.permsModuleName?.trim() ? c.permsModuleName : state.permsModuleName,
         defaultModePerms: c.defaultModePerms ?? state.defaultModePerms,
         // Effective perms follow the persisted defaults until a module record overrides them
         // (the boot resolution dispatches SET_MODE_PERMS afterwards when one matches).

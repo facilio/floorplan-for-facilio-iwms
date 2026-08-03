@@ -1874,6 +1874,33 @@ export async function fetchUnitModuleState(unit: Unit): Promise<string | null> {
   return stateName(res[ref.moduleName].moduleState);
 }
 
+/**
+ * The unit record's SUMMARY assignee — fetched when a unit is previewed, because the record
+ * summary carries the assignee lookup even when the bulk contact directory fetch missed that
+ * person (permission-limited or paginated). Name falls back to a direct clientcontact fetch
+ * when the lookup is id-only.
+ */
+export async function fetchUnitAssigneeFromSummary(unit: Unit): Promise<{ id: string; name: string } | null> {
+  const ref = await resolveUnitRecordRef(unit);
+  if (!ref) return null;
+  const res = await facilioApi.fetchRecord<any>(ref.moduleName, { id: ref.recordId });
+  const rec = res?.[ref.moduleName];
+  if (res.error || !rec) return null;
+  const lookup = rec.clientcontact_desks ?? rec.employee ?? rec.clientContact ?? null;
+  const id = Number(lookup?.id ?? lookup);
+  if (!Number.isFinite(id) || id <= 0) return null;
+  const nameOf = (o: any): string =>
+    [o?.name, o?.displayName, o?.primaryValue, [o?.firstName, o?.lastName].filter(Boolean).join(' ')].find(
+      (v) => typeof v === 'string' && v.trim()
+    ) ?? '';
+  let name = nameOf(lookup);
+  if (!name) {
+    const cres = await facilioApi.fetchRecord<any>('clientcontact', { id }).catch(() => null);
+    name = nameOf(cres?.clientcontact);
+  }
+  return name ? { id: String(id), name: name.trim() } : null;
+}
+
 export interface ModuleSummary {
   id: number;
   name: string;
@@ -2312,8 +2339,11 @@ function normalizeRoleIds(v: any): number[] {
   return arr.map(roleIdOf).filter((n): n is number => n != null);
 }
 
-/** The module's CONFIRMED field names (this org): assignment / booking / edit. */
-const PERM_EXACT_KEY: Record<keyof ModePerms, string> = { edit: 'edit', assign: 'assignment', book: 'booking' };
+// Facilio suffixes custom-field linkNames with the module name (`clientcontact_desks` on the
+// desks module) — so the perm booleans are `<base>_<moduleName>`, with the bare base name and
+// fuzzy discovery kept as fallbacks for differently-built orgs.
+const PERM_BASE_KEY: Record<keyof ModePerms, string> = { edit: 'edit', assign: 'assignment', book: 'booking' };
+const permCandidateKeys = (perm: keyof ModePerms, moduleName: string): string[] => [`${PERM_BASE_KEY[perm]}_${moduleName}`, PERM_BASE_KEY[perm]];
 const PERM_KEY_RX: Record<keyof ModePerms, RegExp> = { edit: /edit/i, assign: /assign/i, book: /book/i };
 const MODE_PERM_KEYS = ['edit', 'assign', 'book'] as const;
 const isBoolish = (v: unknown) => typeof v === 'boolean' || v === 0 || v === 1 || v === 'true' || v === 'false';
@@ -2325,15 +2355,25 @@ export async function fetchRolePermissionRecords(moduleName: string): Promise<Ro
   if (res.error || !res.list) throw new Error(res.error?.message || `facilio-api: ${moduleName} fetch failed`);
   return (res.list as any[]).map((r) => {
     const fieldKeys: Partial<Record<keyof ModePerms, string>> = {};
-    // Exact field names first (assignment/booking/edit — the org's confirmed schema)…
+    // Exact candidates first (`<base>_<moduleName>`, then the bare base name)…
     for (const p of MODE_PERM_KEYS) {
-      if (isBoolish(r[PERM_EXACT_KEY[p]])) fieldKeys[p] = PERM_EXACT_KEY[p];
+      for (const key of permCandidateKeys(p, moduleName.trim())) {
+        if (isBoolish(r[key])) {
+          fieldKeys[p] = key;
+          break;
+        }
+      }
     }
     // …then fuzzy discovery for any that didn't match (other orgs name fields their own way).
+    // Claimed keys are skipped — a module-name suffix like `_assignment_…` on EVERY field would
+    // otherwise let one field satisfy several perms.
     for (const key of Object.keys(r)) {
-      if (!isBoolish(r[key])) continue;
+      if (!isBoolish(r[key]) || Object.values(fieldKeys).includes(key)) continue;
       for (const p of MODE_PERM_KEYS) {
-        if (!fieldKeys[p] && PERM_KEY_RX[p].test(key)) fieldKeys[p] = key;
+        if (!fieldKeys[p] && PERM_KEY_RX[p].test(key)) {
+          fieldKeys[p] = key;
+          break;
+        }
       }
     }
     const values: Partial<ModePerms> = {};

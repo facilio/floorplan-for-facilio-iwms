@@ -12,10 +12,10 @@ export function contactById(state: AppState, id: string | null | undefined): Cli
 }
 
 export function contactName(state: AppState, id: string | null | undefined): string {
-  // Unknown id (assignee outside the loaded contact directory): label it rather than returning ''
-  // — a blank name renders as "Assigned · " / an empty avatar row in the panels.
+  // Unknown id (assignee outside the loaded contact directory) -> '' — raw record ids must never
+  // surface in the UI; callers render a generic "Occupied"/"Assigned" instead.
   if (!id) return '';
-  return contactById(state, id)?.name ?? `Contact #${id}`;
+  return contactById(state, id)?.name ?? '';
 }
 
 export function initials(name: string): string {

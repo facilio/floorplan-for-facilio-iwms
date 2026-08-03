@@ -144,13 +144,16 @@ export function markerStyle(state: AppState, unit: Unit, markerScale = 1): Marke
       return { bg: 'var(--ink-100)', bd: 'var(--ink-500)', fg: 'var(--ink-600)', opacity: 1, shadow, size, radius, zIndex, occText: null, icon: markerIcon(unit.type) };
     }
     if (state.dragOverId === unit.id) {
-      return { bg: 'var(--blue-100)', bd: 'var(--blue-500)', fg: 'var(--blue-700)', opacity: 1, shadow: '0 0 0 4px rgba(0,89,214,0.22)', size, radius, zIndex: 6, occText: contactId ? initialsOf(contactNameFallback(state, contactId)) : null, icon: contactId ? null : markerIcon(unit.type) };
+      const occ = contactId ? initialsOf(contactNameFallback(state, contactId)) : null;
+      return { bg: 'var(--blue-100)', bd: 'var(--blue-500)', fg: 'var(--blue-700)', opacity: 1, shadow: '0 0 0 4px rgba(0,89,214,0.22)', size, radius, zIndex: 6, occText: occ, icon: occ ? null : markerIcon(unit.type) };
     }
     if (contactId) {
       // Occupied desk: the real org's "assigned" color when configured, else this app's own
-      // configurable color, solid-filled with white initials (see colorTriple).
+      // configurable color, solid-filled with white initials (see colorTriple). Unresolvable
+      // assignee -> the type icon on the occupied color (never a '?' or the raw id).
       const { bg, bd, fg } = colorTriple(realAssignColor(cust, true), moduleColor(state, unit.type, 'assigned'), true);
-      return { bg, bd, fg, opacity: 1, shadow, size, radius, zIndex, occText: initialsOf(contactNameFallback(state, contactId)), icon: null };
+      const occ = initialsOf(contactNameFallback(state, contactId));
+      return { bg, bd, fg, opacity: 1, shadow, size, radius, zIndex, occText: occ, icon: occ ? null : markerIcon(unit.type) };
     }
     const { bg, bd, fg } = colorTriple(realAssignColor(cust, false), moduleColor(state, unit.type, 'free'), false);
     return { bg, bd, fg, opacity: 1, shadow, size, radius, zIndex, occText: null, icon: markerIcon(unit.type) };
@@ -163,9 +166,10 @@ export function markerStyle(state: AppState, unit: Unit, markerScale = 1): Marke
     // it), else a solid grey chip, with the occupant's initials so the booking view still says
     // whose desk it is.
     const real = realBookColor(cust, category, 'nonReservableColor');
+    const occ = contactId ? initialsOf(contactNameFallback(state, contactId)) : null;
     if (real) {
       const solid = opaque(real);
-      return { bg: real, bd: solid, fg: solid, opacity: 1, shadow, size, radius, zIndex, occText: contactId ? initialsOf(contactNameFallback(state, contactId)) : null, icon: contactId ? null : markerIcon(unit.type) };
+      return { bg: real, bd: solid, fg: solid, opacity: 1, shadow, size, radius, zIndex, occText: occ, icon: occ ? null : markerIcon(unit.type) };
     }
     return {
       bg: 'var(--ink-100)',
@@ -176,8 +180,8 @@ export function markerStyle(state: AppState, unit: Unit, markerScale = 1): Marke
       size,
       radius,
       zIndex,
-      occText: contactId ? initialsOf(contactNameFallback(state, contactId)) : null,
-      icon: contactId ? null : markerIcon(unit.type),
+      occText: occ,
+      icon: occ ? null : markerIcon(unit.type),
     };
   }
   // Bookable markers render SOLID-filled (white icon on the state color) — the translucent tint
@@ -212,9 +216,9 @@ function markerIcon(type: Unit['type']): MarkerStyle['icon'] {
 }
 function initialsOf(name: string): string {
   // A numeric "name" is an unresolved contact id (assignee not in the loaded directory — e.g. a
-  // permission-limited or paginated contact fetch). Digit "initials" like "88" read as garbage on
-  // the marker; a generic person glyph at least reads as "assigned to someone".
-  if (/^\d+$/.test(name.trim())) return '?';
+  // permission-limited or paginated contact fetch). Neither the digits nor a '?' may show on the
+  // marker — '' makes the caller fall back to the plain occupied look (type icon on the color).
+  if (/^\d+$/.test(name.trim())) return '';
   return name.split(' ').map((p) => p[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
 }
 function contactNameFallback(state: AppState, contactId: string): string {
@@ -239,9 +243,11 @@ export function unitStatus(state: AppState, unit: Unit, contactName: (id: string
     }
     const contactId = state.assignments[unit.id];
     if (contactId) {
+      const name = contactName(contactId);
       return {
         key: 'assigned',
-        text: `Assigned · ${contactName(contactId)}`,
+        // Unresolvable assignee -> plain "Occupied"; the raw contact id never shows.
+        text: name ? `Assigned · ${name}` : 'Occupied',
         bg: TOKEN.blue050,
         fg: TOKEN.blue700,
         dot: opaque(realAssignColor(cust, true) ?? moduleColor(state, unit.type, 'assigned')),
@@ -252,10 +258,11 @@ export function unitStatus(state: AppState, unit: Unit, contactName: (id: string
   // book mode
   if (!isBookable(unit)) {
     const contactId = state.assignments[unit.id];
+    const name = contactId ? contactName(contactId) : '';
     return {
       key: 'notBookable',
-      // whose desk it is stays visible from the booking tab too
-      text: contactId ? `Assigned · ${contactName(contactId)}` : 'Not bookable',
+      // whose desk it is stays visible from the booking tab too (generic when unresolvable)
+      text: contactId ? (name ? `Assigned · ${name}` : 'Occupied') : 'Not bookable',
       bg: TOKEN.ink100,
       fg: TOKEN.ink600,
       dot: opaque(realBookColor(cust, category, 'nonReservableColor') ?? 'var(--ink-400)'),
@@ -322,7 +329,8 @@ export function resolveMarkerLabels(state: AppState, unit: Unit, contactNameOf: 
   if (unit.type === 'amenity') return { primary: unit.label, secondary: null };
 
   const contactId = state.assignments[unit.id];
-  const contactNameVal = contactId ? contactNameOf(contactId) : null;
+  // '' = unresolvable assignee — treated as no name so labels never show a raw id.
+  const contactNameVal = (contactId ? contactNameOf(contactId) : null) || null;
   const cust = customizationFor(state);
   if (state.mode === 'edit' || !cust) {
     return { primary: unit.label, secondary: state.mode === 'assign' && contactNameVal ? contactNameVal : null };

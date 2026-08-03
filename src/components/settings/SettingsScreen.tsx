@@ -4,18 +4,20 @@ import { STATE_DEFS, STATE_SWATCHES } from '../../lib/types';
 import type { ModePerms, UnitType } from '../../lib/types';
 import { isFacilioApiConfigured } from '../../lib/facilioApi';
 import { fetchOrgRoles, fetchRolePermissionRecords, updateRolePermissionRecord, updateRolePermissionRoles } from '../../lib/facilioApiDataSource';
+import { DEFAULT_PERMS_MODULE_NAME } from '../../lib/settingsStore';
 import type { OrgRole, RolePermRecord } from '../../lib/facilioApiDataSource';
 import { Button } from '../primitives/Button';
 import { moduleColor } from '../../lib/unitStatus';
 import styles from './SettingsScreen.module.css';
 
-const MODULE_TABS: { id: 'permissions' | 'bookings' | UnitType; name: string }[] = [
+const MODULE_TABS: { id: 'permissions' | 'bookings' | 'module' | UnitType; name: string }[] = [
   { id: 'permissions', name: 'Roles & access' },
   { id: 'bookings', name: 'Bookings' },
   { id: 'workstation', name: 'Desks' },
   { id: 'locker', name: 'Lockers' },
   { id: 'parking', name: 'Parking' },
   { id: 'room', name: 'Rooms' },
+  { id: 'module', name: 'Module setup' },
 ];
 
 const MODE_PERM_COLS: { id: keyof ModePerms; name: string; desc: string }[] = [
@@ -66,6 +68,8 @@ export function SettingsScreen() {
           <PermissionsTab />
         ) : state.settingsTab === 'bookings' ? (
           <BookingsSettingsTab />
+        ) : state.settingsTab === 'module' ? (
+          <ModuleSetupTab />
         ) : (
           <ModuleTab type={state.settingsTab} />
         )}
@@ -186,9 +190,16 @@ function PermissionsTab() {
     }
   };
 
-  // Auto-load once for the persisted module name.
+  // Auto-load whenever the configured module (Settings › Module setup) differs from what's shown.
   useEffect(() => {
-    if (state.permsModuleName.trim() && loadedFor === null && !loading) void loadRecords(state.permsModuleName);
+    const name = state.permsModuleName.trim();
+    if (!name) {
+      setRecords([]);
+      setSavedRecords([]);
+      setLoadedFor(null);
+      return;
+    }
+    if (loadedFor !== name && !loading) void loadRecords(name);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.permsModuleName]);
 
@@ -266,48 +277,51 @@ function PermissionsTab() {
   return (
     <div className={styles.stack}>
       <div className={styles.card}>
+        {/* Section bar: title + refresh — records auto-load, the module name lives in Module setup. */}
         <div className={styles.cardHead}>
           <div>
-            <h3 className={styles.cardTitle}>Permissions module</h3>
+            <h3 className={styles.cardTitle}>Role permissions</h3>
             <p className={styles.cardDesc}>
-              The custom module that stores per-role floorplan permissions — one record per role, with a role lookup and boolean fields named with
-              edit / assign / book. The signed-in user&rsquo;s role picks their record; its values show or hide the Edit, Assignment and Booking tabs.
+              One record per role from the org&rsquo;s permissions module. Each record&rsquo;s Edit / Assignment / Booking values show or hide those
+              tabs for the roles it lists.
             </p>
           </div>
-        </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <input
-            value={state.permsModuleName}
-            onChange={(e) => actions.setPermsModuleName(e.target.value)}
-            placeholder="Custom module name (e.g. floorplanpermissions)"
-            style={{ flex: '1 1 260px', maxWidth: 380, padding: '10px 12px', borderRadius: 8, border: '1.5px solid var(--ink-200)', font: '500 13.5px var(--font-sans)', color: 'var(--ink-900)', background: '#fff' }}
-          />
           <Button
             variant="secondary"
             disabled={loading}
+            title="Refresh records"
+            aria-label="Refresh records"
             onClick={() => {
               void loadRecords(state.permsModuleName);
               void actions.refreshModePerms(state.permsModuleName);
             }}
           >
-            {loading ? 'Loading…' : 'Load records'}
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={loading ? styles.spin : undefined}>
+              <path d="M23 4v6h-6M1 20v-6h6" />
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+            </svg>
           </Button>
         </div>
         {!isFacilioApiConfigured && <div className={styles.footNote}>No backend configured — only the default toggles below apply.</div>}
         {loadError && <div className={styles.footNote} style={{ color: 'var(--danger-700)' }}>Couldn&rsquo;t load “{state.permsModuleName}”: {loadError}</div>}
-        {loadedFor && !loadError && !loading && records.length === 0 && isFacilioApiConfigured && (
-          <div className={styles.footNote}>No records in “{loadedFor}” — every user gets the defaults below.</div>
-        )}
-        {records.length > 0 && (
-          <>
+        <>
+            {/* Columns are the three mode permissions; each row is a record (its name field). */}
             <div className={styles.matrixHead}>
-              <span>Role</span>
+              <span>Name</span>
               {MODE_PERM_COLS.map((c) => (
                 <span key={c.id} className={styles.matrixHeadCell}>
                   {c.name}
                 </span>
               ))}
             </div>
+            {!loading && records.length === 0 && (
+              <div className={styles.footNote} style={{ padding: '14px 20px' }}>
+                {state.permsModuleName.trim()
+                  ? `No records in “${state.permsModuleName.trim()}” — every user gets the default permissions below.`
+                  : 'No permissions module configured — set one under Module setup.'}
+              </div>
+            )}
+            {loading && records.length === 0 && <div className={styles.footNote} style={{ padding: '14px 20px' }}>Loading records…</div>}
             {records.map((rec) => (
               <div key={rec.id} className={styles.matrixRow}>
                 <div>
@@ -366,18 +380,19 @@ function PermissionsTab() {
               </div>
             ))}
             {/* Batched save on request: toggles/roles above only edit locally; this writes the diff. */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12, marginTop: 12 }}>
-              {pendingCount > 0 && (
-                <span className={styles.rowDesc}>
-                  {pendingCount} unsaved change{pendingCount === 1 ? '' : 's'}
-                </span>
-              )}
-              <Button variant="primary" disabled={saving || pendingCount === 0} onClick={() => void saveChanges()}>
-                {saving ? 'Saving…' : 'Save changes'}
-              </Button>
-            </div>
-          </>
-        )}
+            {records.length > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12, marginTop: 12 }}>
+                {pendingCount > 0 && (
+                  <span className={styles.rowDesc}>
+                    {pendingCount} unsaved change{pendingCount === 1 ? '' : 's'}
+                  </span>
+                )}
+                <Button variant="primary" disabled={saving || pendingCount === 0} onClick={() => void saveChanges()}>
+                  {saving ? 'Saving…' : 'Save changes'}
+                </Button>
+              </div>
+            )}
+        </>
       </div>
 
       <div className={styles.card}>
@@ -430,6 +445,34 @@ function PermissionsTab() {
           </div>
           <AllowLocalFallbackSwitch />
         </div>
+      </div>
+    </div>
+  );
+}
+
+/** Settings › Module setup — names the org custom module that stores per-role permissions. */
+function ModuleSetupTab() {
+  const { state, actions } = useFloorplan();
+  return (
+    <div className={styles.stack}>
+      <div className={styles.card}>
+        <div className={styles.cardHead}>
+          <div>
+            <h3 className={styles.cardTitle}>Permissions module</h3>
+            <p className={styles.cardDesc}>
+              The custom module that stores per-role floorplan permissions — one record per role, with a role lookup and boolean fields named
+              edit / assignment / booking (suffixed with the module name). Records auto-load in Roles &amp; access.
+            </p>
+          </div>
+        </div>
+        <input
+          value={state.permsModuleName}
+          onChange={(e) => actions.setPermsModuleName(e.target.value)}
+          onBlur={() => void actions.refreshModePerms(state.permsModuleName)}
+          placeholder={`Custom module name (e.g. ${DEFAULT_PERMS_MODULE_NAME})`}
+          style={{ width: '100%', maxWidth: 420, padding: '10px 12px', borderRadius: 8, border: '1.5px solid var(--ink-200)', font: '500 13.5px var(--font-sans)', color: 'var(--ink-900)', background: '#fff' }}
+        />
+        {!isFacilioApiConfigured && <div className={styles.footNote}>No backend configured — only the default permission toggles apply.</div>}
       </div>
     </div>
   );

@@ -9,9 +9,9 @@ import type { AmenityIcon, Assignments, Booking, ClientContact, DefaultPlanView,
 import type { CadGroup } from '../lib/cadAnalyze';
 import type { Asset } from '../lib/assets';
 import { isFacilioApiConfigured } from '../lib/facilioApi';
-import { assignUnitReal, createRealBooking, fetchCurrentPeopleId, fetchFloorplanCustomization, fetchFloorplanImage, fetchMyDesk, findFloorParents, findUnitIdForDeskRecord, getAnyFloor, getFloorPlanSummary, patchUnitContact, resolveModePermsForCurrentUser, saveFloorplanDefaultView, saveFloorplanMarkers, vacateUnitReal } from '../lib/facilioApiDataSource';
+import { assignUnitReal, createRealBooking, fetchCurrentPeopleId, fetchFloorplanCustomization, fetchFloorplanImage, fetchMyDesk, fetchUnitAssigneeFromSummary, findFloorParents, findUnitIdForDeskRecord, getAnyFloor, getFloorPlanSummary, patchUnitContact, resolveModePermsForCurrentUser, saveFloorplanDefaultView, saveFloorplanMarkers, vacateUnitReal } from '../lib/facilioApiDataSource';
 import { listFloorplanFloorIds, loadFloorplanFile, persistFloorplanFile } from '../lib/floorplanFileStore';
-import { loadSettings, saveSettings, settingsFromState } from '../lib/settingsStore';
+import { DEFAULT_PERMS_MODULE_NAME, loadSettings, saveSettings, settingsFromState } from '../lib/settingsStore';
 import { pathForView, viewFromLocation } from '../lib/routes';
 import { buildInitialState, reducer } from './reducer';
 import type { Action } from './reducer';
@@ -1056,6 +1056,12 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
     dragOverUnit: (id: string | null) => dispatch({ type: 'DRAG_OVER_UNIT', id }),
 
     assign: async (contactId: string, unitId: string) => {
+      // Assignment CHANGES need edit access (viewing the Assignment tab only needs assign) —
+      // one central gate so every entry point (drag-drop, pickers, mobile) is covered.
+      if (!state.modePerms.edit) {
+        showToast('Changing assignments needs edit access', { variant: 'error' });
+        return;
+      }
       const target = unitById(state, unitId);
       if (!target) return;
       const next = { ...state.assignments };
@@ -1522,6 +1528,28 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
       });
   }, []);
 
+  // Previewing a unit fetches its record SUMMARY: the assignee lookup there names people the
+  // bulk contact fetch missed (permission-limited/paginated), so the popup upgrades from a
+  // generic "Occupied" to the real person. Resolved contacts are upserted into the directory.
+  useEffect(() => {
+    const selId = state.selected ?? state.mobSel;
+    if (!selId || !isFacilioApiConfigured) return;
+    const unit = unitById(state, selId);
+    if (!unit || unit.type === 'amenity' || unit.type === 'room') return;
+    const contactId = state.assignments[selId];
+    if (!contactId || state.clientContacts.some((c) => c.id === contactId)) return;
+    let cancelled = false;
+    fetchUnitAssigneeFromSummary(unit)
+      .then((c) => {
+        if (!cancelled && c) dispatch({ type: 'UPSERT_CLIENT_CONTACT', contact: { id: c.id, name: c.name, client: '' } });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.selected, state.mobSel]);
+
   // Persist settings (as one JSON string) whenever a config slice changes — debounced so a
   // color-picker drag or rapid toggles collapse into a single write. Skipped until the initial
   // load has run, so we never clobber stored config with defaults before it arrives.
@@ -1585,7 +1613,7 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
         void (async () => {
           const cfg = await loadSettings().catch(() => null);
           const defaults: ModePerms = { edit: true, assign: true, book: true, ...(cfg?.defaultModePerms ?? {}) };
-          const moduleName = cfg?.permsModuleName?.trim();
+          const moduleName = cfg?.permsModuleName?.trim() || DEFAULT_PERMS_MODULE_NAME;
           const fromModule = moduleName ? await resolveModePermsForCurrentUser(moduleName).catch(() => null) : null;
           dispatch({ type: 'SET_MODE_PERMS', perms: fromModule ? { ...defaults, ...fromModule } : defaults, fromModule: !!fromModule });
         })();

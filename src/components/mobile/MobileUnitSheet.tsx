@@ -28,7 +28,8 @@ export function MobileUnitSheet() {
   const assignable = unit && !isAmenity ? isAssignable(unit) : false;
   // Contact picking expands the sheet to near-full height with its own
   // search — a plain dropdown was unusable against the full directory.
-  const picking = !!unit && !showBookTab && assignable && (!contactId || state.mobAssignEdit);
+  // Assignment CHANGES need edit access (assign perm only grants the view).
+  const picking = !!unit && !showBookTab && assignable && state.modePerms.edit && (!contactId || state.mobAssignEdit);
 
   const filtered = useMemo(() => {
     const q = contactQuery.trim().toLowerCase();
@@ -97,8 +98,8 @@ export function MobileUnitSheet() {
         {!showBookTab && assignable && contactId && !state.mobAssignEdit && (
           <>
             <div className={styles.assignedRow}>
-              <span className={styles.avatar}>{initials(contactName(state, contactId))}</span>
-              <span className={styles.assignedName}>{contactName(state, contactId)}</span>
+              <span className={styles.avatar}>{initials(contactName(state, contactId) || 'Occupied')}</span>
+              <span className={styles.assignedName}>{contactName(state, contactId) || 'Occupied'}</span>
             </div>
             {/* No hardcoded Vacate/Reassign — state actions come from the record's stateflow
                 buttons (below), matching the web panel. */}

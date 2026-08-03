@@ -128,7 +128,7 @@ export interface AppState {
   modePermsFromModule: boolean;
 
   activeView: 'map' | 'settings' | 'bookings' | 'people';
-  settingsTab: 'permissions' | 'bookings' | UnitType;
+  settingsTab: 'permissions' | 'bookings' | 'module' | UnitType;
   moduleColors: Record<string, string>;
   slotGranularity: number;
   /**
