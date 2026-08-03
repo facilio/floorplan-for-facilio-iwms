@@ -7,25 +7,25 @@ import styles from './BottomNav.module.css';
 
 /**
  * Settings (admin setup: permissions module, module colors, booking module, local data) and
- * People (the org's directory) are MAINTENANCE-app surfaces — hidden in portals/app-gallery
- * embeds. Resolved from the ORG (application/fetchDetails → linkName), not guessed from the URL.
+ * People (the org's directory) show ONLY in the MAINTENANCE app — hidden in every portal /
+ * app-gallery embed. Resolved from the ORG (application/fetchDetails → linkName, with the SDK
+ * properties / embed token as fallbacks — see fetchCurrentApp).
  *
- * FAIL-OPEN: unknown/unreachable app identity counts as maintenance. Admins live in the
- * maintenance app, and hiding their tabs because a probe failed is worse than showing them
- * somewhere they'd be harmless — the actual data operations stay permission-gated regardless.
- * Local/prototype mode is always allowed (no org to ask).
+ * STRICT: in connected mode the tabs stay hidden until the app is confirmed to be maintenance
+ * (an unresolvable identity keeps them hidden). Local/prototype mode is always allowed — there
+ * is no org to ask.
  */
 export function useAdminSurfacesAllowed(): boolean {
-  const [allowed, setAllowed] = useState(true);
+  const [allowed, setAllowed] = useState(!isFacilioApiConfigured);
   useEffect(() => {
     if (!isFacilioApiConfigured) return;
     let cancelled = false;
     fetchCurrentApp()
       .then((app) => {
-        if (!cancelled) setAllowed(!app.linkName || app.linkName === 'maintenance');
+        if (!cancelled) setAllowed(app.linkName === 'maintenance');
       })
       .catch(() => {
-        /* keep the fail-open default */
+        /* keep hidden */
       });
     return () => {
       cancelled = true;

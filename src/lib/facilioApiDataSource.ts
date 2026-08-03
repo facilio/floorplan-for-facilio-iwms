@@ -2305,19 +2305,24 @@ export function fetchOrgRoles(): Promise<OrgRole[]> {
           .map((r) => ({ id: Number(r.roleId ?? r.id), name: (typeof r.name === 'string' && r.name.trim()) || `#${r.roleId ?? r.id}` }))
           .filter((r) => Number.isFinite(r.id) && r.id > 0);
 
-      // The roles endpoint is UNVERSIONED — `setup/roles`, NOT `v2/setup/roles` (that 404s), and
-      // it scopes by the CURRENT app, so appId rides as a URL param (same as the native client's
-      // role pickers: GET /setup/roles?appId=<current app>).
+      // The roles endpoint is UNVERSIONED — `setup/roles`, NOT `v2/setup/roles` (that 404s).
+      // The permissions module's roles LOOKUP spans the WHOLE org, so the picker must match it:
+      // fetch the unscoped list and union the current-app-scoped one (some builds only answer
+      // scoped, and a record can reference a role from any app — scoped-only rendered those
+      // chips as bare '#<id>').
       const appId = await fetchCurrentAppId().catch(() => null);
-      const params = appId ? { appId } : undefined;
-      let roles = extract(await customGet('setup/roles', params).catch(() => null));
+      const union = (a: OrgRole[], b: OrgRole[]) => [...a, ...b.filter((r) => !a.some((x) => x.id === r.id))];
+      let roles = extract(await customGet('setup/roles').catch(() => null));
+      if (appId) roles = union(roles, extract(await customGet('setup/roles', { appId }).catch(() => null)));
       if (!roles.length) {
         // Same-origin session fallback for when the SDK/app base resolves the path under a scope
         // the endpoint doesn't live in.
-        const qs = appId ? `?appId=${appId}` : '';
-        const res = await fetch(`/api/setup/roles${qs}`, { credentials: 'include' }).catch(() => null);
-        const alt = res?.ok ? await res.json().catch(() => null) : null;
-        roles = extract(alt);
+        for (const qs of ['', appId ? `?appId=${appId}` : null]) {
+          if (qs === null) continue;
+          const res = await fetch(`/api/setup/roles${qs}`, { credentials: 'include' }).catch(() => null);
+          const alt = res?.ok ? await res.json().catch(() => null) : null;
+          roles = union(roles, extract(alt));
+        }
       }
       if (!roles.length) {
         // eslint-disable-next-line no-console
