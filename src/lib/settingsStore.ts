@@ -9,6 +9,9 @@ import type { AppState } from '../state/types';
  * now the local copy is the source of truth on each device.
  */
 export interface SettingsConfig {
+  /** DEPRECATED — permission data is NEVER persisted anymore (perms resolve fresh from the org
+   * each load; caching them could carry one login's access over to the next on a shared
+   * browser). Keys remain so old stored JSON still parses; they are neither written nor applied. */
   perms?: Perms;
   moduleColors?: Record<string, string>;
   slotGranularity?: number;
@@ -19,7 +22,7 @@ export interface SettingsConfig {
   allowLocalFallback?: boolean;
   /** Org custom module holding per-role mode permissions (Settings › Permissions). */
   permsModuleName?: string;
-  /** Fallback mode visibility when no module record matches the user's role. */
+  /** DEPRECATED — same as `perms`: kept for parse-compat, never written or applied. */
   defaultModePerms?: import('./types').ModePerms;
   /**
    * DEPRECATED — the client contact this device's user was manually picked to be. Who-you-are
@@ -38,17 +41,15 @@ const LS_KEY = 'facilio_floorplan_settings_v1';
  */
 export const DEFAULT_PERMS_MODULE_NAME = 'custom_floorplanpermissions';
 
-/** Extract the persisted slice of app state. */
+/** Extract the persisted slice of app state — NO permission data (see the deprecation notes). */
 export function settingsFromState(state: AppState): SettingsConfig {
   return {
-    perms: state.perms,
     moduleColors: state.moduleColors,
     slotGranularity: state.slotGranularity,
     bookingModule: state.bookingModule,
     customMarkers: state.customMarkers,
     allowLocalFallback: state.allowLocalFallback,
     permsModuleName: state.permsModuleName,
-    defaultModePerms: state.defaultModePerms,
   };
 }
 

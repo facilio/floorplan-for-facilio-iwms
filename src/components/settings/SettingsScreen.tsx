@@ -400,7 +400,8 @@ function PermissionsTab() {
           <div>
             <h3 className={styles.cardTitle}>Default permissions</h3>
             <p className={styles.cardDesc}>
-              Applied when no module record matches the signed-in user&rsquo;s role (or no module is set). Saved with your workspace settings.
+              Applied when no module record matches the signed-in user&rsquo;s role (or no module is set). Session-only — permission data is never
+              cached in the browser; it resolves fresh from the org on every load.
             </p>
           </div>
         </div>

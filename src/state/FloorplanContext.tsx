@@ -9,7 +9,7 @@ import type { AmenityIcon, Assignments, Booking, ClientContact, DefaultPlanView,
 import type { CadGroup } from '../lib/cadAnalyze';
 import type { Asset } from '../lib/assets';
 import { isFacilioApiConfigured } from '../lib/facilioApi';
-import { assignUnitReal, createRealBooking, fetchCurrentPeopleId, fetchFloorplanCustomization, fetchFloorplanImage, fetchMyDesk, fetchUnitAssigneeFromSummary, findFloorParents, findUnitIdForDeskRecord, getAnyFloor, getFloorPlanSummary, patchUnitContact, resolveModePermsForCurrentUser, saveFloorplanDefaultView, saveFloorplanMarkers, vacateUnitReal } from '../lib/facilioApiDataSource';
+import { assignUnitReal, createRealBooking, fetchCurrentPeopleId, fetchFloorplanCustomization, fetchFloorplanImage, fetchMyDesk, fetchUnitAssigneeFromSummary, findFloorParents, findUnitIdForDeskRecord, getAnyFloor, getFloorPlanSummary, patchUnitContact, resolveHardcodedRolePerms, resolveModePermsForCurrentUser, saveFloorplanDefaultView, saveFloorplanMarkers, vacateUnitReal } from '../lib/facilioApiDataSource';
 import { listFloorplanFloorIds, loadFloorplanFile, persistFloorplanFile } from '../lib/floorplanFileStore';
 import { DEFAULT_PERMS_MODULE_NAME, loadSettings, saveSettings, settingsFromState } from '../lib/settingsStore';
 import { pathForView, viewFromLocation } from '../lib/routes';
@@ -1328,10 +1328,16 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
     refreshModePerms: async (moduleNameOverride?: string) => {
       const moduleName = (moduleNameOverride ?? state.permsModuleName).trim();
       const defaults = state.defaultModePerms;
-      if (isFacilioApiConfigured && moduleName) {
-        const fromModule = await resolveModePermsForCurrentUser(moduleName).catch(() => null);
+      if (isFacilioApiConfigured) {
+        const fromModule = moduleName ? await resolveModePermsForCurrentUser(moduleName).catch(() => null) : null;
         if (fromModule) {
           dispatch({ type: 'SET_MODE_PERMS', perms: { ...defaults, ...fromModule }, fromModule: true });
+          return;
+        }
+        // No module (or no record for this role) -> the TEMPORARY hardcoded role fallbacks.
+        const hardcoded = await resolveHardcodedRolePerms().catch(() => null);
+        if (hardcoded) {
+          dispatch({ type: 'SET_MODE_PERMS', perms: { ...defaults, ...hardcoded }, fromModule: true });
           return;
         }
       }
@@ -1561,7 +1567,7 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
     }, 500);
     return () => clearTimeout(saveTimer.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.perms, state.moduleColors, state.slotGranularity, state.bookingModule, state.customMarkers, state.allowLocalFallback, state.permsModuleName, state.defaultModePerms]);
+  }, [state.moduleColors, state.slotGranularity, state.bookingModule, state.customMarkers, state.allowLocalFallback, state.permsModuleName]);
 
   useEffect(() => {
     if (loadedRef.current) return;
@@ -1607,15 +1613,18 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
         const peopleId = await fetchCurrentPeopleId().catch(() => null);
         if (peopleId) dispatch({ type: 'SET_BOOK_FIELD', field: 'bookBy', value: String(peopleId) });
         // Mode-tab permissions: the role-permissions module record matching the session's role
-        // decides which tabs show; no record/module -> the persisted defaults. Settings are read
-        // directly here (the settings-load effect races this one). Fire-and-forget: the tabs
-        // simply snap to the resolved set when this lands.
+        // decides which tabs show; no record/module -> the TEMPORARY hardcoded role fallbacks,
+        // then the in-session defaults. Permission data is NEVER read from the persisted cache
+        // (only the module name is) — perms resolve fresh from the org every load.
+        // Fire-and-forget: the tabs simply snap to the resolved set when this lands.
         void (async () => {
           const cfg = await loadSettings().catch(() => null);
-          const defaults: ModePerms = { edit: true, assign: true, book: true, ...(cfg?.defaultModePerms ?? {}) };
+          const defaults: ModePerms = { edit: true, assign: true, book: true };
           const moduleName = cfg?.permsModuleName?.trim() || DEFAULT_PERMS_MODULE_NAME;
           const fromModule = moduleName ? await resolveModePermsForCurrentUser(moduleName).catch(() => null) : null;
-          dispatch({ type: 'SET_MODE_PERMS', perms: fromModule ? { ...defaults, ...fromModule } : defaults, fromModule: !!fromModule });
+          const hardcoded = fromModule ? null : await resolveHardcodedRolePerms().catch(() => null);
+          const resolved = fromModule ?? hardcoded;
+          dispatch({ type: 'SET_MODE_PERMS', perms: resolved ? { ...defaults, ...resolved } : defaults, fromModule: !!resolved });
         })();
         myDesk = await fetchMyDesk().catch(() => null);
         firstRealFloor = myDesk?.floorId ?? (await getAnyFloor().catch(() => null))?.id;

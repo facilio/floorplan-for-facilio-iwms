@@ -489,7 +489,6 @@ export function reducer(state: AppState, action: Action): AppState {
       const c = action.config;
       return {
         ...state,
-        perms: c.perms ?? state.perms,
         moduleColors: c.moduleColors ?? state.moduleColors,
         slotGranularity: c.slotGranularity ?? state.slotGranularity,
         bookingModule: c.bookingModule ?? state.bookingModule,
@@ -497,10 +496,9 @@ export function reducer(state: AppState, action: Action): AppState {
         allowLocalFallback: c.allowLocalFallback ?? state.allowLocalFallback,
         // An empty persisted value (saved before a default existed) must not wipe the default.
         permsModuleName: c.permsModuleName?.trim() ? c.permsModuleName : state.permsModuleName,
-        defaultModePerms: c.defaultModePerms ?? state.defaultModePerms,
-        // Effective perms follow the persisted defaults until a module record overrides them
-        // (the boot resolution dispatches SET_MODE_PERMS afterwards when one matches).
-        ...(!state.modePermsFromModule && c.defaultModePerms ? { modePerms: c.defaultModePerms } : {}),
+        // perms / defaultModePerms deliberately NOT hydrated: permission data is never read
+        // from the cache — the boot resolution (module record / hardcoded roles) is the only
+        // source, so one login's access can't leak to the next on a shared browser.
         // bookBy deliberately NOT hydrated: who-you-are comes from the login session (see the
         // boot effect's fetchCurrentPeopleId), never from a persisted device setting.
       };

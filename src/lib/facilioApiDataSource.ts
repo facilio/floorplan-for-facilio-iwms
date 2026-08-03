@@ -2451,6 +2451,20 @@ export async function resolveModePermsForCurrentUser(moduleName: string): Promis
   return merged;
 }
 
+/**
+ * TEMPORARY hardcoded role fallbacks (explicitly requested) for when NO permissions module is
+ * available — no module name configured, or the module yields nothing for the session role:
+ * 6426 -> booking only, 6425 -> assignment + booking. Remove once every org carries the module.
+ */
+const HARDCODED_ROLE_PERMS: Record<number, Partial<ModePerms>> = {
+  6426: { edit: false, assign: false, book: true },
+  6425: { edit: false, assign: true, book: true },
+};
+export async function resolveHardcodedRolePerms(): Promise<Partial<ModePerms> | null> {
+  const { roleId } = await fetchSessionUser().catch(() => ({ roleId: null as number | null }));
+  return (roleId && HARDCODED_ROLE_PERMS[roleId]) || null;
+}
+
 /** Writes ONE permission flag back to its module record, using the record's own field name. */
 export async function updateRolePermissionRecord(moduleName: string, rec: RolePermRecord, perm: keyof ModePerms, value: boolean): Promise<boolean> {
   if (!isFacilioApiConfigured) return false;
