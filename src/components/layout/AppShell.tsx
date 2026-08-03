@@ -41,7 +41,7 @@ export function AppShell() {
     <div className={styles.root}>
       {state.activeView === 'settings' && adminAllowed ? (
         <SettingsScreen />
-      ) : state.activeView === 'bookings' ? (
+      ) : state.activeView === 'bookings' && state.modePerms.book ? (
         <BookingsView />
       ) : state.activeView === 'people' && adminAllowed ? (
         <PeopleView />

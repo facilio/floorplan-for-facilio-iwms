@@ -48,6 +48,8 @@ export function BottomNav() {
         onClick={actions.openMap}
         icon={<path d="M9 3L4 5v16l5-2 6 2 5-2V3l-5 2-6-2z M9 3v16M15 5v16" />}
       />
+      {/* Bookings shows only with the booking mode-permission (same rule as the Booking tab). */}
+      {state.modePerms.book && (
       <NavBtn
         active={view === 'bookings'}
         label="Bookings"
@@ -55,6 +57,7 @@ export function BottomNav() {
         onClick={actions.openBookings}
         icon={<><rect x="3" y="4" width="18" height="17" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></>}
       />
+      )}
       {adminAllowed && (
       <NavBtn
         active={view === 'people'}
