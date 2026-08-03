@@ -135,13 +135,27 @@ export class FacilioApiDataSource implements FloorplanDataSource {
 
   async getClientContacts(): Promise<ClientContact[]> {
     this.assertConfigured();
-    const res = await facilioApi.fetchAll('clientcontact', { page: 1, perPage: 500 });
-    if (res.error) throw new Error(`facilio-api: client contact fetch failed (${res.error.code ?? '?'} ${res.error.message ?? ''})`.trim());
-    return (res.list ?? []).map((c: any) => ({
-      id: String(c.id),
-      name: c.name,
-      client: c.client?.name ?? c.clientName ?? '',
-    }));
+    // The WHOLE directory, paginated — with a single 500-row page, assignees past page 1 never
+    // resolved locally and every such desk needed a per-record summary fetch on preview. Capped
+    // at 10 pages (5000 contacts) as a runaway guard; a failed later page keeps earlier pages.
+    const all: ClientContact[] = [];
+    for (let page = 1; page <= 10; page++) {
+      const res = await facilioApi.fetchAll('clientcontact', { page, perPage: 500 });
+      if (res.error) {
+        if (page === 1) throw new Error(`facilio-api: client contact fetch failed (${res.error.code ?? '?'} ${res.error.message ?? ''})`.trim());
+        break;
+      }
+      const list = res.list ?? [];
+      all.push(
+        ...list.map((c: any) => ({
+          id: String(c.id),
+          name: c.name,
+          client: c.client?.name ?? c.clientName ?? '',
+        }))
+      );
+      if (list.length < 500) break;
+    }
+    return all;
   }
 
   async getAssets(): Promise<Asset[]> {
