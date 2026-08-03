@@ -2371,9 +2371,16 @@ const MODE_PERM_KEYS = ['edit', 'assign', 'book'] as const;
 const isBoolish = (v: unknown) => typeof v === 'boolean' || v === 0 || v === 1 || v === 'true' || v === 'false';
 const asPermBool = (v: unknown) => v === true || v === 1 || v === 'true';
 
-export async function fetchRolePermissionRecords(moduleName: string): Promise<RolePermRecord[]> {
+export async function fetchRolePermissionRecords(
+  moduleName: string,
+  opts?: { roleId?: number; page?: number; perPage?: number }
+): Promise<RolePermRecord[]> {
   if (!isFacilioApiConfigured || !moduleName.trim()) return [];
-  const res: any = await facilioApi.fetchAll(moduleName.trim(), { page: 1, perPage: 500 });
+  const mod = moduleName.trim();
+  // Server-side role filter on the roles MULTI-lookup: operatorId 90 = multi-lookup "contains"
+  // (the lookup "is" operator 36 doesn't apply to multi fields).
+  const filters = opts?.roleId != null ? JSON.stringify({ [`roles_${mod}`]: { operatorId: 90, value: [String(opts.roleId)] } }) : undefined;
+  const res: any = await facilioApi.fetchAll(mod, { page: opts?.page ?? 1, perPage: opts?.perPage ?? 500, ...(filters ? { filters } : {}) });
   if (res.error || !res.list) throw new Error(res.error?.message || `facilio-api: ${moduleName} fetch failed`);
   return (res.list as any[]).map((r) => {
     const fieldKeys: Partial<Record<keyof ModePerms, string>> = {};
@@ -2427,8 +2434,14 @@ export async function fetchRolePermissionRecords(moduleName: string): Promise<Ro
 export async function resolveModePermsForCurrentUser(moduleName: string): Promise<Partial<ModePerms> | null> {
   const { roleId } = await fetchSessionUser();
   if (!roleId) return null;
-  const records = await fetchRolePermissionRecords(moduleName);
-  const hits = records.filter((r) => r.roleIds.includes(roleId) && Object.keys(r.values).length > 0);
+  // On-load path: ONE filtered row (roles contains roleId, page 1 / perPage 1) instead of the
+  // whole module. The roleIds check stays as a guard for builds that ignore an unknown filter
+  // key; anything unexpected falls back to the full fetch + client-side filter.
+  const matches = (rs: RolePermRecord[]) => rs.filter((r) => r.roleIds.includes(roleId) && Object.keys(r.values).length > 0);
+  let hits = matches(await fetchRolePermissionRecords(moduleName, { roleId, page: 1, perPage: 1 }).catch(() => []));
+  if (!hits.length) {
+    hits = matches(await fetchRolePermissionRecords(moduleName));
+  }
   if (!hits.length) return null;
   const merged: Partial<ModePerms> = {};
   for (const p of MODE_PERM_KEYS) {
