@@ -2250,22 +2250,25 @@ export function fetchCurrentAppId(): Promise<number | null> {
 }
 
 // ---------------------------------------------------------------------------
-// Role-permissions CUSTOM MODULE (Settings › Permissions): one record per role — a `role`
-// lookup plus BOOLEAN fields whose names contain edit/assign/book (field names are org-defined,
-// so they're discovered per record rather than hardcoded). The matched record decides which
-// mode tabs the user sees; no match -> the Settings defaults apply.
+// Role-permissions CUSTOM MODULE (Settings › Permissions): one record per role — a
+// `roles_<moduleName>` multi-lookup plus BOOLEAN `edit_/assignment_/booking_<moduleName>`
+// fields (Facilio's custom-field naming convention), discovered per record with fallbacks for
+// differently-named orgs. The matched record decides which mode tabs the user sees; no match
+// -> the Settings defaults apply.
 // ---------------------------------------------------------------------------
 
 export interface RolePermRecord {
   id: number;
   /** Display label — the record's own NAME field (roles are listed/edited separately). */
   label: string;
-  /** `role` is a MULTI-lookup: one permission record can apply to several roles. */
+  /** The roles MULTI-lookup: one permission record can apply to several roles. */
   roleIds: number[];
   /** The record's boolean permission values, keyed by mode. Missing = field absent on the record. */
   values: Partial<ModePerms>;
   /** The record's ACTUAL field names per mode — updates write back these exact keys. */
   fieldKeys: Partial<Record<keyof ModePerms, string>>;
+  /** The roles multi-lookup's ACTUAL field name (`roles_<moduleName>`, older orgs: `role`). */
+  roleFieldKey: string;
 }
 
 /** An org role, for the permission records' role picker. */
@@ -2315,13 +2318,13 @@ export function fetchOrgRoles(): Promise<OrgRole[]> {
   return orgRolesCache;
 }
 
-/** Writes a permission record's role MULTI-lookup — the standard array-of-{id} lookup shape. */
-export async function updateRolePermissionRoles(moduleName: string, recordId: number, roleIds: number[]): Promise<boolean> {
+/** Writes a permission record's roles MULTI-lookup (its own discovered field key) — the standard array-of-{id} lookup shape. */
+export async function updateRolePermissionRoles(moduleName: string, rec: RolePermRecord, roleIds: number[]): Promise<boolean> {
   if (!isFacilioApiConfigured) return false;
-  const res = await facilioApi.updateRecord(moduleName.trim(), { id: recordId, data: { role: roleIds.map((id) => ({ id })) } });
+  const res = await facilioApi.updateRecord(moduleName.trim(), { id: rec.id, data: { [rec.roleFieldKey]: roleIds.map((id) => ({ id })) } });
   if (res.error) {
     // eslint-disable-next-line no-console
-    console.warn(`[facilio-api] ${moduleName} role update failed for record ${recordId}`, res.error);
+    console.warn(`[facilio-api] ${moduleName}.${rec.roleFieldKey} update failed for record ${rec.id}`, res.error);
     return false;
   }
   return true;
@@ -2381,14 +2384,17 @@ export async function fetchRolePermissionRecords(moduleName: string): Promise<Ro
       const k = fieldKeys[p];
       if (k) values[p] = asPermBool(r[k]);
     }
-    const roleRaw = r.role ?? r.roles ?? r.roleId;
+    // The roles multi-lookup follows the same suffix convention (`roles_<moduleName>`); older
+    // shapes (`role`/`roles`/`roleId`) stay as read fallbacks. Writes reuse the discovered key.
+    const roleFieldKey = [`roles_${moduleName.trim()}`, 'role', 'roles', 'roleId'].find((k) => r[k] !== undefined) ?? `roles_${moduleName.trim()}`;
     return {
       id: r.id,
-      // The record's OWN name labels the row; its roles are listed/edited separately in the UI.
+      // The record's OWN `name` field labels the row; its roles are listed/edited separately.
       label: (typeof r.name === 'string' && r.name.trim()) || `#${r.id}`,
-      roleIds: normalizeRoleIds(roleRaw),
+      roleIds: normalizeRoleIds(r[roleFieldKey]),
       values,
       fieldKeys,
+      roleFieldKey,
     };
   });
 }

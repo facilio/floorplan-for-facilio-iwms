@@ -238,7 +238,7 @@ function PermissionsTab() {
     setSaving(true);
     const [permResults, roleResults] = await Promise.all([
       Promise.all(permChanges.map((c) => updateRolePermissionRecord(state.permsModuleName, c.rec, c.perm, c.value).catch(() => false))),
-      Promise.all(roleChanges.map((rec) => updateRolePermissionRoles(state.permsModuleName, rec.id, rec.roleIds).catch(() => false))),
+      Promise.all(roleChanges.map((rec) => updateRolePermissionRoles(state.permsModuleName, rec, rec.roleIds).catch(() => false))),
     ]);
     const failedPerms = permChanges.filter((_, i) => !permResults[i]);
     const failedRoles = roleChanges.filter((_, i) => !roleResults[i]);
