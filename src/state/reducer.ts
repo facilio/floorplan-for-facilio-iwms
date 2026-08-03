@@ -555,7 +555,7 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'SET_MODULE_COLOR':
       return { ...state, moduleColors: { ...state.moduleColors, [action.key]: action.hex } };
     case 'SET_SLOT_GRANULARITY':
-      return { ...state, slotGranularity: action.minutes, end: Math.min(1200, state.start + action.minutes) };
+      return { ...state, slotGranularity: action.minutes, end: Math.min(1440, state.start + action.minutes) };
 
     case 'SHOW_TOAST': {
       // Cap the stack at 3 (design rule) — oldest drops first.

@@ -11,10 +11,12 @@ import { StateflowActions, UnitStateflowSection } from './StateflowActions';
 import card from './Card.module.css';
 import styles from './BookPanel.module.css';
 
-const TIME_OPTIONS = Array.from({ length: (1200 - 420) / 30 + 1 }, (_, i) => 420 + i * 30).map((m) => ({ value: String(m), label: fmtTime(m) }));
+// FULL day (00:00–24:00), not the old 07:00–20:00 office window — per-select filtering keeps
+// start strictly before end and vice versa.
+const TIME_OPTIONS = Array.from({ length: 1440 / 30 + 1 }, (_, i) => i * 30).map((m) => ({ value: String(m), label: fmtTime(m) }));
 
-const WIN_S = 420;
-const WIN_E = 1200;
+const WIN_S = 0;
+const WIN_E = 1440;
 const PXH = 28;
 
 export function BookPanel() {
@@ -38,7 +40,7 @@ export function BookPanel() {
               <label className={card.label}>Start</label>
               <Select
                 value={String(state.start)}
-                options={TIME_OPTIONS}
+                options={TIME_OPTIONS.filter((o) => Number(o.value) < state.end)}
                 onChange={(v) => actions.setTimeRange(Number(v), Math.max(Number(v) + 15, state.end))}
                 fullWidth
                 aria-label="Start time"
@@ -48,7 +50,7 @@ export function BookPanel() {
               <label className={card.label}>End</label>
               <Select
                 value={String(state.end)}
-                options={TIME_OPTIONS}
+                options={TIME_OPTIONS.filter((o) => Number(o.value) > state.start)}
                 onChange={(v) => actions.setTimeRange(Math.min(state.start, Number(v) - 15), Number(v))}
                 fullWidth
                 aria-label="End time"

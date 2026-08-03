@@ -421,32 +421,8 @@ function PermissionsTab() {
         ))}
       </div>
 
-      <div className={styles.card}>
-        <div className={styles.cardHead}>
-          <div>
-            <h3 className={styles.cardTitle}>Local data</h3>
-            <p className={styles.cardDesc}>
-              In local dev the app seeds from the editable JSON in <code>src/data</code> (sites,
-              people, assets, spaces, bookings) and layers this session&rsquo;s edits on top in the
-              browser. Clearing wipes those local edits and reloads, re-seeding from the repo JSON
-              (and any live Facilio API data in connected-app mode).
-            </p>
-          </div>
-          <Button variant="secondary" onClick={actions.clearCaches}>
-            Clear local data
-          </Button>
-        </div>
-        <div className={styles.stateRow}>
-          <div className={styles.stateText}>
-            <div className={styles.rowName}>Allow local data as a fallback</div>
-            <div className={styles.rowDesc}>
-              When off, a failure loading your organization&rsquo;s real data shows an error
-              instead of silently falling back to local/seed data.
-            </div>
-          </div>
-          <AllowLocalFallbackSwitch />
-        </div>
-      </div>
+      {/* The Local data card (clear + fallback toggle) was removed on request — local seeding
+          stays a dev concern handled in code (dataSource), not an admin-facing setting. */}
     </div>
   );
 }
@@ -466,26 +442,20 @@ function ModuleSetupTab() {
             </p>
           </div>
         </div>
-        <input
-          value={state.permsModuleName}
-          onChange={(e) => actions.setPermsModuleName(e.target.value)}
-          onBlur={() => void actions.refreshModePerms(state.permsModuleName)}
-          placeholder={`Custom module name (e.g. ${DEFAULT_PERMS_MODULE_NAME})`}
-          style={{ width: '100%', maxWidth: 420, padding: '10px 12px', borderRadius: 8, border: '1.5px solid var(--ink-200)', font: '500 13.5px var(--font-sans)', color: 'var(--ink-900)', background: '#fff' }}
-        />
-        {!isFacilioApiConfigured && <div className={styles.footNote}>No backend configured — only the default permission toggles apply.</div>}
+        {/* .card has no inner padding of its own (cardHead/rows pad themselves) — the input
+            needs a padded wrapper or it sits flush against the card edge. */}
+        <div style={{ padding: '16px 20px' }}>
+          <input
+            value={state.permsModuleName}
+            onChange={(e) => actions.setPermsModuleName(e.target.value)}
+            onBlur={() => void actions.refreshModePerms(state.permsModuleName)}
+            placeholder={`Custom module name (e.g. ${DEFAULT_PERMS_MODULE_NAME})`}
+            style={{ display: 'block', width: '100%', maxWidth: 420, boxSizing: 'border-box', padding: '10px 12px', borderRadius: 8, border: '1.5px solid var(--ink-200)', font: '500 13.5px var(--font-sans)', color: 'var(--ink-900)', background: '#fff' }}
+          />
+          {!isFacilioApiConfigured && <div className={styles.footNote}>No backend configured — only the default permission toggles apply.</div>}
+        </div>
       </div>
     </div>
-  );
-}
-
-function AllowLocalFallbackSwitch() {
-  const { state, actions } = useFloorplan();
-  const on = state.allowLocalFallback;
-  return (
-    <button className={[styles.switch, on ? styles.switchOn : ''].join(' ')} onClick={() => actions.setAllowLocalFallback(!on)}>
-      <span className={styles.knob} style={{ left: on ? 18 : 2 }} />
-    </button>
   );
 }
 

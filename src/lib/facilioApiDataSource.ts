@@ -2405,10 +2405,15 @@ export async function fetchRolePermissionRecords(
         }
       }
     }
+    // Any perm still unmatched gets the org's canonical derived key: an unset boolean (null /
+    // omitted) is an UNCHECKED checkbox — it renders as an OFF switch and resolves to false,
+    // never as "no field". Toggling it on writes the derived key.
+    for (const p of MODE_PERM_KEYS) {
+      if (!fieldKeys[p]) fieldKeys[p] = `${PERM_BASE_KEY[p]}_${mod}`;
+    }
     const values: Partial<ModePerms> = {};
     for (const p of MODE_PERM_KEYS) {
-      const k = fieldKeys[p];
-      if (k) values[p] = asPermBool(r[k]);
+      values[p] = asPermBool(r[fieldKeys[p]!]);
     }
     // The roles multi-lookup follows the same suffix convention (`roles_<moduleName>`); older
     // shapes (`role`/`roles`/`roleId`) stay as read fallbacks. Writes reuse the discovered key.

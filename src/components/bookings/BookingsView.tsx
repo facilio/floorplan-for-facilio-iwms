@@ -80,8 +80,9 @@ const CATEGORIES: { id: UnitType; label: string; bookable: boolean }[] = [
   { id: 'room', label: 'Spaces', bookable: true },
 ];
 
-const DAY_START = 6 * 60; // 06:00
-const DAY_END = 22 * 60; // 22:00
+// FULL day — bookings aren't limited to office hours (the grid still auto-scrolls to 07:00).
+const DAY_START = 0; // 00:00
+const DAY_END = 24 * 60; // 24:00
 const PX_PER_HOUR = 52;
 const PX_PER_MIN = PX_PER_HOUR / 60;
 const GRID_HEIGHT = ((DAY_END - DAY_START) / 60) * PX_PER_HOUR;

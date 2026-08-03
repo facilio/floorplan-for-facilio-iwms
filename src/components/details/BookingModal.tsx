@@ -132,7 +132,8 @@ function BookingFormInner() {
   const reserverLabel = isFacility ? 'Reserved For' : 'Reserved By';
 
   const slotLen = state.slotGranularity;
-  const slots = Array.from({ length: (18 * 60 - 8 * 60) / slotLen }, (_, i) => 8 * 60 + i * slotLen);
+  // Full-day slot chips (00:00–24:00), not the old 08:00–18:00 office window.
+  const slots = Array.from({ length: (24 * 60) / slotLen }, (_, i) => i * slotLen);
 
   const contactOptions = contacts.map((c) => ({ value: c.id, label: c.name, sublabel: c.client }));
 

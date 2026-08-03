@@ -1,5 +1,6 @@
 import { useFloorplan } from '../../state/FloorplanContext';
 import { contactName, isAssignable, isBookable, unitById } from '../../state/selectors';
+import { isFacilioApiConfigured } from '../../lib/facilioApi';
 import { tooltipPlacement, unitCenter } from '../../lib/geometry';
 import { unitStatus } from '../../lib/unitStatus';
 import { StatusPill } from '../primitives/StatusPill';
@@ -84,9 +85,14 @@ export function Tooltip() {
       {/* Everything below is booking/assignment — irrelevant for amenities/assets. */}
       {!isAmenity && (
       <>
-      <div className={styles.statusRow}>
-        <StatusPill label={status.text} bg={status.bg} fg={status.fg} />
-      </div>
+      {/* Connected mode shows ONLY the record's own moduleState (the stateflow section below) —
+          the app-derived pill duplicated it ("Occupied" twice). It remains as the local-mode
+          fallback, where there is no stateflow to ask. */}
+      {!isFacilioApiConfigured && (
+        <div className={styles.statusRow}>
+          <StatusPill label={status.text} bg={status.bg} fg={status.fg} />
+        </div>
+      )}
 
       {/* The record's OWN stateflow: current state + approval pills ("the desk status"), and
           Assign/Vacate/whatever transitions its current state actually offers — STRICT rule,
