@@ -4,6 +4,7 @@ import { useFloorplan } from '../../state/FloorplanContext';
 import { bookedUnitIds, conflictsFor, contactName, isBookable, unitById } from '../../state/selectors';
 import { fmtTime } from '../../lib/geometry';
 import { Select } from '../primitives/Select';
+import { DatePicker } from '../primitives/DatePicker';
 import { Button } from '../primitives/Button';
 import { SkeletonRows } from '../primitives/Skeleton';
 import { StatusPill } from '../primitives/StatusPill';
@@ -45,7 +46,7 @@ export function BookPanel() {
         </div>
         <div className={card.cardBody}>
           <label className={card.label}>Date</label>
-          <input className={card.input} type="date" value={state.date} min={minDate} max={maxDate} onChange={(e) => actions.setDate(e.target.value)} />
+          <DatePicker value={state.date} min={minDate} max={maxDate} onChange={(v) => void actions.setDate(v)} fullWidth aria-label="Booking date" />
           <div className={styles.timeRow}>
             <div style={{ flex: 1 }}>
               <label className={card.label}>Start</label>

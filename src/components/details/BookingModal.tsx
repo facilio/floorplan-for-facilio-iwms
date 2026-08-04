@@ -9,6 +9,7 @@ import type { BookingFormFieldMeta, BookingFormMeta, BookingFormSummary } from '
 import type { ClientContact, UnitType } from '../../lib/types';
 import { Modal, ModalFooter, ModalHeader } from '../primitives/Modal';
 import { Select } from '../primitives/Select';
+import { DatePicker } from '../primitives/DatePicker';
 import { Button } from '../primitives/Button';
 import { ButtonSpinner } from '../primitives/ButtonSpinner';
 import card from './Card.module.css';
@@ -325,7 +326,7 @@ function BookingFormInner() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
         <div>
           <div className={card.label}>Select Date</div>
-          <input className={card.input} type="date" value={slotDate} min={minDate} max={maxDate} onChange={(e) => setSlotDate(e.target.value)} />
+          <DatePicker value={slotDate} min={minDate} max={maxDate} onChange={setSlotDate} fullWidth aria-label="Booking date" />
         </div>
         <div>
           <div className={card.label}>Start Time</div>
@@ -354,7 +355,7 @@ function BookingFormInner() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         <div>
           <div className={card.label}>Select Date</div>
-          <input className={card.input} type="date" value={slotDate} min={minDate} max={maxDate} onChange={(e) => setSlotDate(e.target.value)} />
+          <DatePicker value={slotDate} min={minDate} max={maxDate} onChange={setSlotDate} fullWidth aria-label="Booking date" />
         </div>
         <div>
           <div className={card.label}>Time Slot</div>
@@ -477,7 +478,7 @@ function BookingFormInner() {
     let control: ReactNode;
     if (f.type === 'TEXTAREA') control = <textarea className={card.input} style={{ height: 64, padding: '8px 10px', resize: 'vertical' }} value={val} onChange={(e) => set(e.target.value)} />;
     else if (f.type === 'NUMBER' || f.type === 'DECIMAL') control = <input className={card.input} type="number" value={val} onChange={(e) => set(e.target.value)} />;
-    else if (f.type === 'DATE') control = <input className={card.input} type="date" value={val} onChange={(e) => set(e.target.value)} />;
+    else if (f.type === 'DATE') control = <DatePicker value={val} onChange={set} fullWidth aria-label={f.label || f.name} />;
     else if (f.type === 'DATETIME') control = <input className={card.input} type="datetime-local" value={val} onChange={(e) => set(e.target.value)} />;
     else if (f.type === 'DECISION_BOX')
       control = (
