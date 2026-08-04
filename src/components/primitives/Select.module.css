@@ -118,3 +118,26 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.searchRow {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #fff;
+  padding: 6px;
+  border-bottom: 1px solid var(--ink-100);
+  list-style: none;
+}
+.searchInput {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 9px;
+  border-radius: 6px;
+  border: 1.5px solid var(--ink-200);
+  font: 500 12.5px var(--font-sans);
+  color: var(--ink-900);
+}
+.searchInput:focus {
+  outline: none;
+  border-color: var(--blue-500);
+}

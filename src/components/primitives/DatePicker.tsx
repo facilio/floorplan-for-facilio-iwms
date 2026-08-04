@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 /**
  * App-wide DATE PICKER (replaces every native `<input type="date">` on request): a button
@@ -27,6 +28,28 @@ export function DatePicker({
   const [viewYear, setViewYear] = useState(selected.getFullYear());
   const [viewMonth, setViewMonth] = useState(selected.getMonth());
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const popRef = useRef<HTMLDivElement | null>(null);
+  // FLOATING placement (portal + fixed): inside a modal/panel an absolutely-positioned popup
+  // pushed the form down / clipped against the scroll edge — this overlays instead, flipping
+  // above the trigger when the viewport bottom is close.
+  const [pos, setPos] = useState<{ left: number; top: number; up: boolean } | null>(null);
+  useLayoutEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const r = rootRef.current?.getBoundingClientRect();
+      if (!r) return;
+      const POP_H = 330;
+      const up = window.innerHeight - r.bottom < POP_H && r.top > POP_H;
+      setPos({ left: Math.min(Math.max(r.left, 8), window.innerWidth - 260), top: up ? r.top - 6 : r.bottom + 6, up });
+    };
+    place();
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    return () => {
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+    };
+  }, [open]);
 
   // Re-anchor the visible month whenever the popup opens on a new value.
   useEffect(() => {
@@ -40,7 +63,9 @@ export function DatePicker({
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (rootRef.current?.contains(t) || popRef.current?.contains(t)) return;
+      setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false);
@@ -104,13 +129,17 @@ export function DatePicker({
         </svg>
       </button>
 
-      {open && (
+      {open &&
+        pos &&
+        createPortal(
         <div
+          ref={popRef}
           style={{
-            position: 'absolute',
-            zIndex: 40,
-            top: 'calc(100% + 6px)',
-            left: 0,
+            position: 'fixed',
+            zIndex: 120,
+            top: pos.top,
+            left: pos.left,
+            transform: pos.up ? 'translateY(-100%)' : undefined,
             minWidth: 252,
             background: '#fff',
             border: '1px solid var(--ink-200)',
@@ -169,7 +198,8 @@ export function DatePicker({
               {min === max ? 'Today only' : `Bookable ${min ? fmtShort(min) : '…'} – ${max ? fmtShort(max) : '…'}`}
             </div>
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

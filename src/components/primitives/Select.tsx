@@ -68,6 +68,8 @@ export function Select<T extends string = string>({
 }: SelectProps<T>) {
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
+  const [query, setQuery] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
   const [placement, setPlacement] = useState<Placement | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -75,6 +77,11 @@ export function Select<T extends string = string>({
   const listboxId = useId();
 
   const selected = options.find((o) => o.value === value) ?? null;
+  // Long option lists get a TYPEAHEAD row (requested — desk/people lookups are searchable);
+  // short lists stay as plain listboxes.
+  const searchable = options.length >= 8;
+  const q = query.trim().toLowerCase();
+  const shown = q ? options.filter((o) => `${o.label} ${o.sublabel ?? ''}`.toLowerCase().includes(q)) : options;
 
   useEffect(() => {
     if (!open) return;
@@ -104,14 +111,16 @@ export function Select<T extends string = string>({
 
   useLayoutEffect(() => {
     if (open) {
+      setQuery('');
       const idx = options.findIndex((o) => o.value === value);
       setActiveIndex(idx >= 0 ? idx : 0);
-      listRef.current?.focus();
+      if (searchable) searchRef.current?.focus();
+      else listRef.current?.focus();
     }
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function commit(idx: number) {
-    const opt = options[idx];
+    const opt = shown[idx];
     if (!opt || opt.disabled) return;
     onChange(opt.value);
     setOpen(false);
@@ -128,7 +137,7 @@ export function Select<T extends string = string>({
   function onListKeyDown(e: ReactKeyboardEvent) {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setActiveIndex((i) => Math.min(options.length - 1, i + 1));
+      setActiveIndex((i) => Math.min(shown.length - 1, i + 1));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       setActiveIndex((i) => Math.max(0, i - 1));
@@ -187,7 +196,32 @@ export function Select<T extends string = string>({
               transform: placement.up ? 'translateY(-100%)' : undefined,
             }}
           >
-            {options.map((opt, i) => (
+            {searchable && (
+              <li className={styles.searchRow} role="presentation">
+                <input
+                  ref={searchRef}
+                  className={styles.searchInput}
+                  placeholder="Search…"
+                  value={query}
+                  onChange={(e) => {
+                    setQuery(e.target.value);
+                    setActiveIndex(0);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'ArrowDown') {
+                      e.preventDefault();
+                      listRef.current?.focus();
+                      setActiveIndex(0);
+                    } else if (e.key === 'Enter') {
+                      e.preventDefault();
+                      commit(activeIndex >= 0 ? activeIndex : 0);
+                    }
+                  }}
+                />
+              </li>
+            )}
+            {shown.length === 0 && <li className={styles.searchRow} role="presentation" style={{ color: 'var(--ink-400)', font: '500 12px var(--font-sans)', padding: '8px 10px' }}>No matches</li>}
+            {shown.map((opt, i) => (
               <li
                 key={opt.value}
                 role="option"
