@@ -1020,6 +1020,40 @@ export async function saveFloorplanDefaultView(floorId: string, planId: PlanId, 
  * floor when the current user has no assigned/booked desk to land on instead (see `fetchMyDesk`,
  * tried first) — replaces walking the whole site/building tree just to find "a" floor.
  */
+/**
+ * PORTALS-only floor gating: ONE org-wide scan of `indoorfloorplan` -> which floors have a
+ * plan at all, and which plan types each has. Fail-OPEN contract: null means "don't filter"
+ * (fetch failed, or the list projection lacked the floor lookup — an empty map would
+ * otherwise hide every floor in the portal's pickers). Session-cached.
+ */
+let portalPlanFloorsCache: Record<string, PlanId[]> | null | undefined;
+export async function fetchPortalPlanFloors(): Promise<Record<string, PlanId[]> | null> {
+  if (!isFacilioApiConfigured) return null;
+  if (portalPlanFloorsCache !== undefined) return portalPlanFloorsCache;
+  const map: Record<string, PlanId[]> = {};
+  try {
+    for (let page = 1; page <= 6; page++) {
+      const res = await facilioApi.fetchAll('indoorfloorplan', { page, perPage: 500 });
+      if (res.error) {
+        if (page === 1) return (portalPlanFloorsCache = null);
+        break;
+      }
+      for (const r of res.list ?? []) {
+        const floorId = r?.floor?.id != null ? String(r.floor.id) : null;
+        const planId = PLAN_ID_BY_TYPE[Number(r?.floorPlanType)];
+        if (!floorId || !planId) continue;
+        const list = (map[floorId] ??= []);
+        if (!list.includes(planId)) list.push(planId);
+      }
+      if ((res.list ?? []).length < 500) break;
+    }
+  } catch {
+    return (portalPlanFloorsCache = null);
+  }
+  portalPlanFloorsCache = Object.keys(map).length ? map : null;
+  return portalPlanFloorsCache;
+}
+
 /** Whether a floor record actually resolves — guards `?floor=` deep links from dead ids. */
 export async function floorExists(floorId: string): Promise<boolean> {
   if (!isFacilioApiConfigured) return true; // local mode: ids resolve against the local seed

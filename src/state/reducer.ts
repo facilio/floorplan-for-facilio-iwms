@@ -141,6 +141,8 @@ export function buildInitialState(): AppState {
     myDesk: null,
     floorImages: {},
     floorsWithPlans: {},
+    isPortalApp: false,
+    portalPlanFloors: null,
     floorPlanTypes: {},
     // Start in the loading state so a fresh load / refresh paints the shimmer immediately, not a
     // blank/placeholder canvas. The mount-time image load clears it in its finally block.
@@ -242,6 +244,7 @@ export type Action =
   | { type: 'SET_CAD_ANALYSIS'; key: string; groups: AppState['autoMapGroups'] }
   | { type: 'SET_FLOOR_IMAGE'; floorId: string; planId: PlanId; dataUrl: string }
   | { type: 'SET_FLOOR_PLAN_TYPES'; floorId: string; types: AppState['floorPlanTypes'][string] }
+  | { type: 'PORTAL_PLAN_FLOORS_LOADED'; isPortal: boolean; map: AppState['portalPlanFloors'] }
   | { type: 'SET_FLOOR_IMAGE_LOADING'; value: boolean }
   | { type: 'SET_FLOOR_CUSTOMIZATION'; floorId: string; planId: PlanId; customization: FloorplanCustomization | null }
   | { type: 'SET_MY_DESK'; myDesk: AppState['myDesk'] }
@@ -636,6 +639,8 @@ export function reducer(state: AppState, action: Action): AppState {
     }
     case 'SET_FLOOR_PLAN_TYPES':
       return { ...state, floorPlanTypes: { ...state.floorPlanTypes, [action.floorId]: action.types } };
+    case 'PORTAL_PLAN_FLOORS_LOADED':
+      return { ...state, isPortalApp: action.isPortal, portalPlanFloors: action.isPortal ? action.map : null };
     case 'SET_FLOOR_IMAGE_LOADING':
       return { ...state, floorImageLoading: action.value };
     case 'SET_FLOOR_CUSTOMIZATION': {

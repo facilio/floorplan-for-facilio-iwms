@@ -62,7 +62,8 @@ export function MobileFloorPicker() {
     }));
   } else {
     title = building.name;
-    rows = building.floors.map((f) => ({
+    // PORTALS list only floors that HAVE an indoorfloorplan (null map = no filtering).
+    rows = building.floors.filter((f) => !state.portalPlanFloors || !!state.portalPlanFloors[f.id] || !!state.floorsWithPlans[f.id]).map((f) => ({
       id: f.id,
       name: f.name,
       sub: f.hasPlan ? '' : 'No plan',

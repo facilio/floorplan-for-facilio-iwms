@@ -3,6 +3,7 @@ import { floorMeta } from '../../state/selectors';
 import { usePanelDrag } from '../../hooks/usePanelDrag';
 import { isFacilioApiConfigured } from '../../lib/facilioApi';
 import { ALL_PLAN_TYPES } from '../../lib/types';
+import type { PlanId } from '../../lib/types';
 import { FloatingPanel } from '../primitives/FloatingPanel';
 import { Select } from '../primitives/Select';
 import { PortfolioTree } from './PortfolioTree';
@@ -24,11 +25,18 @@ export function LocationPanel() {
   const meta = floorMeta(state, state.floorId);
   const floor = meta?.floor;
   const isTree = state.navView === 'tree';
-  // Against the real backend, all three plan types are always offered in the switcher —
-  // whether or not each one has a floor plan configured yet (picking an unconfigured one
-  // shows the empty state with its upload button, same as the original design). The mock
-  // tier keeps its old behavior: only the demo floors that define `plans` show a switcher.
-  const plans = isFacilioApiConfigured ? ALL_PLAN_TYPES : floor?.plans;
+  // MAINTENANCE offers all three plan types — picking an unconfigured one shows the empty
+  // state with its upload button, which is where plans get set up. PORTALS show only the
+  // types that actually have a plan (requested): the per-floor fetch is authoritative once
+  // in, the org scan covers floors not visited yet, and while neither is loaded nothing is
+  // filtered (fail-open). The mock tier keeps its old behavior (demo floors define `plans`).
+  const configured = state.floorPlanTypes[state.floorId];
+  const portalConfigured = (p: { id: PlanId }) => {
+    if (configured) return configured.some((t) => t.id === p.id);
+    if (state.portalPlanFloors) return (state.portalPlanFloors[state.floorId] ?? []).includes(p.id);
+    return true;
+  };
+  const plans = !isFacilioApiConfigured ? floor?.plans : state.isPortalApp ? ALL_PLAN_TYPES.filter(portalConfigured) : ALL_PLAN_TYPES;
 
   return (
     <FloatingPanel

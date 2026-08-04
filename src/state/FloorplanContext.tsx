@@ -9,7 +9,7 @@ import type { AmenityIcon, Assignments, Booking, ClientContact, DefaultPlanView,
 import type { CadGroup } from '../lib/cadAnalyze';
 import type { Asset } from '../lib/assets';
 import { isFacilioApiConfigured } from '../lib/facilioApi';
-import { assignUnitReal, createRealBooking, fetchCurrentPeopleId, fetchFloorplanCustomization, fetchFloorplanImage, fetchMyDesk, fetchOrgTimezone, fetchUnitAssigneeFromSummary, findFloorParents, floorExists, findUnitIdForDeskRecord, getAnyFloor, getFloorPlanSummary, patchUnitContact, resolveHardcodedRolePerms, resolveModePermsForCurrentUser, saveFloorplanDefaultView, saveFloorplanMarkers, vacateUnitReal } from '../lib/facilioApiDataSource';
+import { assignUnitReal, createRealBooking, fetchCurrentApp, fetchCurrentPeopleId, fetchFloorplanCustomization, fetchFloorplanImage, fetchMyDesk, fetchOrgTimezone, fetchPortalPlanFloors, fetchUnitAssigneeFromSummary, findFloorParents, floorExists, findUnitIdForDeskRecord, getAnyFloor, getFloorPlanSummary, patchUnitContact, resolveHardcodedRolePerms, resolveModePermsForCurrentUser, saveFloorplanDefaultView, saveFloorplanMarkers, vacateUnitReal } from '../lib/facilioApiDataSource';
 import { listFloorplanFloorIds, loadFloorplanFile, persistFloorplanFile } from '../lib/floorplanFileStore';
 import { DEFAULT_PERMS_MODULE_NAME, loadEffectiveSettings, saveSettings, settingsFromState } from '../lib/settingsStore';
 import { floorFromLocation, pathForView, viewFromLocation, withFloorParam } from '../lib/routes';
@@ -1618,6 +1618,18 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
           const start = Math.min(1410, Math.ceil(now.minutes / 30) * 30);
           dispatch({ type: 'SET_TIME_RANGE', start, end: Math.min(1440, start + 60) });
         });
+        // PORTALS hide floors with no indoorfloorplan and offer only the CONFIGURED plan types
+        // (requested — maintenance keeps everything so plans can be set up there). One org scan;
+        // fail-open (null map) never filters.
+        if (isFacilioApiConfigured) {
+          void fetchCurrentApp()
+            .then(async (app) => {
+              const isPortal = !!app?.linkName && app.linkName !== 'maintenance';
+              const map = isPortal ? await fetchPortalPlanFloors() : null;
+              dispatch({ type: 'PORTAL_PLAN_FLOORS_LOADED', isPortal, map });
+            })
+            .catch(() => {});
+        }
         // "Who am I" comes from the SESSION, not a setting: the logged-in user's people id is
         // the id space assignments/bookings use (desks.clientcontact_desks holds it). Resolved
         // once here (cached — fetchMyDesk reuses it) and stamped as bookBy so "My bookings",

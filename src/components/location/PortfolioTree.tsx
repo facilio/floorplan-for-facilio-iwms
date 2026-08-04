@@ -134,6 +134,9 @@ export function PortfolioTree() {
       if (branch?.id === building.id) items.push({ row: 'search', parentId: building.id, parentKind: 'building', pad: 42 });
       for (const floor of building.floors) {
         if (!branchPass(building.id, floor.id, floor.name)) continue;
+        // PORTALS list only floors that HAVE an indoorfloorplan (requested) — maintenance
+        // shows everything since plans are configured there. null map = no filtering.
+        if (state.portalPlanFloors && !state.portalPlanFloors[floor.id] && !state.floorsWithPlans[floor.id]) continue;
         // A floor "has a plan" if the static portfolio flag says so OR an actual floorplan is
         // known for it (uploaded this session, or listed from the vibe-db file store at boot) —
         // without the OR, a freshly-uploaded floor kept reading "no plan" in this tree.
