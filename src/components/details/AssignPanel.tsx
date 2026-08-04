@@ -75,7 +75,9 @@ export function AssignPanel() {
             ) : (
               <p className={card.helper}>This space is booked in Booking mode, not assigned.</p>
             )}
-            <UnitStateflowSection unit={sel} />
+            {/* Buttons only for ASSIGNABLE units — a booking-type (HOT/HOTEL) desk selected in
+                assign view shows its state read-only (mirror of the booking view's rule). */}
+            <UnitStateflowSection unit={sel} readOnly={!isAssignable(sel)} />
           </div>
         </div>
       )}
