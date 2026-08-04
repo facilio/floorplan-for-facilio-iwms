@@ -103,9 +103,7 @@ export function AssignPanel() {
         </div>
         <div className={styles.peopleSearchWrap}>
           <input className={card.input} placeholder="Search people" value={state.contactSearch} onChange={(e) => actions.setContactSearch(e.target.value)} />
-          <p className={styles.dragHint}>
-            {state.modePerms.edit ? 'Drag a person onto a desk, locker, or parking stall to assign it.' : 'View only — changing assignments needs edit access.'}
-          </p>
+          <p className={styles.dragHint}>Drag a person onto a desk, locker, or parking stall to assign it.</p>
         </div>
         <div className={styles.peopleList}>
           {state.loading && state.clientContacts.length === 0 && <SkeletonRows rows={6} avatar />}
@@ -118,10 +116,10 @@ export function AssignPanel() {
               <div
                 key={contact.id}
                 className={styles.personRow}
-                draggable={state.modePerms.edit}
+                draggable
                 onDragStart={(e) => onDragStart(e, contact.id, contact.name)}
                 onDragEnd={onDragEnd}
-                style={{ opacity: dragId === contact.id ? 0.45 : 1, cursor: state.modePerms.edit ? 'grab' : 'default' }}
+                style={{ opacity: dragId === contact.id ? 0.45 : 1, cursor: 'grab' }}
               >
                 <span className={styles.avatar}>{initials(contact.name)}</span>
                 <div className={styles.personText}>
@@ -177,10 +175,6 @@ function AssignBody({ unitId }: { unitId: string }) {
             still possible by dragging a person from the list onto it. */}
       </div>
     );
-  }
-
-  if (!state.modePerms.edit) {
-    return <p className={styles.dragHint}>Unassigned. Changing assignments needs edit access.</p>;
   }
 
   return (

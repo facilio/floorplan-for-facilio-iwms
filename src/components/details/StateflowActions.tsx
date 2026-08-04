@@ -223,10 +223,7 @@ export function StateflowActions({
  * StateflowActions for it.
  */
 export function UnitStateflowSection({ unit, readOnly, showStatusRow }: { unit: Unit; readOnly?: boolean; showStatusRow?: boolean }) {
-  const { state, actions } = useFloorplan();
-  // Unit-record transitions (Assign/Vacate/…) mutate assignments — edit access required.
-  // Booking records' stateflow (StateflowActions used directly) is deliberately NOT gated.
-  const canEdit = state.modePerms.edit;
+  const { actions } = useFloorplan();
   const [ref, setRef] = useState<{ moduleName: string; recordId: number } | null>(null);
 
   useEffect(() => {
@@ -250,7 +247,7 @@ export function UnitStateflowSection({ unit, readOnly, showStatusRow }: { unit: 
     <StateflowActions
       moduleName={ref.moduleName}
       recordId={ref.recordId}
-      readOnly={readOnly || !canEdit}
+      readOnly={readOnly}
       showStatusRow={showStatusRow}
       // A vacate-ish transition must ALSO clear the record's assignee lookup (the transition only
       // changes state) — clientcontact_moves: null on desks, employee: null on lockers/parking —

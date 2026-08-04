@@ -101,7 +101,7 @@ function SpaceRow({ unit, onShow, onClose }: { unit: Unit; onShow: () => void; o
   const bookTab = state.mobileTab === 'book';
 
   const canBook = bookTab && isBookable(unit) && status.key !== 'booked';
-  const canAssign = !bookTab && isAssignable(unit) && !contactId && state.modePerms.edit;
+  const canAssign = !bookTab && isAssignable(unit) && !contactId;
 
   return (
     <div className={styles.row}>

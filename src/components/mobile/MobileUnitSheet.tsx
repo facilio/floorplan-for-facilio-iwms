@@ -28,8 +28,7 @@ export function MobileUnitSheet() {
   const assignable = unit && !isAmenity ? isAssignable(unit) : false;
   // Contact picking expands the sheet to near-full height with its own
   // search — a plain dropdown was unusable against the full directory.
-  // Assignment CHANGES need edit access (assign perm only grants the view).
-  const picking = !!unit && !showBookTab && assignable && state.modePerms.edit && (!contactId || state.mobAssignEdit);
+  const picking = !!unit && !showBookTab && assignable && (!contactId || state.mobAssignEdit);
 
   const filtered = useMemo(() => {
     const q = contactQuery.trim().toLowerCase();

@@ -1056,12 +1056,8 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
     dragOverUnit: (id: string | null) => dispatch({ type: 'DRAG_OVER_UNIT', id }),
 
     assign: async (contactId: string, unitId: string) => {
-      // Assignment CHANGES need edit access (viewing the Assignment tab only needs assign) —
-      // one central gate so every entry point (drag-drop, pickers, mobile) is covered.
-      if (!state.modePerms.edit) {
-        showToast('Changing assignments needs edit access', { variant: 'error' });
-        return;
-      }
+      // No edit-perm gate here (reverted on request): the edit permission ONLY shows/hides the
+      // Edit button — anyone who can see the Assignment tab can change assignments.
       const target = unitById(state, unitId);
       if (!target) return;
       const next = { ...state.assignments };
