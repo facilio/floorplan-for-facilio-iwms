@@ -966,11 +966,39 @@ export async function saveFloorplanDefaultView(floorId: string, planId: PlanId, 
   if (!isFacilioApiConfigured) return false;
   const byType = await getFloorplanDetailsByType(floorId);
   const summary = byType[String(FLOOR_PLAN_TYPE[planId])];
-  if (!summary?.id) return false;
+  if (!summary?.id) {
+    // eslint-disable-next-line no-console
+    console.warn(`[facilio-api] default-view save: no indoorfloorplan record for floor ${floorId} plan '${planId}' (type ${FLOOR_PLAN_TYPE[planId]}) — upload/save the plan first`);
+    return false;
+  }
   const record = await fetchIndoorFloorPlanRecord(summary.id);
-  if (!record) return false;
+  if (!record) {
+    // eslint-disable-next-line no-console
+    console.warn(`[facilio-api] default-view save: indoorfloorplan ${summary.id} fetch failed`);
+    return false;
+  }
 
-  const booking: Record<string, unknown> = { ...(record.customizationBooking ?? {}) };
+  // The customization twins need the same both-sides parse as the READ path
+  // (fetchFloorplanCustomization): projections differ on which twin is populated, and
+  // `customizationBooking` can come back as a JSON STRING — naively spreading a string
+  // produced a char-indexed garbage object ({"0":"{","1":"\""…}) that the update rejected.
+  // Merge both twins (object twin wins per key) so the native client's rules survive too.
+  const parseTwin = (raw: unknown): Record<string, unknown> | null => {
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) return raw as Record<string, unknown>;
+    if (typeof raw === 'string' && raw.trim()) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
+      } catch {
+        /* malformed twin — use the other */
+      }
+    }
+    return null;
+  };
+  const booking: Record<string, unknown> = {
+    ...(parseTwin(record.customizationBookingJSON) ?? {}),
+    ...(parseTwin(record.customizationBooking) ?? {}),
+  };
   if (view) booking.floorplanAppDefaultView = view;
   else delete booking.floorplanAppDefaultView;
 
@@ -980,7 +1008,7 @@ export async function saveFloorplanDefaultView(floorId: string, planId: PlanId, 
   });
   if (res.error) {
     // eslint-disable-next-line no-console
-    console.warn(`[facilio-api] default-view save failed for plan ${summary.id}`, res.error);
+    console.warn(`[facilio-api] default-view save failed for plan ${summary.id}: ${res.error.code ?? '?'} ${res.error.message ?? ''}`, res.error);
     return false;
   }
   return true;
