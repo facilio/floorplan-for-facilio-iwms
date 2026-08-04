@@ -1,5 +1,79 @@
+import { useEffect, useState } from 'react';
 import { IMG_H, IMG_W } from '../../lib/mockData';
 import { isFacilioApiConfigured } from '../../lib/facilioApi';
+
+/**
+ * SVG plans are rasterized ONCE to a high-res PNG bitmap and the canvas pans/zooms THAT.
+ * Painting the SVG directly meant the browser re-rasterized the whole vector drawing at every
+ * new zoom scale — a full-plan raster per wheel frame (stutter, reported) — while compositor
+ * raster-scale heuristics on some GPUs instead stretched a stale 1× snapshot (blur/tile
+ * tearing, also reported). A fixed 4× bitmap sidesteps both: tiles just sample a decoded
+ * image (cheap every frame), and there is no re-raster pass to tear or pin. One framing,
+ * rendered once — unlike the old zoom-tier re-render (removed for framing drift), the source
+ * never changes after the swap.
+ */
+const RASTER_SCALE = 4;
+const RASTER_MAX_EDGE = 8192;
+const svgRasterCache = new Map<string, string>();
+const svgRasterInFlight = new Map<string, Promise<string | null>>();
+
+function isSvgUrl(url: string): boolean {
+  return /^data:image\/svg|\.svg([?#]|$)/i.test(url);
+}
+
+async function rasterizeSvgOnce(url: string): Promise<string | null> {
+  try {
+    const img = new Image();
+    img.decoding = 'async';
+    img.src = url;
+    await img.decode();
+    const w = img.naturalWidth || IMG_W;
+    const h = img.naturalHeight || IMG_H;
+    const k = Math.min(RASTER_SCALE, RASTER_MAX_EDGE / Math.max(w, h));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(w * k);
+    canvas.height = Math.round(h * k);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+    return blob ? URL.createObjectURL(blob) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The high-res raster for an SVG plan url — cached per url, deduped while in flight. */
+function useSvgRaster(imageUrl?: string): string | null {
+  const [raster, setRaster] = useState<string | null>(() => (imageUrl ? svgRasterCache.get(imageUrl) ?? null : null));
+  useEffect(() => {
+    if (!imageUrl || !isSvgUrl(imageUrl)) {
+      setRaster(null);
+      return;
+    }
+    const cached = svgRasterCache.get(imageUrl);
+    if (cached) {
+      setRaster(cached);
+      return;
+    }
+    setRaster(null);
+    let alive = true;
+    let job = svgRasterInFlight.get(imageUrl);
+    if (!job) {
+      job = rasterizeSvgOnce(imageUrl);
+      svgRasterInFlight.set(imageUrl, job);
+    }
+    void job.then((u) => {
+      svgRasterInFlight.delete(imageUrl);
+      if (u) svgRasterCache.set(imageUrl, u);
+      if (alive && u) setRaster(u);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [imageUrl]);
+  return raster;
+}
 
 // The made-up architectural schematic below is a LOCAL-PROTOTYPE-ONLY fallback. In the deployed
 // app (VITE_DEV_MODE=false) there's no real backend tier, so `isFacilioApiConfigured` is false —
@@ -25,17 +99,13 @@ const isDevMode = import.meta.env.VITE_DEV_MODE === 'true';
  * The `zoom` prop is accepted-and-ignored so call sites stay stable if this returns.
  */
 export function FloorplanBackground({ imageUrl }: { imageUrl?: string; zoom?: number }) {
+  // High-res one-time raster for SVG sources (see top of file); until it's ready the raw SVG
+  // shows in the SAME box, so the swap never shifts framing. Raster sources pass through.
+  const svgRaster = useSvgRaster(imageUrl);
   if (imageUrl) {
-    // SVG plans: the compositor rasterizes an <img> at its LAYOUT size — zooming the plane
-    // then just stretches that 1× raster on some GPUs (blurry, reported) instead of
-    // re-rasterizing. Laying the img out K× larger and scaling it back down forces a K×
-    // raster, so zoom stays sharp up to K× regardless of raster-scale heuristics. Raster
-    // sources (PNG/JPG/server-rendered) skip this — they have no extra detail to gain and
-    // the double-scaling would only soften them.
-    const K = /^data:image\/svg|\.svg([?#]|$)/i.test(imageUrl) ? 3 : 1;
     return (
       <img
-        src={imageUrl}
+        src={svgRaster ?? imageUrl}
         draggable={false}
         // contain, not cover: uploads rarely match the frame's 1492×1054 aspect, and cover
         // silently crops the overflow (a squarer plan lost its top and bottom). Letterbox on
@@ -44,9 +114,8 @@ export function FloorplanBackground({ imageUrl }: { imageUrl?: string; zoom?: nu
           position: 'absolute',
           left: 0,
           top: 0,
-          width: IMG_W * K,
-          height: IMG_H * K,
-          ...(K !== 1 ? { transform: `scale(${1 / K})`, transformOrigin: '0 0' } : {}),
+          width: IMG_W,
+          height: IMG_H,
           boxShadow: 'var(--shadow-md)',
           pointerEvents: 'none',
           objectFit: 'contain',
