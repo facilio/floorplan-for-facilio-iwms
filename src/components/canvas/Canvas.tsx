@@ -121,6 +121,10 @@ export function Canvas() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.panels.portfolio.open, state.panels.details.open]);
 
+  // Registered ONCE — re-registering per view change (as before) churned the listener on every
+  // zoom frame. zoomAtPoint is state-free now (the reducer owns the math), so no stale closure.
+  const zoomAtPointRef = useRef(actions.zoomAtPoint);
+  zoomAtPointRef.current = actions.zoomAtPoint;
   useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
@@ -128,12 +132,11 @@ export function Canvas() {
       e.preventDefault();
       const r = el!.getBoundingClientRect();
       const factor = Math.exp(-e.deltaY * 0.0015);
-      actions.zoomAtPoint(factor, e.clientX - r.left, e.clientY - r.top);
+      zoomAtPointRef.current(factor, e.clientX - r.left, e.clientY - r.top);
     }
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.view]);
+  }, []);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {

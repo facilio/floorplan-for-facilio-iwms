@@ -519,19 +519,13 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
         })
         .catch(() => showToastVia(dispatch, "Couldn't save the default view", { variant: 'error' }));
     },
-    zoomIn: (rectW: number, rectH: number) => {
-      dispatch({ type: 'MARK_USER_ZOOMED', value: true });
-      dispatch({ type: 'SET_VIEW', view: zoomAtFn(state.view, 1.3, rectW / 2, rectH / 2) });
-    },
+    // Zoom actions carry only the INPUT (factor + anchor) — the reducer computes the new view
+    // from live state. Computing it here used the render-captured view, which under slow
+    // frames compounded stale bases (view shake, reported).
+    zoomIn: (rectW: number, rectH: number) => dispatch({ type: 'ZOOM_AT', factor: 1.3, cx: rectW / 2, cy: rectH / 2 }),
     toggleShowAllLabels: () => dispatch({ type: 'TOGGLE_SHOW_ALL_LABELS' }),
-    zoomOut: (rectW: number, rectH: number) => {
-      dispatch({ type: 'MARK_USER_ZOOMED', value: true });
-      dispatch({ type: 'SET_VIEW', view: zoomAtFn(state.view, 1 / 1.3, rectW / 2, rectH / 2) });
-    },
-    zoomAtPoint: (factor: number, cx: number, cy: number) => {
-      dispatch({ type: 'MARK_USER_ZOOMED', value: true });
-      dispatch({ type: 'SET_VIEW', view: zoomAtFn(state.view, factor, cx, cy) });
-    },
+    zoomOut: (rectW: number, rectH: number) => dispatch({ type: 'ZOOM_AT', factor: 1 / 1.3, cx: rectW / 2, cy: rectH / 2 }),
+    zoomAtPoint: (factor: number, cx: number, cy: number) => dispatch({ type: 'ZOOM_AT', factor, cx, cy }),
     setView: (view: AppState['view']) => dispatch({ type: 'SET_VIEW', view }),
 
     focusUnit: (id: string, rectW: number, rectH: number, opts?: { select?: boolean }) => {

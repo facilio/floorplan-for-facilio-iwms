@@ -241,6 +241,12 @@ export function FloorplanBackground({ imageUrl }: { imageUrl?: string; zoom?: nu
           top: 0,
           width: IMG_W,
           height: IMG_H,
+          // Once the 4× RASTER is in, promote the image to its own GPU texture: mid-gesture
+          // the compositor otherwise re-rasterizes it at stepped scales, pulsing soft/sharp
+          // ("image zooming in and out", reported). A 4× bitmap texture scales smoothly and
+          // KEEPS its detail — unlike promoting a 1× source, this costs no sharpness. The raw
+          // pre-resolve <img> stays unpromoted (it still needs re-raster to look right).
+          ...(raster ? { transform: 'translateZ(0)' } : {}),
           boxShadow: 'var(--shadow-md)',
           pointerEvents: 'none',
           objectFit: 'contain',

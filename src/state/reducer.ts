@@ -1,6 +1,6 @@
 import { ALL_MODES_ALLOWED, DEFAULT_PERMS, floorImageKey } from '../lib/types';
 import type { Booking, Building, Floor, FloorplanCustomization, MarkerDef, ModePerms, PlanId, Site, Unit } from '../lib/types';
-import { clamp, fitView } from '../lib/geometry';
+import { clamp, fitView, zoomAt } from '../lib/geometry';
 import { IMG_H, IMG_W, seedBookings } from '../lib/mockData';
 import { viewFromLocation } from '../lib/routes';
 import { isFacilioApiConfigured } from '../lib/facilioApi';
@@ -173,6 +173,7 @@ export type Action =
   | { type: 'SET_VIEW'; view: AppState['view']; animate?: boolean }
   | { type: 'TOGGLE_SHOW_ALL_LABELS' }
   | { type: 'MARK_USER_ZOOMED'; value: boolean }
+  | { type: 'ZOOM_AT'; factor: number; cx: number; cy: number }
   | { type: 'SET_SPACE_FILTER'; filter: AppState['spaceFilter'] }
   | { type: 'SET_SPACE_SEARCH'; value: string }
   | { type: 'PORTFOLIO_LOADED'; portfolio: Site[]; clientContacts: AppState['clientContacts']; assets: AppState['assets'] }
@@ -351,6 +352,11 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, view: action.view, viewAnim: !!action.animate };
     case 'MARK_USER_ZOOMED':
       return { ...state, userZoomed: action.value };
+    // Zoom math lives HERE, on the live state — action creators computed the new view from the
+    // state captured at the last render, so wheel events arriving faster than React rendered
+    // compounded from a stale base (view plateaued then jumped: visible shake, reported).
+    case 'ZOOM_AT':
+      return { ...state, userZoomed: true, viewAnim: false, view: zoomAt(state.view, action.factor, action.cx, action.cy) };
     case 'SET_SPACE_FILTER':
       return { ...state, spaceFilter: action.filter };
     case 'SET_SPACE_SEARCH':
