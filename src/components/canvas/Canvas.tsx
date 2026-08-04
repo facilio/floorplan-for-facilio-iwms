@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
 import { clamp, markerCounterScale, markerNeighborSpacing, polyAreaM2, polygonCentroid, toNorm, unitCenter } from '../../lib/geometry';
-import { isAssignable, isBookable, myAssignedUnit } from '../../state/selectors';
+import { contactName, isAssignable, isBookable, myAssignedUnit } from '../../state/selectors';
 import { moduleColor } from '../../lib/unitStatus';
 import { IMG_H, IMG_W } from '../../lib/mockData';
 import { FloorplanBackground } from './FloorplanBackground';
@@ -689,18 +689,26 @@ function RoomLabel({ unit }: { unit: Unit }) {
   const geom = unit.geom as PolyGeom;
   const { x, y } = polygonCentroid(geom.pts);
 
+  // Rooms are LARGE enough to carry both the name pill and the assignee line (requested) —
+  // the assigned client contact shows under the room name, like initials do on desks.
+  const contactId = state.assignments[unit.id];
+  const assigneeName = contactId ? contactName(state, contactId) || 'Occupied' : null;
   let sub = '';
   let subFg = 'var(--ink-600)';
   if (state.mode === 'edit') {
     const area = polyAreaM2(geom.pts, state.pxPerMeter);
     sub = area != null ? `${area.toFixed(0)} m²` : '';
+  } else if (state.mode === 'assign') {
+    if (isAssignable(unit)) {
+      sub = assigneeName ?? 'Free';
+      subFg = moduleColor(state, 'room', contactId ? 'assigned' : 'free');
+    }
   } else if (state.mode === 'book') {
     if (!isBookable(unit)) {
       // An ASSIGNABLE (non-reservable) room is never "Available" to book — label it by its
-      // assignment state, in the room's own assigned/free colors (requested).
-      const occupied = !!state.assignments[unit.id];
-      sub = occupied ? 'Occupied' : isAssignable(unit) ? 'Assignable' : 'Not bookable';
-      subFg = isAssignable(unit) ? moduleColor(state, 'room', occupied ? 'assigned' : 'free') : 'var(--ink-600)';
+      // assignment state (with WHO holds it), in the room's own assigned/free colors.
+      sub = assigneeName ?? (isAssignable(unit) ? 'Assignable' : 'Not bookable');
+      subFg = isAssignable(unit) ? moduleColor(state, 'room', contactId ? 'assigned' : 'free') : 'var(--ink-600)';
     } else {
       const conflicts = state.bookings.filter((b) => b.unitId === unit.id && b.date === state.date && b.start < state.end && b.end > state.start);
       if (conflicts.length) {

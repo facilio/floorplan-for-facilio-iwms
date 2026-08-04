@@ -546,6 +546,14 @@ function markerFeatureToUnit(
   return unit;
 }
 
+/** The rooms module's roomType — enum string, enum twin, or lookup — as a display string. */
+function roomTypeName(rec: Record<string, any> | undefined): string | undefined {
+  const v = rec?.roomTypeEnum ?? rec?.roomType;
+  if (typeof v === 'string' && v.trim()) return v.trim();
+  const n = v?.displayName ?? v?.name ?? v?.primaryValue;
+  return typeof n === 'string' && n.trim() ? n.trim() : undefined;
+}
+
 /** The record's department lookup as a display string, whichever shape the projection used. */
 function departmentName(rec: Record<string, any> | undefined): string | undefined {
   const d = rec?.department;
@@ -665,6 +673,7 @@ async function fetchFloorModuleRecords(floorId: string): Promise<Unit[]> {
           unplaced: true,
           ...(type === 'workstation' && DESK_TYPE_BY_NUM[r.deskType] ? { deskType: DESK_TYPE_BY_NUM[r.deskType] } : {}),
           ...(type === 'room' && typeof r.reservable === 'boolean' ? { isReservable: r.reservable } : {}),
+          ...(type === 'room' && roomTypeName(r) ? { roomType: roomTypeName(r) } : {}),
           // Explicit flag first; else an assigned (clientcontact_rooms) non-reservable room is
           // implicitly assignment-type — it must never surface as bookable.
           ...(type === 'room' && typeof r.isassignable_rooms === 'boolean'
@@ -759,6 +768,7 @@ async function viewerDataUnitsForFloor(floorId: string): Promise<Unit[]> {
       // the module record is the authority when the placed unit didn't carry them.
       if (typeof u.isReservable === 'boolean' && placed.isReservable === undefined) placed.isReservable = u.isReservable;
       if (typeof u.isAssignableRoom === 'boolean' && placed.isAssignableRoom === undefined) placed.isAssignableRoom = u.isAssignableRoom;
+      if (u.roomType && !placed.roomType) placed.roomType = u.roomType;
     }
   }
 

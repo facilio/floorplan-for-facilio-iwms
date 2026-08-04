@@ -155,6 +155,8 @@ export interface Unit {
   isReservable?: boolean;
   /** Rooms only — the space record's `isassignable_rooms` flag: a NON-reservable room is assignable to a client contact (via `clientcontact_rooms`) when true. */
   isAssignableRoom?: boolean;
+  /** Rooms only — the rooms module's roomType, as a display string. */
+  roomType?: string;
 }
 
 export interface ClientContact {
