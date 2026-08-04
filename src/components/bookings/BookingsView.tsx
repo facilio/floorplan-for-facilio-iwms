@@ -218,6 +218,15 @@ export function BookingsView() {
       actions.showToast(category === 'room' ? 'Rooms can only be booked for today' : 'Bookings can be made at most one week ahead');
       return;
     }
+    // Today's already-started slots can't be booked — the backend bumps a past start to "now",
+    // so the record would not match what was clicked.
+    if (date === today) {
+      const nowD = new Date();
+      if (start < nowD.getHours() * 60 + nowD.getMinutes()) {
+        actions.showToast('That slot has already started — pick an upcoming one');
+        return;
+      }
+    }
     if (conflictsFor(bookingsByDate[date] ?? [], resourceId, date, start, end).length) {
       actions.showToast('That window overlaps an existing booking');
       return;

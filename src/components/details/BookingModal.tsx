@@ -129,6 +129,11 @@ function BookingFormInner() {
   const toLocalISO = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const minDate = toLocalISO(new Date());
   const maxDate = isRoom ? minDate : toLocalISO(new Date(Date.now() + 7 * 86400000));
+  // For TODAY, slots that already started are off the table — the backend silently bumps a
+  // past start to "now" (a 05:15 booking made at 08:16 came back as 08:19), so what you pick
+  // must be what you get.
+  const nowMinutes = new Date().getHours() * 60 + new Date().getMinutes();
+  const slotSelectable = (m: number) => slotDate !== minDate || m >= nowMinutes;
 
   const contactOptions = contacts.map((c) => ({ value: c.id, label: c.name, sublabel: c.client }));
 
@@ -200,6 +205,10 @@ function BookingFormInner() {
     // ISO strings compare lexicographically — the min/max attributes hint, this enforces.
     if (slotDate < minDate || slotDate > maxDate) {
       actions.showToast(isRoom ? 'Rooms can only be booked for today' : 'Bookings can be made at most one week ahead');
+      return;
+    }
+    if (!slotSelectable(slotStart)) {
+      actions.showToast('That slot has already started — pick an upcoming one');
       return;
     }
     const date = slotDate;
@@ -288,24 +297,29 @@ function BookingFormInner() {
       </div>
       <div className={card.label} style={{ marginTop: 12, color: 'var(--blue-600)' }}>Available Slots</div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-        {slots.map((m) => (
-          <button
-            key={m}
-            type="button"
-            onClick={() => setSlotStart(m)}
-            style={{
-              padding: '6px 10px',
-              borderRadius: 6,
-              border: `1px solid ${slotStart === m ? 'var(--blue-500)' : 'var(--ink-200)'}`,
-              background: slotStart === m ? 'var(--blue-025)' : '#fff',
-              color: slotStart === m ? 'var(--blue-600)' : 'var(--ink-700)',
-              font: '500 12px/1 var(--font-sans)',
-              cursor: 'pointer',
-            }}
-          >
-            {fmtTime(m)}
-          </button>
-        ))}
+        {slots.map((m) => {
+          const selectable = slotSelectable(m);
+          return (
+            <button
+              key={m}
+              type="button"
+              disabled={!selectable}
+              title={selectable ? undefined : 'Already past'}
+              onClick={() => setSlotStart(m)}
+              style={{
+                padding: '6px 10px',
+                borderRadius: 6,
+                border: `1px solid ${slotStart === m ? 'var(--blue-500)' : 'var(--ink-200)'}`,
+                background: selectable ? (slotStart === m ? 'var(--blue-025)' : '#fff') : 'var(--ink-050)',
+                color: selectable ? (slotStart === m ? 'var(--blue-600)' : 'var(--ink-700)') : 'var(--ink-300)',
+                font: '500 12px/1 var(--font-sans)',
+                cursor: selectable ? 'pointer' : 'not-allowed',
+              }}
+            >
+              {fmtTime(m)}
+            </button>
+          );
+        })}
       </div>
     </Field>
   );
