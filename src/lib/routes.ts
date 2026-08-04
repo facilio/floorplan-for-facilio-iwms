@@ -62,5 +62,13 @@ export function floorFromLocation(loc: { search: string }): string | null {
 }
 
 export function withFloorParam(path: string, floorId: string | null): string {
-  return floorId ? `${path}?floor=${encodeURIComponent(floorId)}` : path;
+  // PRESERVE the existing query string. The host embeds this app with ?origin=&capp_id=
+  // (FacilioAppSDK.init() HARD-REQUIRES them — it returns false without them, confirmed in
+  // the SDK source) plus the connected-app token; the first version of this helper replaced
+  // the whole query string and bricked the SDK bridge for every later init.
+  const params = new URLSearchParams(window.location.search);
+  if (floorId) params.set('floor', floorId);
+  else params.delete('floor');
+  const qs = params.toString();
+  return qs ? `${path}?${qs}` : path;
 }

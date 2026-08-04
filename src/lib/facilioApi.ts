@@ -206,7 +206,8 @@ function facilioAppReady(): Promise<any> {
         Promise.resolve((window as any).FacilioAppSDK.init())
           .then((app: any) => {
             (window as any).facilioApp = app;
-            if (!app) return fail(new Error('facilio-api: FacilioAppSDK.init() returned nothing'));
+            // init() returns FALSE when the embed URL lacks ?origin=&capp_id= (SDK source).
+            if (!app) return fail(new Error('facilio-api: FacilioAppSDK.init() rejected — the embed URL is missing its origin/capp_id query params'));
             if (typeof app.on === 'function') {
               app.on('app.loaded', () => settle(app));
               // Belt and braces: builds that fire app.loaded BEFORE the listener attaches
