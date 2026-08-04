@@ -932,7 +932,25 @@ export async function fetchFloorplanCustomization(floorId: string, planId: PlanI
   const summary = byType[String(FLOOR_PLAN_TYPE[planId])];
   if (!summary?.id) return null;
   const record = await fetchIndoorFloorPlanRecord(summary.id);
-  return record?.customizationBooking ?? null;
+  if (!record) return null;
+  // The record carries the customization TWICE (object + JSON-string twin) and projections
+  // differ on which one is populated/current — parse both and prefer whichever actually has
+  // the saved default view (the mandatory default-zoom read failed live because only the
+  // string twin carried it).
+  const parsed: FloorplanCustomization[] = [];
+  for (const raw of [record.customizationBooking, record.customizationBookingJSON]) {
+    if (raw && typeof raw === 'object') parsed.push(raw as FloorplanCustomization);
+    else if (typeof raw === 'string' && raw.trim()) {
+      try {
+        parsed.push(JSON.parse(raw) as FloorplanCustomization);
+      } catch {
+        /* malformed twin — try the other */
+      }
+    }
+  }
+  if (!parsed.length) return null;
+  const withView = parsed.find((c) => c.floorplanAppDefaultView && (c.floorplanAppDefaultView.z ?? 0) > 0);
+  return withView ?? parsed[0];
 }
 
 /**

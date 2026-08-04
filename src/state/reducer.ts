@@ -638,7 +638,17 @@ export function reducer(state: AppState, action: Action): AppState {
       // load fetches it async, after the canvas has already auto-fitted) — but only for the
       // active floor+plan and only while the user hasn't taken over the camera themselves.
       const dv = action.customization.floorplanAppDefaultView;
-      if (dv && dv.z > 0 && !state.userZoomed && action.floorId === state.floorId && action.planId === state.planId && state.stage.w > 0) {
+      const applicable = !!dv && dv.z > 0 && !state.userZoomed && action.floorId === state.floorId && action.planId === state.planId && state.stage.w > 0;
+      // One diagnosable line — "default zoom not working" must never be a guessing game.
+      // eslint-disable-next-line no-console
+      console.info('[floorplan] default view', dv ? (applicable ? 'APPLIED' : 'skipped') : 'none saved', {
+        dv,
+        userZoomed: state.userZoomed,
+        active: `${state.floorId}/${state.planId}`,
+        incoming: `${action.floorId}/${action.planId}`,
+        stageW: state.stage.w,
+      });
+      if (applicable && dv) {
         next.view = { z: dv.z, tx: state.stage.w / 2 - dv.cx * IMG_W * dv.z, ty: state.stage.h / 2 - dv.cy * IMG_H * dv.z };
       }
       return next;
