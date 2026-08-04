@@ -2212,13 +2212,38 @@ export function fetchCurrentApp(): Promise<CurrentApp> {
           const app = p?.app ?? p?.application ?? p?.currentApp ?? null;
           const linkName = asName(app?.linkName ?? app?.appLinkName ?? p?.appLinkName);
           const id = asId(app?.id ?? app?.applicationId ?? p?.appId ?? p?.applicationId);
-          if (linkName) return { id: id ?? fallbackId, linkName, name: asName(app?.name) };
+          if (linkName) {
+            // eslint-disable-next-line no-console
+            console.info('[facilio-api] current-app resolved via SDK properties', { id, linkName });
+            return { id: id ?? fallbackId, linkName, name: asName(app?.name) };
+          }
           if (id && !fallbackId) fallbackId = id;
         }
       }
 
-      // 2) Ask the org — with the token's appId when we have one (some builds resolve
-      // fetchDetails only per-app), then without.
+      // Every source's outcome is collected here and logged ONCE — "Settings missing in
+      // maintenance" is only debuggable if the console says exactly what each source returned.
+      const diag: Record<string, unknown> = { sdkPropsKeys: props ? Object.keys(props) : null };
+
+      // 2) The ACCOUNT payload — `v2/account` demonstrably works in the embeds (the session
+      // user resolves through it), and several builds hang the current application off it.
+      for (const path of ['v2/account', 'v2/fetchAccount']) {
+        const body = await customGet(path).catch(() => null);
+        const account = body?.result?.account ?? body?.account ?? body?.data?.account ?? body?.result ?? body?.data ?? body ?? null;
+        const app = account?.app ?? account?.application ?? account?.currentApp ?? null;
+        const linkName = asName(app?.linkName ?? app?.appLinkName ?? account?.appLinkName);
+        const id = asId(app?.id ?? app?.applicationId ?? account?.appId);
+        diag[path] = account ? { accountKeys: Object.keys(account), appKeys: app ? Object.keys(app) : null, linkName } : 'no payload';
+        if (linkName) {
+          // eslint-disable-next-line no-console
+          console.info('[facilio-api] current-app resolved via', path, { id, linkName });
+          return { id: id ?? fallbackId, linkName, name: asName(app?.name) };
+        }
+        if (id && !fallbackId) fallbackId = id;
+      }
+
+      // 3) Ask the org's application endpoint — with the token's appId when we have one (some
+      // builds resolve fetchDetails only per-app), then without.
       const tokenAppId = readConnectedAppId();
       for (const path of ['application/fetchDetails', 'v2/application/fetchDetails']) {
         for (const params of tokenAppId ? [{ considerRole: true, optimised: true, appId: tokenAppId }, { considerRole: true, optimised: true }] : [{ considerRole: true, optimised: true }]) {
@@ -2227,7 +2252,12 @@ export function fetchCurrentApp(): Promise<CurrentApp> {
           const app = data?.application ?? data?.applicationDetails ?? data ?? null;
           const linkName = asName(app?.linkName ?? app?.appLinkName ?? data?.appLinkName);
           const id = asId(app?.id ?? app?.applicationId ?? data?.applicationId);
-          if (linkName) return { id: id ?? fallbackId ?? tokenAppId, linkName, name: asName(app?.name) };
+          diag[`${path}${'appId' in params ? '+appId' : ''}`] = body ? { bodyKeys: Object.keys(body), appKeys: app && typeof app === 'object' ? Object.keys(app) : null, linkName } : 'no payload';
+          if (linkName) {
+            // eslint-disable-next-line no-console
+            console.info('[facilio-api] current-app resolved via', path, params, { id, linkName });
+            return { id: id ?? fallbackId ?? tokenAppId, linkName, name: asName(app?.name) };
+          }
           if (id && !fallbackId) {
             fallbackId = id;
             fallbackName = asName(app?.name);
@@ -2239,7 +2269,7 @@ export function fetchCurrentApp(): Promise<CurrentApp> {
       // as non-maintenance).
       const linkName = currentAppLinkName();
       // eslint-disable-next-line no-console
-      console.warn('[facilio-api] app linkName unresolved from SDK/org — using the embed URL', linkName);
+      console.warn('[facilio-api] current-app UNRESOLVED — source dump:', JSON.stringify(diag), '— embed URL says:', linkName);
       return { id: fallbackId ?? tokenAppId, linkName, name: fallbackName };
     })();
     currentAppCache.catch(() => {
