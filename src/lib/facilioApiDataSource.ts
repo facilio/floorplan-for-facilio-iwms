@@ -2586,16 +2586,19 @@ export async function updateRolePermissionRecord(moduleName: string, rec: RolePe
 export async function fetchMyDesk(employeeId?: number): Promise<MyDeskInfo | null> {
   if (!isFacilioApiConfigured) return null;
 
-  // The session's people id IS the clientcontact record id (clientcontact extends people —
-  // same record id), in maintenance and portals alike; it rides the clientcontact_desks filter
-  // directly. Never the login user id.
+  // FIRST the platform's own current-user token — the backend resolves `${loggedInUser}` to
+  // the session's person identity server-side (documented for lookup filters alongside
+  // operatorId 36), so no client-side contact id is needed at all. Fallback: the session's
+  // people id (for portal logins that IS the clientcontact record id — clientcontact extends
+  // people, same record id). Never the login user id.
   const contactId = await fetchCurrentPeopleId().catch(() => null);
-  if (contactId) {
+  const filterValues = ['${loggedInUser}', ...(contactId != null ? [String(contactId)] : [])];
+  for (const value of filterValues) {
     const res = await facilioApi.fetchAll('desks', {
       page: 1,
       perPage: 1,
       isArchived: false,
-      filters: JSON.stringify({ clientcontact_desks: { operatorId: 36, value: [String(contactId)] } }),
+      filters: JSON.stringify({ clientcontact_desks: { operatorId: 36, value: [value] } }),
     });
     const desk = res.list?.[0];
     if (!res.error && desk?.id) {
@@ -2604,7 +2607,7 @@ export async function fetchMyDesk(employeeId?: number): Promise<MyDeskInfo | nul
     }
     if (res.error) {
       // eslint-disable-next-line no-console
-      console.warn('[facilio-api] clientcontact_desks filter fetch failed — falling back to servicePortalHome', res.error);
+      console.warn(`[facilio-api] clientcontact_desks filter fetch failed for ${value} — trying the next source`, res.error);
     }
   }
 
