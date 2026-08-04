@@ -1616,7 +1616,8 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
         void (async () => {
           const cfg = await loadSettings().catch(() => null);
           const defaults: ModePerms = { edit: true, assign: true, book: true };
-          const moduleName = cfg?.permsModuleName?.trim() || DEFAULT_PERMS_MODULE_NAME;
+          // undefined = never saved -> the built-in default; '' = explicitly cleared -> NO module.
+          const moduleName = (cfg?.permsModuleName !== undefined ? cfg.permsModuleName : DEFAULT_PERMS_MODULE_NAME).trim();
           const fromModule = moduleName ? await resolveModePermsForCurrentUser(moduleName).catch(() => null) : null;
           const hardcoded = fromModule ? null : await resolveHardcodedRolePerms().catch(() => null);
           const resolved = fromModule ?? hardcoded;

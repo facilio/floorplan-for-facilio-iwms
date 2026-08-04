@@ -494,8 +494,9 @@ export function reducer(state: AppState, action: Action): AppState {
         bookingModule: c.bookingModule ?? state.bookingModule,
         customMarkers: c.customMarkers ?? state.customMarkers,
         allowLocalFallback: c.allowLocalFallback ?? state.allowLocalFallback,
-        // An empty persisted value (saved before a default existed) must not wipe the default.
-        permsModuleName: c.permsModuleName?.trim() ? c.permsModuleName : state.permsModuleName,
+        // undefined = never saved -> keep the built-in default; '' = the admin explicitly
+        // CLEARED the module in Module setup — clearing must stick across reloads.
+        permsModuleName: c.permsModuleName !== undefined ? c.permsModuleName : state.permsModuleName,
         // perms / defaultModePerms deliberately NOT hydrated: permission data is never read
         // from the cache — the boot resolution (module record / hardcoded roles) is the only
         // source, so one login's access can't leak to the next on a shared browser.
