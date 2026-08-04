@@ -561,8 +561,12 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       if (!md?.floorId) return;
       let units: Unit[] = state.units;
       if (md.floorId !== state.floorId) units = await loadFloor(md.floorId);
-      const geoId = await findUnitIdForDeskRecord(md.floorId, md.recordId).catch(() => null);
-      const u = geoId ? units.find((x) => x.id === geoId) : null;
+      // viewerData-sourced units (and room ZONES — the my-desk fallback when no desk exists)
+      // carry the backend record id AS their unit id, so try the direct match before the
+      // marker-geoId mapping (which only knows desk markers this app placed).
+      const direct = units.find((x) => x.id === String(md.recordId)) ?? null;
+      const geoId = direct ? null : await findUnitIdForDeskRecord(md.floorId, md.recordId).catch(() => null);
+      const u = direct ?? (geoId ? units.find((x) => x.id === geoId) : null);
       if (u) {
         if (u.plan !== state.planId) {
           dispatch({ type: 'SET_PLAN', planId: u.plan });
@@ -579,7 +583,7 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
         setTimeout(() => dispatch({ type: 'HIGHLIGHT_UNIT', id: null }), 2000);
         setTimeout(() => dispatch({ type: 'SET_VIEW', view, animate: false }), 380);
       } else {
-        showToast(`Your desk ${md.name} is on this floor`);
+        showToast(`Your ${md.isRoom ? 'room' : 'desk'} ${md.name} is on this floor`);
       }
     },
 

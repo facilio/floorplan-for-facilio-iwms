@@ -2080,6 +2080,8 @@ export interface MyDeskInfo {
   floorId: string | null;
   /** True when this came from `bookedDesks` (a hot-desk booking) rather than a permanent assignment. */
   booked: boolean;
+  /** True when the user's assigned space is a ROOM (clientcontact_rooms) — used only when NO desk exists. */
+  isRoom?: boolean;
 }
 
 /**
@@ -2663,6 +2665,19 @@ export async function fetchMyDesk(employeeId?: number): Promise<MyDeskInfo | nul
     if (res.error) {
       // eslint-disable-next-line no-console
       console.warn('[facilio-api] clientcontact_desks filter fetch failed — falling back to servicePortalHome', res.error);
+    }
+    // NO desk for this user — an assignable ROOM held by them (clientcontact_rooms) stands in,
+    // so "My desk" still lands somewhere meaningful. Desk always wins when both exist.
+    const roomRes = await facilioApi.fetchAll(ROOM_RECORDS_MODULE, {
+      page: 1,
+      perPage: 1,
+      isArchived: false,
+      filters: JSON.stringify({ clientcontact_rooms: { operatorId: 36, value: [String(contactId)] } }),
+    });
+    const room = roomRes.list?.[0];
+    if (!roomRes.error && room?.id) {
+      const floorId = lookupId(room, 'floor');
+      return { recordId: room.id, name: room.name ?? 'Your room', floorId: floorId != null ? String(floorId) : null, booked: false, isRoom: true };
     }
   }
 
