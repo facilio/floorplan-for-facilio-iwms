@@ -519,7 +519,10 @@ export function Canvas() {
     return () => window.clearTimeout(zoomSettleTimer.current);
   }, [state.view.z]);
   // Same zoom gate labels always had (invZ ≤ 1.9): below ~53% zoom they're unreadable noise.
-  const labelsOn = zoomSettled && state.view.z >= 0.53;
+  // "Show all labels" (ZoomControls toggle) bypasses the gate AND the declutter below — the
+  // user opts into the overlap; only the zoom-motion hiding (flicker fix) still applies.
+  const showAll = state.showAllLabels;
+  const labelsOn = zoomSettled && (showAll || state.view.z >= 0.53);
   // One assignments scan per render, not one per marker (Marker's isMine fallback).
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const myUnitId = useMemo(() => myAssignedUnit(state)?.id ?? null, [state.assignments, state.bookBy, state.units, state.myDesk]);
@@ -612,7 +615,7 @@ export function Canvas() {
             invZ={markerInvFor(m.id)}
             onDragStart={startMarkerDrag}
             myUnitId={myUnitId}
-            labelVisible={labelsOn && labelVisibleIds.has(m.id)}
+            labelVisible={labelsOn && (showAll || (labelVisibleIds.has(m.id) && markerInvFor(m.id) <= 1.9))}
           />
         ))}
 

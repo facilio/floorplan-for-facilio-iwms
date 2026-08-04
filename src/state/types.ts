@@ -175,4 +175,6 @@ export interface AppState {
    * fetched yet or not configured for that floor+plan; falls back to this app's own colors.
    */
   floorCustomizations: Record<string, FloorplanCustomization>;
+  /** Force EVERY marker label visible (declutter + zoom gate bypassed) — user toggle, see ZoomControls. */
+  showAllLabels: boolean;
 }

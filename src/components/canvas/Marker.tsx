@@ -71,9 +71,10 @@ export function Marker({ unit, invZ, onDragStart, myUnitId, labelVisible }: { un
 
   const title = `${unit.label}${unit.room ? ' · ' + unit.room : ''} — ${status.text}`;
 
-  // labelVisible: the parent's decluttering verdict (dense grids keep only non-colliding
-  // labels) — callers that don't pass it (mobile) show all labels as before.
-  const showLabel = (state.mode === 'assign' || state.mode === 'book' || unit.type === 'amenity') && invZ <= 1.9 && labelVisible !== false;
+  // labelVisible: the parent's FULL verdict (declutter + zoom gate + show-all toggle) — it
+  // applies in every mode, edit included (labels were hidden there, requested back). Callers
+  // that don't pass it (mobile) keep the old assign/book + readable-size default.
+  const showLabel = labelVisible ?? ((state.mode === 'assign' || state.mode === 'book' || unit.type === 'amenity') && invZ <= 1.9);
 
   return (
     <>

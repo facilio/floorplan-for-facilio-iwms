@@ -37,7 +37,11 @@ function svgTextFromUrl(url: string): Promise<string | null> {
     try {
       const comma = url.indexOf(',');
       const payload = url.slice(comma + 1);
-      return Promise.resolve(url.slice(0, comma).includes(';base64') ? atob(payload) : decodeURIComponent(payload));
+      if (!url.slice(0, comma).includes(';base64')) return Promise.resolve(decodeURIComponent(payload));
+      // atob yields Latin-1 chars — decode the raw bytes as UTF-8, else non-ASCII text in the
+      // plan ("·", "m²", umlauts) renders as mojibake when inlined.
+      const bin = atob(payload);
+      return Promise.resolve(new TextDecoder('utf-8').decode(Uint8Array.from(bin, (c) => c.charCodeAt(0))));
     } catch {
       return Promise.resolve(null);
     }

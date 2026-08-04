@@ -523,6 +523,7 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       dispatch({ type: 'MARK_USER_ZOOMED', value: true });
       dispatch({ type: 'SET_VIEW', view: zoomAtFn(state.view, 1.3, rectW / 2, rectH / 2) });
     },
+    toggleShowAllLabels: () => dispatch({ type: 'TOGGLE_SHOW_ALL_LABELS' }),
     zoomOut: (rectW: number, rectH: number) => {
       dispatch({ type: 'MARK_USER_ZOOMED', value: true });
       dispatch({ type: 'SET_VIEW', view: zoomAtFn(state.view, 1 / 1.3, rectW / 2, rectH / 2) });

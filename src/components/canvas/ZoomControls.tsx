@@ -24,6 +24,16 @@ export function ZoomControls({ rectW, rectH }: { rectW: number; rectH: number })
           </svg>
         </button>
       </div>
+      <button
+        className={[styles.fit, state.showAllLabels ? styles.fitActive : ''].join(' ')}
+        title={state.showAllLabels ? 'Labels: all (click for auto)' : 'Show all labels'}
+        onClick={actions.toggleShowAllLabels}
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+          <circle cx="7" cy="7" r="1.5" fill="currentColor" stroke="none" />
+        </svg>
+      </button>
       <button className={styles.fit} title="Fit to view" onClick={() => actions.fitView(rectW, rectH)}>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
           <path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3" />

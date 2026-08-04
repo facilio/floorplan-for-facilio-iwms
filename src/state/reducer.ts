@@ -146,6 +146,7 @@ export function buildInitialState(): AppState {
     // blank/placeholder canvas. The mount-time image load clears it in its finally block.
     floorImageLoading: true,
     floorCustomizations: {},
+    showAllLabels: false,
   };
 }
 
@@ -170,6 +171,7 @@ export type Action =
   | { type: 'SET_PLAN'; planId: AppState['planId'] }
   | { type: 'SET_STAGE_SIZE'; w: number; h: number }
   | { type: 'SET_VIEW'; view: AppState['view']; animate?: boolean }
+  | { type: 'TOGGLE_SHOW_ALL_LABELS' }
   | { type: 'MARK_USER_ZOOMED'; value: boolean }
   | { type: 'SET_SPACE_FILTER'; filter: AppState['spaceFilter'] }
   | { type: 'SET_SPACE_SEARCH'; value: string }
@@ -343,6 +345,8 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, planId: action.planId, ...resetSelectionState(state) };
     case 'SET_STAGE_SIZE':
       return { ...state, stage: { w: action.w, h: action.h } };
+    case 'TOGGLE_SHOW_ALL_LABELS':
+      return { ...state, showAllLabels: !state.showAllLabels };
     case 'SET_VIEW':
       return { ...state, view: action.view, viewAnim: !!action.animate };
     case 'MARK_USER_ZOOMED':

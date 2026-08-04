@@ -58,3 +58,13 @@
 .fit:hover {
   background: var(--ink-050);
 }
+
+/* "Show all labels" toggled ON */
+.fitActive {
+  background: var(--blue-500);
+  border-color: var(--blue-500);
+  color: #fff;
+}
+.fitActive:hover {
+  background: var(--blue-600);
+}
