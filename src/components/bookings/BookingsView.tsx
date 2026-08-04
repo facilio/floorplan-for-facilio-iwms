@@ -5,7 +5,7 @@ import { conflictsFor, contactName, floorMeta, isBookable } from '../../state/se
 import { fmtTime } from '../../lib/geometry';
 import { dataSource } from '../../lib/dataSource';
 import { isFacilioApiConfigured } from '../../lib/facilioApi';
-import { fetchOrgBookingsForDate } from '../../lib/facilioApiDataSource';
+import { fetchOrgBookableResources, fetchOrgBookingsForDate } from '../../lib/facilioApiDataSource';
 import type { Booking, Unit, UnitType } from '../../lib/types';
 import { Button } from '../primitives/Button';
 import { Modal, ModalHeader } from '../primitives/Modal';
@@ -91,6 +91,16 @@ export function BookingsView() {
   /** "My bookings" popup — every booking of the current user in the visible range (requested). */
   const [myOpen, setMyOpen] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
+  // ORG-WIDE resource records (desks/rooms/parking everywhere, requested) — the current
+  // floor's placed units still win on id collisions since they carry richer data.
+  const [orgUnits, setOrgUnits] = useState<Unit[]>([]);
+  useEffect(() => {
+    let alive = true;
+    if (isFacilioApiConfigured) fetchOrgBookableResources().then((u) => alive && setOrgUnits(u));
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const catDef = CATEGORIES.find((c) => c.id === category)!;
 
@@ -99,8 +109,14 @@ export function BookingsView() {
     // HOT/HOTEL only (ASSIGNED desks are assignment-only; see lib/types DeskType).
     // UNPLACED records count too (requested): a bookable room with no zone drawn on the
     // plan is still a real, bookable resource here.
-    () => state.units.filter((u) => (category === 'all' ? BOOKABLE_TYPES.includes(u.type) : u.type === category) && isBookable(u)).sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true })),
-    [state.units, category]
+    () => {
+      const localIds = new Set(state.units.map((u) => u.id));
+      const pool = [...state.units, ...orgUnits.filter((u) => !localIds.has(u.id))];
+      return pool
+        .filter((u) => (category === 'all' ? BOOKABLE_TYPES.includes(u.type) : u.type === category) && isBookable(u))
+        .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
+    },
+    [state.units, orgUnits, category]
   );
 
 
@@ -448,14 +464,15 @@ export function BookingsView() {
   );
 }
 
-function EmptyState({ category, floorName }: { category: string; floorName?: string }) {
+function EmptyState({ category }: { category: string; floorName?: string }) {
+  // The list is ORG-WIDE now — no floor in the copy.
   return (
     <div className={styles.empty}>
       <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--ink-300)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
         <rect x="3" y="4" width="18" height="17" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" />
       </svg>
-      <div className={styles.emptyTitle}>No {category.toLowerCase()} on {floorName ?? 'this floor'}</div>
-      <div className={styles.emptySub}>Place some in Edit mode on the Floorplans view, then book them here.</div>
+      <div className={styles.emptyTitle}>No bookable {category.toLowerCase()} found</div>
+      <div className={styles.emptySub}>Mark desks as hot desks or rooms as reservable in your org, then book them here.</div>
     </div>
   );
 }

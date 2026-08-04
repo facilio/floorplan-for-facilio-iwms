@@ -974,6 +974,13 @@ export async function saveFloorplanDefaultView(floorId: string, planId: PlanId, 
  * floor when the current user has no assigned/booked desk to land on instead (see `fetchMyDesk`,
  * tried first) — replaces walking the whole site/building tree just to find "a" floor.
  */
+/** Whether a floor record actually resolves — guards `?floor=` deep links from dead ids. */
+export async function floorExists(floorId: string): Promise<boolean> {
+  if (!isFacilioApiConfigured) return true; // local mode: ids resolve against the local seed
+  const res: any = await facilioApi.fetchRecord('floor', { id: floorId }).catch(() => null);
+  return !!res && !res.error && !!res.floor?.id;
+}
+
 export async function getAnyFloor(): Promise<{ id: string; name: string } | null> {
   if (!isFacilioApiConfigured) return null;
   const res = await facilioApi.fetchAll('floor', { page: 1, perPage: 1 });
@@ -2095,6 +2102,62 @@ async function fetchSpaceBookingsForDay(date: string, floorId: string | null): P
       .filter((b: Booking | null): b is Booking => b !== null && (floorId == null || onFloor.size === 0 || onFloor.has(b.unitId)));
   }
 
+/**
+ * EVERY bookable-capable resource in the org — desks, rooms, parking stalls — as unplaced
+ * Units (the bookings view lists org-wide, not per-floor; callers still apply isBookable).
+ * Paginated per module (up to 2000 records each), session-cached.
+ */
+let orgResourcesCache: Promise<Unit[]> | null = null;
+export function fetchOrgBookableResources(): Promise<Unit[]> {
+  if (!isFacilioApiConfigured) return Promise.resolve([]);
+  if (!orgResourcesCache) {
+    orgResourcesCache = (async () => {
+      const mods: { type: UnitType; moduleName: string; plan: PlanId }[] = [
+        { type: 'workstation', moduleName: 'desks', plan: 'workstation' },
+        { type: 'room', moduleName: 'rooms', plan: 'custom' },
+        { type: 'parking', moduleName: 'parkingstall', plan: 'parking' },
+      ];
+      const out: Unit[] = [];
+      await Promise.all(
+        mods.map(async ({ type, moduleName, plan }) => {
+          for (let page = 1; page <= 4; page++) {
+            const res: any = await facilioApi.fetchAll(moduleName, { page, perPage: 500, isArchived: false }).catch(() => null);
+            const list = res?.list;
+            if (res?.error || !Array.isArray(list)) break;
+            for (const r of list as any[]) {
+              const floorId = lookupId(r, 'floor');
+              out.push({
+                id: String(r.id),
+                type,
+                label: r.name ?? `#${r.id}`,
+                room: null,
+                geom: { kind: 'point', x: 0, y: 0 },
+                floor: floorId != null ? String(floorId) : '',
+                plan,
+                unplaced: true,
+                ...(type === 'workstation' && DESK_TYPE_BY_NUM[r.deskType] ? { deskType: DESK_TYPE_BY_NUM[r.deskType] } : {}),
+                ...(type === 'room' && typeof r.reservable === 'boolean' ? { isReservable: r.reservable } : {}),
+                ...(type === 'room' && typeof r.isassignable_rooms === 'boolean'
+                  ? { isAssignableRoom: r.isassignable_rooms }
+                  : type === 'room' && roomContactId(r) != null && r.reservable !== true
+                    ? { isAssignableRoom: true }
+                    : {}),
+                ...(type === 'room' && roomTypeName(r) ? { roomType: roomTypeName(r) } : {}),
+              });
+            }
+            if ((list as any[]).length < 500) break;
+          }
+        })
+      );
+      return out;
+    })();
+    orgResourcesCache.catch(() => {
+      orgResourcesCache = null;
+    });
+  }
+  return orgResourcesCache;
+}
+
 /** Org-wide day bookings for the user-centric calendar — no floor scoping. */
 export function fetchOrgBookingsForDate(date: string): Promise<Booking[]> {
   if (!isFacilioApiConfigured) return Promise.resolve([]);
@@ -2505,7 +2568,9 @@ export async function fetchRolePermissionRecords(
   // Server-side role filter on the roles MULTI-lookup: operatorId 90 = multi-lookup "contains"
   // (the lookup "is" operator 36 doesn't apply to multi fields).
   const filters = opts?.roleId != null ? JSON.stringify({ [`roles_${mod}`]: { operatorId: 90, value: [String(opts.roleId)] } }) : undefined;
-  const res: any = await facilioApi.fetchAll(mod, { page: opts?.page ?? 1, perPage: opts?.perPage ?? 500, ...(filters ? { filters } : {}) });
+  // Custom-module list calls REQUIRE the moduleName param riding along (going without it is
+  // what sprayed failing requests — reported live).
+  const res: any = await facilioApi.fetchAll(mod, { moduleName: mod, page: opts?.page ?? 1, perPage: opts?.perPage ?? 500, ...(filters ? { filters } : {}) });
   if (res.error || !res.list) throw new Error(res.error?.message || `facilio-api: ${moduleName} fetch failed`);
   return (res.list as any[]).map((r) => {
     const fieldKeys: Partial<Record<keyof ModePerms, string>> = {};
@@ -2610,16 +2675,22 @@ export async function resolveHardcodedRolePerms(): Promise<Partial<ModePerms> | 
 const SETTINGS_MODULE = 'custom_floorplansettings';
 const SETTINGS_CONFIG_FIELDS = [`config_${SETTINGS_MODULE}`, 'config', `settings_${SETTINGS_MODULE}`, 'settings'];
 
+let settingsRecordId: number | null = null;
+let settingsLastJson: string | null = null;
+
 export async function fetchOrgSettings(): Promise<{ recordId: number; config: Record<string, unknown> } | null> {
   if (!isFacilioApiConfigured) return null;
-  const res: any = await facilioApi.fetchAll(SETTINGS_MODULE, { page: 1, perPage: 1 }).catch(() => null);
+  const res: any = await facilioApi.fetchAll(SETTINGS_MODULE, { moduleName: SETTINGS_MODULE, page: 1, perPage: 1 }).catch(() => null);
   const rec = res?.list?.[0];
   if (res?.error || !rec?.id) return null;
+  settingsRecordId = rec.id;
   for (const key of SETTINGS_CONFIG_FIELDS) {
     const raw = rec[key];
     if (typeof raw === 'string' && raw.trim()) {
       try {
-        return { recordId: rec.id, config: JSON.parse(raw) };
+        const config = JSON.parse(raw);
+        settingsLastJson = JSON.stringify(config);
+        return { recordId: rec.id, config };
       } catch {
         /* malformed JSON in this field — try the next candidate */
       }
@@ -2628,18 +2699,28 @@ export async function fetchOrgSettings(): Promise<{ recordId: number; config: Re
   return { recordId: rec.id, config: {} };
 }
 
-/** Best-effort org-wide settings write — create the single record if missing, else update it. */
+/** Best-effort org-wide settings write — create the single record if missing, else update it.
+ * The record id and last payload are cached: saves neither re-fetch the record every time nor
+ * echo identical content back (both multiplied request volume — reported live). */
 export async function saveOrgSettings(config: Record<string, unknown>): Promise<boolean> {
   if (!isFacilioApiConfigured) return false;
-  const existing = await fetchOrgSettings().catch(() => null);
-  const data = { name: 'floorplan-settings', [SETTINGS_CONFIG_FIELDS[0]]: JSON.stringify(config) };
-  const res = existing
-    ? await facilioApi.updateRecord(SETTINGS_MODULE, { id: existing.recordId, data })
+  const json = JSON.stringify(config);
+  if (json === settingsLastJson) return true; // nothing changed — no request at all
+  if (settingsRecordId == null) await fetchOrgSettings().catch(() => null);
+  const data = { name: 'floorplan-settings', [SETTINGS_CONFIG_FIELDS[0]]: json };
+  const res = settingsRecordId != null
+    ? await facilioApi.updateRecord(SETTINGS_MODULE, { id: settingsRecordId, data })
     : await facilioApi.createRecord(SETTINGS_MODULE, { data });
   if (res.error) {
     // eslint-disable-next-line no-console
     console.warn('[facilio-api] org settings write failed (module missing or no permission) — settings stay device-local', res.error);
     return false;
+  }
+  settingsLastJson = json;
+  if (settingsRecordId == null) {
+    const created: any = res as any;
+    const id = Number(created?.[SETTINGS_MODULE]?.id);
+    if (Number.isFinite(id)) settingsRecordId = id;
   }
   return true;
 }
@@ -2924,11 +3005,6 @@ export function fetchOrgTimezone(): Promise<string | null> {
     });
   }
   return orgTimezoneCache;
-}
-
-function epochAt(dateISO: string, minutes: number): number {
-  const [y, m, d] = dateISO.split('-').map(Number);
-  return new Date(y, m - 1, d, Math.floor(minutes / 60), minutes % 60, 0, 0).getTime();
 }
 
 /**

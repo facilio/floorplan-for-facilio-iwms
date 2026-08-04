@@ -52,7 +52,10 @@ function BookingFormInner() {
   // The RESOURCE is a form LOOKUP (added on request): the map/calendar selection is only the
   // default; any bookable unit of the same type can be picked right here.
   const [resourceId, setResourceId] = useState(target.unitId);
-  const unit = unitById(state, resourceId) ?? unitById(state, target.unitId);
+  // Org-wide resources (bookings view) aren't in state.units — the snapshot on the target
+  // resolves them.
+  const snap = target.resourceUnit;
+  const unit = unitById(state, resourceId) ?? (snap && snap.id === resourceId ? snap : null) ?? unitById(state, target.unitId) ?? snap ?? null;
   const module = state.bookingModule;
   const contacts = state.clientContacts;
 
@@ -305,9 +308,10 @@ function BookingFormInner() {
     if (ok) actions.closeBookingForm();
   }
 
-  // Bookable units of the SAME type as the picked one — the lookup's option set.
-  const resourceOptions = state.units
-    .filter((u) => !u.unplaced && u.type === unit.type && isBookable(u))
+  // Bookable units of the SAME type as the picked one — the lookup's option set. The snapshot
+  // joins in when it isn't part of the loaded floor.
+  const resourceOptions = [...state.units, ...(snap && !state.units.some((u) => u.id === snap.id) ? [snap] : [])]
+    .filter((u) => u.type === unit.type && isBookable(u))
     .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }))
     .map((u) => ({ value: u.id, label: u.label, sublabel: u.room ?? u.secondary ?? undefined }));
 

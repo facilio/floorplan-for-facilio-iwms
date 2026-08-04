@@ -9,7 +9,7 @@ import type { AmenityIcon, Assignments, Booking, ClientContact, DefaultPlanView,
 import type { CadGroup } from '../lib/cadAnalyze';
 import type { Asset } from '../lib/assets';
 import { isFacilioApiConfigured } from '../lib/facilioApi';
-import { assignUnitReal, createRealBooking, fetchCurrentPeopleId, fetchFloorplanCustomization, fetchFloorplanImage, fetchMyDesk, fetchUnitAssigneeFromSummary, findFloorParents, findUnitIdForDeskRecord, getAnyFloor, getFloorPlanSummary, patchUnitContact, resolveHardcodedRolePerms, resolveModePermsForCurrentUser, saveFloorplanDefaultView, saveFloorplanMarkers, vacateUnitReal } from '../lib/facilioApiDataSource';
+import { assignUnitReal, createRealBooking, fetchCurrentPeopleId, fetchFloorplanCustomization, fetchFloorplanImage, fetchMyDesk, fetchUnitAssigneeFromSummary, findFloorParents, floorExists, findUnitIdForDeskRecord, getAnyFloor, getFloorPlanSummary, patchUnitContact, resolveHardcodedRolePerms, resolveModePermsForCurrentUser, saveFloorplanDefaultView, saveFloorplanMarkers, vacateUnitReal } from '../lib/facilioApiDataSource';
 import { listFloorplanFloorIds, loadFloorplanFile, persistFloorplanFile } from '../lib/floorplanFileStore';
 import { DEFAULT_PERMS_MODULE_NAME, loadEffectiveSettings, saveSettings, settingsFromState } from '../lib/settingsStore';
 import { floorFromLocation, pathForView, viewFromLocation, withFloorParam } from '../lib/routes';
@@ -1195,7 +1195,7 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
     /** Which real module bookings target (Space vs Facility) — mutually exclusive, set in Settings. */
     setBookingModule: (module: AppState['bookingModule']) => dispatch({ type: 'SET_BOOKING_MODULE', module }),
     /** Opens the shared booking form for a resource + window (used by the calendar drag and the book sidebar). */
-    openBookingForm: (target: { unitId: string; date: string; start: number; end: number; allowTypeSwitch?: boolean }) => dispatch({ type: 'SET_BOOK_FORM', form: target }),
+    openBookingForm: (target: { unitId: string; date: string; start: number; end: number; allowTypeSwitch?: boolean; resourceUnit?: Unit }) => dispatch({ type: 'SET_BOOK_FORM', form: target }),
     updateBookForm: (patch: Partial<{ unitId: string; date: string; start: number; end: number }>) => dispatch({ type: 'UPDATE_BOOK_FORM', patch }),
     closeBookingForm: () => dispatch({ type: 'SET_BOOK_FORM', form: null }),
     /**
@@ -1630,9 +1630,16 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
           dispatch({ type: 'SET_MODE_PERMS', perms: resolved ? { ...defaults, ...resolved } : defaults, fromModule: !!resolved });
         })();
         myDesk = await fetchMyDesk().catch(() => null);
-        // A `?floor=` deep link WINS over the my-desk landing — a shared URL must open the
-        // floorplan it names.
-        firstRealFloor = floorFromLocation(window.location) ?? myDesk?.floorId ?? (await getAnyFloor().catch(() => null))?.id;
+        // A `?floor=` deep link WINS over the my-desk landing — but only when the floor
+        // actually resolves; a dead id falls back (with a toast) instead of stranding the
+        // user on an empty canvas.
+        const urlFloor = floorFromLocation(window.location);
+        let deepLinkFloor: string | null = null;
+        if (urlFloor) {
+          deepLinkFloor = (await floorExists(urlFloor).catch(() => false)) ? urlFloor : null;
+          if (!deepLinkFloor) showToastVia(dispatch, "The floor in this link isn't available — showing your floor instead", { variant: 'error' });
+        }
+        firstRealFloor = deepLinkFloor ?? myDesk?.floorId ?? (await getAnyFloor().catch(() => null))?.id;
         // One line that says WHERE the app decided to land and why — "first floorplan didn't
         // load" is only debuggable with this in the console.
         // eslint-disable-next-line no-console
