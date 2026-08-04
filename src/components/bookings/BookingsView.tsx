@@ -91,7 +91,9 @@ export function BookingsView() {
   const resources = useMemo(
     // Only actually bookable units belong on the booking calendar — for desks that's
     // HOT/HOTEL only (ASSIGNED desks are assignment-only; see lib/types DeskType).
-    () => state.units.filter((u) => !u.unplaced && u.type === category && isBookable(u)).sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true })),
+    // UNPLACED records count too (requested): a bookable room with no zone drawn on the
+    // plan is still a real, bookable resource here.
+    () => state.units.filter((u) => u.type === category && isBookable(u)).sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true })),
     [state.units, category]
   );
 
@@ -161,7 +163,11 @@ export function BookingsView() {
   // Dragging a window opens the shared booking form (prefilled) rather than booking instantly —
   // the actual create happens on form submit, and the nonce-driven effect above refetches.
   function openForm(date: string, start: number, end: number) {
-    if (!resourceId || !catDef.bookable) return;
+    if (!catDef.bookable) return;
+    if (!resourceId) {
+      actions.showToast(`No bookable ${catDef.label.toLowerCase()} found — pick another category`);
+      return;
+    }
     // Booking-date window (mirrors the form's own validation): rooms are same-day only,
     // everything else books at most one week ahead. ISO strings compare lexicographically.
     const today = toISO(new Date());
@@ -265,9 +271,10 @@ export function BookingsView() {
           </p>
         )}
 
-        {!resources.length ? (
-          <EmptyState category={catDef.label} floorName={meta?.floor.name} />
-        ) : !catDef.bookable ? (
+        {/* NO floor empty-state gate anymore: the calendar is org-wide and user-centric, so it
+            renders even when the current floor has no resources of this category (only the
+            resource GRID needs them — it shows the empty state itself below). */}
+        {!catDef.bookable ? (
           <NotBookableState label={catDef.label} />
         ) : (
           <>
@@ -306,7 +313,9 @@ export function BookingsView() {
                   Loading bookings…
                 </div>
               )}
-            {layout === 'grid' ? (
+            {layout === 'grid' && !resources.length ? (
+              <EmptyState category={catDef.label} floorName={meta?.floor.name} />
+            ) : layout === 'grid' ? (
               <ResourceGrid
                 resources={resources}
                 dates={calView === 'day' ? [focusDate] : Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(focusDate), i))}

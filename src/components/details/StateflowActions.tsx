@@ -42,8 +42,8 @@ export function StateflowActions({
   showStatusRow?: boolean;
   readOnly?: boolean;
   onChanged?: () => void;
-  /** Called the moment a transition is CLICKED (before the API round-trip) — for callers that open follow-up UI instantly (e.g. Re-Assign opening the person picker). */
-  onTransitionStart?: (t: TransitionOption) => void;
+  /** Called the moment a transition is CLICKED (before the API round-trip) — for callers that open follow-up UI instantly (e.g. Re-Assign opening the person picker). Return true to SUPPRESS the "<name> done" toast: the follow-up UI is the feedback, and the toast covered the picker. */
+  onTransitionStart?: (t: TransitionOption) => void | boolean;
   /** Called after a transition executes successfully, with the transition that ran — for callers that mirror specific transitions into app state (e.g. a desk Vacate clearing the assignee). */
   onTransitionDone?: (t: TransitionOption) => void;
 }) {
@@ -98,11 +98,11 @@ export function StateflowActions({
       data = { transitionCommentData: { body, bodyHTML: body } };
     }
     setBusyId(`${kind}:${t.id}`);
-    onTransitionStart?.(t);
+    const openedFollowUp = onTransitionStart?.(t) === true;
     try {
       if (kind === 'state') await executeStateTransition(moduleName, recordId, t.id, data);
       else await executeApprovalTransition(moduleName, recordId, t.id, data);
-      actions.showToast(`${t.name} done`);
+      if (!openedFollowUp) actions.showToast(`${t.name} done`);
       setNonce((n) => n + 1); // refetch own state
       onTransitionDone?.(t);
       onChanged?.();
@@ -257,7 +257,11 @@ export function UnitStateflowSection({ unit, readOnly, showStatusRow }: { unit: 
       // waiting on the API — reassign IS assign: the transition changes state, the picker
       // writes who).
       onTransitionStart={(t) => {
-        if (!/vacat|unassign/i.test(t.name) && /assign/i.test(t.name)) actions.setWebReassign(unit.id);
+        if (!/vacat|unassign/i.test(t.name) && /assign/i.test(t.name)) {
+          actions.setWebReassign(unit.id);
+          return true; // the picker IS the feedback — no "Re-Assign done" toast over it
+        }
+        return false;
       }}
       // A vacate-ish transition must ALSO clear the record's assignee lookup (the transition only
       // changes state) — clientcontact_moves: null on desks, employee: null on lockers/parking —
