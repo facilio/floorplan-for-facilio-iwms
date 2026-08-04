@@ -140,9 +140,8 @@ export function Tooltip() {
           {contactId ? 'Manage' : 'Assign a person'}
         </Button>
       )}
-      {state.mode === 'assign' && !assignable && (
-        <div className={styles.note}>Booked in Booking mode, not assigned.</div>
-      )}
+      {/* No note for bookable-only units in assign mode (removed on approval) — the status
+          pill alone carries the state. */}
       </>
       )}
 
