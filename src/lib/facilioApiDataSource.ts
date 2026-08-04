@@ -630,7 +630,9 @@ function zoneFeatureToUnit(
   const secondary = typeof p.secondaryLabel === 'string' && p.secondaryLabel.trim() ? p.secondaryLabel.trim() : undefined;
   const reservable = p.isReservable ?? p.reservable ?? p.space?.reservable;
   // `isassignable_rooms`: a NON-reservable room with this flag is assignable to a client contact.
-  const assignable = p.isassignable_rooms ?? p.space?.isassignable_rooms;
+  // A room CARRYING a clientcontact_rooms assignee is implicitly assignment-type too (unless
+  // explicitly reservable) — an assigned room must never render as bookable/"Available".
+  const assignable = (p.isassignable_rooms ?? p.space?.isassignable_rooms) ?? (roomContactId(p) != null && reservable !== true ? true : undefined);
   const department = departmentName(p) ?? departmentName(p.space);
 
   return {
@@ -713,7 +715,13 @@ async function fetchFloorModuleRecords(floorId: string): Promise<Unit[]> {
           unplaced: true,
           ...(type === 'workstation' && DESK_TYPE_BY_NUM[r.deskType] ? { deskType: DESK_TYPE_BY_NUM[r.deskType] } : {}),
           ...(type === 'room' && typeof r.reservable === 'boolean' ? { isReservable: r.reservable } : {}),
-          ...(type === 'room' && typeof r.isassignable_rooms === 'boolean' ? { isAssignableRoom: r.isassignable_rooms } : {}),
+          // Explicit flag first; else an assigned (clientcontact_rooms) non-reservable room is
+          // implicitly assignment-type — it must never surface as bookable.
+          ...(type === 'room' && typeof r.isassignable_rooms === 'boolean'
+            ? { isAssignableRoom: r.isassignable_rooms }
+            : type === 'room' && roomContactId(r) != null && r.reservable !== true
+              ? { isAssignableRoom: true }
+              : {}),
           ...(departmentName(r) ? { department: departmentName(r) } : {}),
         })
       );
