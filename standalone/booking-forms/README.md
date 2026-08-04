@@ -1,10 +1,17 @@
 # Standalone Facilio booking forms
 
-`bookingForms.tsx` is a **single self-contained file** — the floorplan app's booking form,
-extracted so it can ship inside ANY Facilio connected app. It has **no imports from the
-floorplan app**; its only dependency is React. All org access goes through the
-FacilioAppSDK bridge (loaded automatically from the Facilio CDN), so there are no tokens,
-base URLs, or CORS concerns.
+The floorplan app's booking form, extracted so it can ship inside ANY Facilio connected app.
+No imports from the floorplan app; all org access goes through the FacilioAppSDK bridge
+(loaded automatically from the Facilio CDN) — no tokens, base URLs, or CORS concerns.
+
+Two equivalent builds:
+
+- **`bookingForms.js` + `index.html`** — plain JavaScript (no JSX, no bundler), for hosts
+  that only accept these file types: css, html, jpeg, jpg, js, json, png, svg, txt, pdf.
+  Upload both files as-is; React loads from the unpkg CDN. Embed with
+  `index.html?unitType=room&resourceId=123&resourceLabel=E-1-CO11`, or call
+  `FacilioBookingForms.mount(el, props)` from your own page/script.
+- **`bookingForms.tsx`** — the same component for TypeScript/React codebases with a bundler.
 
 ## What it does
 

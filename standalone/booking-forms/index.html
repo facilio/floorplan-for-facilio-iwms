@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Facilio Booking Form</title>
+    <style>
+      body { margin: 0; padding: 20px; background: #f5f7fa; }
+      #root { max-width: 600px; margin: 0 auto; background: #fff; border: 1px solid #d5dce4; border-radius: 12px; padding: 20px; }
+    </style>
+  </head>
+  <body>
+    <div id="root">Loading…</div>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="./bookingForms.js"></script>
+    <script>
+      // Resource comes from the embed URL, e.g. ?unitType=room&resourceId=123&resourceLabel=E-1-CO11
+      var q = new URLSearchParams(window.location.search);
+      var unitType = q.get('unitType') || 'workstation';
+      var resourceId = Number(q.get('resourceId'));
+      var resourceLabel = q.get('resourceLabel') || ('#' + resourceId);
+      var rootEl = document.getElementById('root');
+      if (!resourceId) {
+        rootEl.textContent = 'Missing ?resourceId= in the URL (also supported: unitType, resourceLabel, slotMinutes).';
+      } else {
+        FacilioBookingForms.mount(rootEl, {
+          unitType: unitType,
+          resourceId: resourceId,
+          resourceLabel: resourceLabel,
+          slotMinutes: Number(q.get('slotMinutes')) || 30,
+          onDone: function (id) {
+            rootEl.innerHTML = '<p style="font: 600 14px system-ui">Booked ✓ (spacebooking #' + id + ')</p>';
+          },
+        });
+      }
+    </script>
+  </body>
+</html>

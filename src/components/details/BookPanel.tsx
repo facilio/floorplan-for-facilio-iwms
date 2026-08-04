@@ -26,6 +26,17 @@ export function BookPanel() {
   const bookedIds = bookedUnitIds(state);
   const availCount = bookable.filter((u) => !bookedIds.has(u.id)).length;
 
+  // Same client rules as the booking form: today .. one week ahead, and no past start times
+  // for today (the backend bumps a past start to "now", so offering them only misleads).
+  const toLocalISO = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const minDate = toLocalISO(new Date());
+  const maxDate = toLocalISO(new Date(Date.now() + 7 * 86400000));
+  const nowSlot = (() => {
+    const n = new Date();
+    return Math.floor((n.getHours() * 60 + n.getMinutes()) / 30) * 30;
+  })();
+  const startSelectable = (m: number) => state.date !== minDate || m >= nowSlot;
+
   return (
     <div className={styles.stack}>
       <div className={card.card}>
@@ -34,13 +45,13 @@ export function BookPanel() {
         </div>
         <div className={card.cardBody}>
           <label className={card.label}>Date</label>
-          <input className={card.input} type="date" value={state.date} onChange={(e) => actions.setDate(e.target.value)} />
+          <input className={card.input} type="date" value={state.date} min={minDate} max={maxDate} onChange={(e) => actions.setDate(e.target.value)} />
           <div className={styles.timeRow}>
             <div style={{ flex: 1 }}>
               <label className={card.label}>Start</label>
               <Select
                 value={String(state.start)}
-                options={TIME_OPTIONS.filter((o) => Number(o.value) < state.end)}
+                options={TIME_OPTIONS.filter((o) => Number(o.value) < state.end && startSelectable(Number(o.value)))}
                 onChange={(v) => actions.setTimeRange(Number(v), Math.max(Number(v) + 15, state.end))}
                 fullWidth
                 aria-label="Start time"
