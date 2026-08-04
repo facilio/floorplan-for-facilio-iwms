@@ -2141,15 +2141,14 @@ function readConnectedAppId(): number | null {
 }
 
 /**
- * The current app's LINK NAME (`maintenance`, `appgallerytesting`, a tenant/vendor portal, …).
- * Sources, in order: the connected-app token's `a` claim (confirmed shape:
- * `{"i":<appId>,"a":"<appLinkName>","w":"<widget>","t":"WEB_TAB"}`), then the first path segment
- * of the embedding URL — which is how clientV2 itself derives the current app. Null when neither
- * is available (plain local dev).
+ * The current app's LINK NAME (`maintenance`, `appgallerytesting`, a tenant/vendor portal, …),
+ * from the embedding URL's path — which is how clientV2 itself derives the current app. The
+ * connected-app token's `a` claim is deliberately NOT read here: the live captures show it is
+ * the ORG name (`{"i":<appId>,"a":<org>,…}`), and treating it as the app link name made every
+ * app look like a non-maintenance one. Null when the URL says nothing (plain local dev,
+ * cross-origin parent).
  */
 export function currentAppLinkName(): string | null {
-  const fromToken = readConnectedAppToken()?.a;
-  if (typeof fromToken === 'string' && fromToken.trim()) return fromToken.trim().toLowerCase();
   try {
     // Embedded: the parent frame's URL carries the app segment; same-origin access can throw.
     const href = window.top && window.top !== window ? window.top.location.pathname : window.location.pathname;
@@ -2196,35 +2195,52 @@ export function fetchCurrentApp(): Promise<CurrentApp> {
       const asId = (v: any) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : null);
       const asName = (v: any) => (typeof v === 'string' && v.trim() ? v.trim().toLowerCase() : null);
 
+      // A resolved LINK NAME is the only thing worth returning early for — an id alone must
+      // NOT short-circuit (the SDK props include user/account objects whose bare `id` used to
+      // win here, so the org endpoint below never even ran and the app looked identity-less).
+      let fallbackId: number | null = null;
+      let fallbackName: string | null = null;
+
       // 1) The HOST's own properties — the connected-app SDK hands the embed its current
       // application, so no request is needed at all when it's there.
       const props = await sdkProperties().catch(() => null);
       if (props) {
         const flat = Object.values(props) as any[];
         for (const p of flat) {
-          const app = p?.app ?? p?.application ?? p?.currentApp ?? p;
+          // App-shaped candidates only — never the raw property object, whose `id` could be a
+          // user/org/anything id.
+          const app = p?.app ?? p?.application ?? p?.currentApp ?? null;
           const linkName = asName(app?.linkName ?? app?.appLinkName ?? p?.appLinkName);
           const id = asId(app?.id ?? app?.applicationId ?? p?.appId ?? p?.applicationId);
-          if (linkName || id) return { id, linkName, name: asName(app?.name) };
+          if (linkName) return { id: id ?? fallbackId, linkName, name: asName(app?.name) };
+          if (id && !fallbackId) fallbackId = id;
         }
       }
 
-      // 2) Ask the org.
+      // 2) Ask the org — with the token's appId when we have one (some builds resolve
+      // fetchDetails only per-app), then without.
+      const tokenAppId = readConnectedAppId();
       for (const path of ['application/fetchDetails', 'v2/application/fetchDetails']) {
-        const body = await customGet(path, { considerRole: true, optimised: true }).catch(() => null);
-        const data = body?.data ?? body?.result ?? body ?? null;
-        const app = data?.application ?? data?.applicationDetails ?? data ?? null;
-        const linkName = asName(app?.linkName ?? app?.appLinkName ?? data?.appLinkName);
-        const id = asId(app?.id ?? app?.applicationId ?? data?.applicationId);
-        if (linkName || id) return { id, linkName, name: asName(app?.name) };
+        for (const params of tokenAppId ? [{ considerRole: true, optimised: true, appId: tokenAppId }, { considerRole: true, optimised: true }] : [{ considerRole: true, optimised: true }]) {
+          const body = await customGet(path, params).catch(() => null);
+          const data = body?.data ?? body?.result ?? body ?? null;
+          const app = data?.application ?? data?.applicationDetails ?? data ?? null;
+          const linkName = asName(app?.linkName ?? app?.appLinkName ?? data?.appLinkName);
+          const id = asId(app?.id ?? app?.applicationId ?? data?.applicationId);
+          if (linkName) return { id: id ?? fallbackId ?? tokenAppId, linkName, name: asName(app?.name) };
+          if (id && !fallbackId) {
+            fallbackId = id;
+            fallbackName = asName(app?.name);
+          }
+        }
       }
-      // Endpoint unreachable — fall back to what the embed itself tells us. `null` linkName is
-      // treated as MAINTENANCE by callers (fail-open): the maintenance app is where admins work,
-      // and hiding its admin tabs because a probe failed is the worse error.
+      // No linkName from the SDK or the org — the embedding URL is the last word (it only
+      // recognizes the maintenance path; anything else stays null and callers treat unknown
+      // as non-maintenance).
       const linkName = currentAppLinkName();
       // eslint-disable-next-line no-console
-      console.warn('[facilio-api] application/fetchDetails unavailable — using the embed-derived app link name', linkName);
-      return { id: readConnectedAppId(), linkName, name: null };
+      console.warn('[facilio-api] app linkName unresolved from SDK/org — using the embed URL', linkName);
+      return { id: fallbackId ?? tokenAppId, linkName, name: fallbackName };
     })();
     currentAppCache.catch(() => {
       currentAppCache = null;
