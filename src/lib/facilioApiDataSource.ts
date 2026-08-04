@@ -2262,26 +2262,11 @@ export function fetchCurrentApp(): Promise<CurrentApp> {
 
       // Every source's outcome is collected here and logged ONCE — "Settings missing in
       // maintenance" is only debuggable if the console says exactly what each source returned.
+      // (The v2/account probe that briefly lived here was removed on request — fetchDetails
+      // below answers with `result.application.linkName`, confirmed against a live response.)
       const diag: Record<string, unknown> = { sdkPropsKeys: props ? Object.keys(props) : null };
 
-      // 2) The ACCOUNT payload — `v2/account` demonstrably works in the embeds (the session
-      // user resolves through it), and several builds hang the current application off it.
-      for (const path of ['v2/account', 'v2/fetchAccount']) {
-        const body = await customGet(path).catch(() => null);
-        const account = body?.result?.account ?? body?.account ?? body?.data?.account ?? body?.result ?? body?.data ?? body ?? null;
-        const app = account?.app ?? account?.application ?? account?.currentApp ?? null;
-        const linkName = asName(app?.linkName ?? app?.appLinkName ?? account?.appLinkName);
-        const id = asId(app?.id ?? app?.applicationId ?? account?.appId);
-        diag[path] = account ? { accountKeys: Object.keys(account), appKeys: app ? Object.keys(app) : null, linkName } : 'no payload';
-        if (linkName) {
-          // eslint-disable-next-line no-console
-          console.info('[facilio-api] current-app resolved via', path, { id, linkName });
-          return { id: id ?? fallbackId, linkName, name: asName(app?.name) };
-        }
-        if (id && !fallbackId) fallbackId = id;
-      }
-
-      // 3) Ask the org's application endpoint — v2 FIRST: the SDK resolves paths under the
+      // 2) Ask the org's application endpoint — v2 FIRST: the SDK resolves paths under the
       // current app (confirmed live: `/maintenance/api/application/fetchDetails` 404s while the
       // v2 route is the one clientV2 itself boots from). Token appId variants included since
       // some builds resolve fetchDetails only per-app.
