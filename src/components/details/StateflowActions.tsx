@@ -251,10 +251,12 @@ export function UnitStateflowSection({ unit, readOnly, showStatusRow }: { unit: 
       showStatusRow={showStatusRow}
       // A vacate-ish transition must ALSO clear the record's assignee lookup (the transition only
       // changes state) — clientcontact_moves: null on desks, employee: null on lockers/parking —
-      // and drop the local assignment so the overlay updates immediately. Reassignment keeps
-      // flowing through the assign path, which patches the NEW contact id the same way.
+      // and drop the local assignment so the overlay updates immediately. An assign/re-assign
+      // transition opens the PERSON PICKER (the same assign flow — reassign IS assign): the
+      // transition changes state, the picker writes who.
       onTransitionDone={(t) => {
         if (/vacat|unassign/i.test(t.name)) actions.stateflowVacated(unit.id);
+        else if (/assign/i.test(t.name)) actions.setWebReassign(unit.id);
       }}
     />
   );

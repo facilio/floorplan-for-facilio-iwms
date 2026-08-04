@@ -165,19 +165,18 @@ function AssignBody({ unitId }: { unitId: string }) {
   const name = contactId ? contactName(state, contactId) || 'Occupied' : null;
 
   // The CURRENT assignee stays visible in both states — reassigning must never hide who holds
-  // the space right now. Reassign is data entry (it changes the contact lookup, not the record
-  // state — same as drag-to-reassign), so it gets a plain action button here (added on request).
+  // the space right now. NO hardcoded Reassign button here (removed on request — it duplicated
+  // the record's own "Re-Assign" stateflow transition, which now opens this picker itself);
+  // only a Cancel escape while the picker is open.
   const assignedRow = contactId ? (
     <div className={styles.assignedRow}>
       <span className={styles.avatar}>{initials(name!)}</span>
       <span className={styles.assignedName} title={name!}>{name}</span>
-      <div style={{ marginLeft: 'auto' }}>
-        {reassigning ? (
+      {reassigning && (
+        <div style={{ marginLeft: 'auto' }}>
           <Button variant="tertiary" onClick={() => actions.setWebReassign(null)}>Cancel</Button>
-        ) : (
-          <Button variant="secondary" onClick={() => actions.setWebReassign(unitId)}>Reassign</Button>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   ) : null;
 
