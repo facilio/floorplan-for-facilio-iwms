@@ -10,10 +10,9 @@
   left: 0;
   top: 0;
   transform-origin: 0 0;
-  /* Own compositing layer: keeps the plan image's rasterized tiles intact when the floating
-     panels above it repaint — without this, panel invalidations could shatter a scaled SVG
-     plan into stale/misaligned tiles. */
-  will-change: transform;
+  /* Own stacking context so panel repaints can't intersect the plan's paint. NO
+     will-change:transform here — it pinned the compositor to one cached raster scale, which
+     stretched (blurred) SVG plans on zoom instead of re-rasterizing them (reported). */
   isolation: isolate;
 }
 .hint {

@@ -26,6 +26,13 @@ const isDevMode = import.meta.env.VITE_DEV_MODE === 'true';
  */
 export function FloorplanBackground({ imageUrl }: { imageUrl?: string; zoom?: number }) {
   if (imageUrl) {
+    // SVG plans: the compositor rasterizes an <img> at its LAYOUT size — zooming the plane
+    // then just stretches that 1× raster on some GPUs (blurry, reported) instead of
+    // re-rasterizing. Laying the img out K× larger and scaling it back down forces a K×
+    // raster, so zoom stays sharp up to K× regardless of raster-scale heuristics. Raster
+    // sources (PNG/JPG/server-rendered) skip this — they have no extra detail to gain and
+    // the double-scaling would only soften them.
+    const K = /^data:image\/svg|\.svg([?#]|$)/i.test(imageUrl) ? 3 : 1;
     return (
       <img
         src={imageUrl}
@@ -37,8 +44,9 @@ export function FloorplanBackground({ imageUrl }: { imageUrl?: string; zoom?: nu
           position: 'absolute',
           left: 0,
           top: 0,
-          width: IMG_W,
-          height: IMG_H,
+          width: IMG_W * K,
+          height: IMG_H * K,
+          ...(K !== 1 ? { transform: `scale(${1 / K})`, transformOrigin: '0 0' } : {}),
           boxShadow: 'var(--shadow-md)',
           pointerEvents: 'none',
           objectFit: 'contain',
