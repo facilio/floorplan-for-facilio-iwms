@@ -1,13 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
 import { isBookable, unitById } from '../../state/selectors';
 import { fmtTime } from '../../lib/geometry';
 import { epochAtInTz, orgNow, orgTimezone, wallClockInTz } from '../../lib/orgTime';
 import { isFacilioApiConfigured } from '../../lib/facilioApi';
-import { fetchBookingFormById, fetchBookingFormList, pickDefaultBookingForm } from '../../lib/facilioApiDataSource';
+import { fetchBookingFormById, fetchBookingFormList, fetchOrgBookableResources, pickDefaultBookingForm } from '../../lib/facilioApiDataSource';
 import type { BookingFormFieldMeta, BookingFormMeta, BookingFormSummary } from '../../lib/facilioApiDataSource';
-import type { ClientContact, UnitType } from '../../lib/types';
+import type { ClientContact, Unit, UnitType } from '../../lib/types';
 import { Modal, ModalFooter, ModalHeader } from '../primitives/Modal';
 import { Select } from '../primitives/Select';
 import { DatePicker } from '../primitives/DatePicker';
@@ -53,10 +53,25 @@ function BookingFormInner() {
   // The RESOURCE is a form LOOKUP (added on request): the map/calendar selection is only the
   // default; any bookable unit of the same type can be picked right here.
   const [resourceId, setResourceId] = useState(target.unitId);
-  // Org-wide resources (bookings view) aren't in state.units — the snapshot on the target
-  // resolves them.
+  // Org-wide resources (bookings view) aren't in state.units — the modal loads the same
+  // org-wide pool the bookings view lists (session-cached fetch), so the type switch and the
+  // resource lookup work from ANY floor; the snapshot covers the instant before it lands.
   const snap = target.resourceUnit;
-  const unit = unitById(state, resourceId) ?? (snap && snap.id === resourceId ? snap : null) ?? unitById(state, target.unitId) ?? snap ?? null;
+  const [orgUnits, setOrgUnits] = useState<Unit[]>([]);
+  useEffect(() => {
+    let alive = true;
+    if (isFacilioApiConfigured) fetchOrgBookableResources().then((u) => alive && setOrgUnits(u));
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const unitPool = useMemo(() => {
+    const ids = new Set(state.units.map((u) => u.id));
+    const pool = [...state.units, ...orgUnits.filter((u) => !ids.has(u.id))];
+    if (snap && !pool.some((u) => u.id === snap.id)) pool.push(snap);
+    return pool;
+  }, [state.units, orgUnits, snap]);
+  const unit = unitById(state, resourceId) ?? unitPool.find((u) => u.id === resourceId) ?? unitById(state, target.unitId) ?? snap ?? null;
   const module = state.bookingModule;
   const contacts = state.clientContacts;
 
@@ -313,9 +328,8 @@ function BookingFormInner() {
     if (ok) actions.closeBookingForm();
   }
 
-  // Bookable units of the SAME type as the picked one — the lookup's option set. The snapshot
-  // joins in when it isn't part of the loaded floor.
-  const resourceOptions = [...state.units, ...(snap && !state.units.some((u) => u.id === snap.id) ? [snap] : [])]
+  // Bookable units of the SAME type as the picked one — the lookup's option set, org-wide.
+  const resourceOptions = unitPool
     .filter((u) => u.type === unit.type && isBookable(u))
     .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }))
     .map((u) => ({ value: u.id, label: u.label, sublabel: u.room ?? u.secondary ?? undefined }));
@@ -547,7 +561,7 @@ function BookingFormInner() {
           <div role="tablist" aria-label="Booking type" style={{ display: 'flex', gap: 6 }}>
             {/* Desk and Space only (requested) — the two org forms the switch flips between. */}
             {(['workstation', 'room'] as const).map((t) => {
-              const first = state.units.find((u) => u.type === t && isBookable(u));
+              const first = unitPool.find((u) => u.type === t && isBookable(u));
               if (!first) return null;
               const active = unit!.type === t;
               const label = t === 'workstation' ? 'Desk' : 'Space';
