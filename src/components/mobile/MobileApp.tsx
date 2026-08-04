@@ -300,18 +300,19 @@ function MobileMap({
         if (now - lastTap.current < 300) {
           const r = el!.getBoundingClientRect();
           const fitted = fitView(r.width, r.height);
-          const v = viewRef.current;
-          setView(v && v.z > fitted.z * 1.3 ? fitted : zoomAt(fitted, 2.5, r.width / 2, r.height / 2));
+          setView((cur) => (cur && cur.z > fitted.z * 1.3 ? fitted : zoomAt(fitted, 2.5, r.width / 2, r.height / 2)));
         }
         lastTap.current = now;
       }
     }
+    // FUNCTIONAL updates (same fix as the web's reducer-owned ZOOM_AT): computing from the
+    // render-captured view made events arriving faster than renders compound a stale base —
+    // the view stalled then lurched. Pinch/pan stay anchored to the gesture's startView.
     function onWheel(e: WheelEvent) {
-      const v = viewRef.current;
-      if (!v) return;
       e.preventDefault();
       const r = el!.getBoundingClientRect();
-      setView(zoomAt(v, Math.exp(-e.deltaY * 0.0015), e.clientX - r.left, e.clientY - r.top));
+      const factor = Math.exp(-e.deltaY * 0.0015);
+      setView((cur) => (cur ? zoomAt(cur, factor, e.clientX - r.left, e.clientY - r.top) : cur));
     }
 
     el.addEventListener('touchstart', onTouchStart, { passive: true });
@@ -343,10 +344,9 @@ function MobileMap({
 
   function zoomBtn(factor: number) {
     const el = wrapRef.current;
-    const v = viewRef.current;
-    if (!el || !v) return;
+    if (!el) return;
     const r = el.getBoundingClientRect();
-    setView(zoomAt(v, factor, r.width / 2, r.height / 2));
+    setView((cur) => (cur ? zoomAt(cur, factor, r.width / 2, r.height / 2) : cur));
   }
 
   const v = view ?? { tx: 0, ty: 0, z: 0.2 };
@@ -416,8 +416,9 @@ function MobileMap({
           // mobile tab, so bg / border / fill are identical across views.
           const ms = markerStyle(paletteState, m);
           const markerScale = markerScaleFor(m.id);
-          // labels appear once zoomed in enough to be readable; the selected pin always shows
-          const showLabel = selected || v.z >= 0.5;
+          // labels appear once zoomed in enough to be readable; the selected pin always shows,
+          // and the show-all toggle (shared with the web view) forces every label on.
+          const showLabel = selected || state.showAllLabels || v.z >= 0.5;
           return (
             <button
               key={m.id}
@@ -473,6 +474,16 @@ function MobileMap({
       <div className={styles.zoomBtns}>
         <button className={styles.zoomBtn} onClick={() => zoomBtn(1.4)} title="Zoom in">+</button>
         <button className={styles.zoomBtn} onClick={() => zoomBtn(1 / 1.4)} title="Zoom out">−</button>
+        <button
+          className={[styles.zoomBtn, state.showAllLabels ? styles.zoomBtnActive : ''].join(' ')}
+          title={state.showAllLabels ? 'Labels: all (tap for auto)' : 'Show all labels'}
+          onClick={actions.toggleShowAllLabels}
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+            <circle cx="7" cy="7" r="1.5" fill="currentColor" stroke="none" />
+          </svg>
+        </button>
       </div>
     </div>
   );

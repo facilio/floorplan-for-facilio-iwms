@@ -490,3 +490,10 @@
   color: var(--ink-500);
 }
 
+
+/* "Show all labels" toggled ON (shares the web toggle's state) */
+.zoomBtnActive {
+  background: var(--blue-500);
+  border-color: var(--blue-500);
+  color: #fff;
+}
