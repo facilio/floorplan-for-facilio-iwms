@@ -492,21 +492,30 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
      * indoorfloorplan record's customization JSON for everyone else.
      */
     setDefaultView: (dv: DefaultPlanView | null) => {
-      const key = floorImageKey(state.floorId, state.planId);
-      const cust = { ...(state.floorCustomizations[key] ?? {}) };
-      if (dv) cust.floorplanAppDefaultView = dv;
-      else delete cust.floorplanAppDefaultView;
-      dispatch({ type: 'SET_FLOOR_CUSTOMIZATION', floorId: state.floorId, planId: state.planId, customization: cust });
+      const floorId = state.floorId;
+      const planId = state.planId;
       if (!isFacilioApiConfigured) {
-        // Local/prototype mode has no indoorfloorplan record — the local customization above
-        // still makes it work for this session.
+        // Local/prototype mode has no indoorfloorplan record — a session-only set keeps the
+        // feature usable in the local demo tier.
+        const cust = { ...(state.floorCustomizations[floorImageKey(floorId, planId)] ?? {}) };
+        if (dv) cust.floorplanAppDefaultView = dv;
+        else delete cust.floorplanAppDefaultView;
+        dispatch({ type: 'SET_FLOOR_CUSTOMIZATION', floorId, planId, customization: cust });
         showToastVia(dispatch, dv ? 'Default view set for this session' : 'Default view cleared', { variant: 'info' });
         return;
       }
-      void saveFloorplanDefaultView(state.floorId, state.planId, dv)
-        .then((ok) => {
-          if (ok) showToastVia(dispatch, dv ? 'Default view saved' : 'Default view cleared');
-          else showToastVia(dispatch, "Couldn't save the default view", { variant: 'error' });
+      // NO local/optimistic write (requested): the plan's customization record is the single
+      // source of truth. Save into it, then RE-READ it and apply what actually landed — the
+      // panel's "Saved · N% zoom" can never show a value the server rejected.
+      void saveFloorplanDefaultView(floorId, planId, dv)
+        .then(async (ok) => {
+          if (!ok) {
+            showToastVia(dispatch, "Couldn't save the default view", { variant: 'error' });
+            return;
+          }
+          const customization = await fetchFloorplanCustomization(floorId, planId).catch(() => null);
+          dispatch({ type: 'SET_FLOOR_CUSTOMIZATION', floorId, planId, customization: customization ?? {} });
+          showToastVia(dispatch, dv ? 'Default view saved' : 'Default view cleared');
         })
         .catch(() => showToastVia(dispatch, "Couldn't save the default view", { variant: 'error' }));
     },
