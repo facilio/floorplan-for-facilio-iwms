@@ -2077,14 +2077,17 @@ export interface SessionUser {
   roleId: number | null;
   /** The CURRENT application id — some setup endpoints (e.g. setup/roles) scope by it. */
   appId: number | null;
+  /** Login email — used to match the session to its clientcontact record in portals. */
+  email: string | null;
 }
 let sessionUserCache: Promise<SessionUser> | null = null;
 export function fetchSessionUser(): Promise<SessionUser> {
-  if (!isFacilioApiConfigured) return Promise.resolve({ peopleId: null, roleId: null, appId: null });
+  if (!isFacilioApiConfigured) return Promise.resolve({ peopleId: null, roleId: null, appId: null, email: null });
   if (!sessionUserCache) {
     sessionUserCache = (async () => {
       const asId = (v: any) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : null);
       // The HOST's properties carry the logged-in user in connected mode — try that first.
+      const asEmail = (v: any) => (typeof v === 'string' && v.includes('@') ? v.trim().toLowerCase() : null);
       const props = await sdkProperties().catch(() => null);
       if (props) {
         for (const p of Object.values(props) as any[]) {
@@ -2092,7 +2095,7 @@ export function fetchSessionUser(): Promise<SessionUser> {
           const peopleId = asId(u?.peopleId ?? u?.people?.id);
           const roleId = asId(u?.roleId ?? u?.role?.roleId ?? u?.role?.id);
           if (peopleId || roleId) {
-            return { peopleId, roleId, appId: asId(u?.applicationId ?? p?.appId ?? p?.applicationId) };
+            return { peopleId, roleId, appId: asId(u?.applicationId ?? p?.appId ?? p?.applicationId), email: asEmail(u?.email) };
           }
         }
       }
@@ -2110,6 +2113,7 @@ export function fetchSessionUser(): Promise<SessionUser> {
       const peopleId = asId(user?.peopleId ?? user?.people?.id ?? user?.peopleID);
       const roleId = asId(user?.roleId ?? user?.role?.roleId ?? user?.role?.id);
       const appId = asId(user?.applicationId ?? user?.appId ?? account?.app?.id ?? account?.appId);
+      const email = asEmail(user?.email);
       if (!peopleId) {
         // Log the actual SHAPE (keys), not the value — "null" told us nothing last time.
         // eslint-disable-next-line no-console
@@ -2118,7 +2122,7 @@ export function fetchSessionUser(): Promise<SessionUser> {
           user ? { userKeys: Object.keys(user) } : account ? { accountKeys: Object.keys(account) } : 'no account payload'
         );
       }
-      return { peopleId, roleId, appId };
+      return { peopleId, roleId, appId, email };
     })();
     sessionUserCache.catch(() => {
       sessionUserCache = null;
@@ -2129,6 +2133,36 @@ export function fetchSessionUser(): Promise<SessionUser> {
 
 export async function fetchCurrentPeopleId(): Promise<number | null> {
   return (await fetchSessionUser()).peopleId;
+}
+
+/**
+ * The current user's CLIENT CONTACT record id — what `clientcontact_desks` actually holds. In
+ * PORTALS the session's "people id" is the login user's id, not a clientcontact id, so the
+ * record is matched by the session EMAIL against the clientcontact module instead. Falls back
+ * to the session people id when no email/e-mail match exists. Session-cached.
+ */
+let currentClientContactIdCache: Promise<number | null> | null = null;
+export function fetchCurrentClientContactId(): Promise<number | null> {
+  if (!isFacilioApiConfigured) return Promise.resolve(null);
+  if (!currentClientContactIdCache) {
+    currentClientContactIdCache = (async () => {
+      const { email, peopleId } = await fetchSessionUser();
+      if (email) {
+        for (let page = 1; page <= 10; page++) {
+          const res: any = await facilioApi.fetchAll('clientcontact', { page, perPage: 500 });
+          if (res.error || !res.list) break;
+          const hit = (res.list as any[]).find((c) => typeof c?.email === 'string' && c.email.trim().toLowerCase() === email);
+          if (hit?.id) return Number(hit.id);
+          if ((res.list as any[]).length < 500) break;
+        }
+      }
+      return peopleId;
+    })();
+    currentClientContactIdCache.catch(() => {
+      currentClientContactIdCache = null;
+    });
+  }
+  return currentClientContactIdCache;
 }
 
 /**
@@ -2571,13 +2605,17 @@ export async function updateRolePermissionRecord(moduleName: string, rec: RolePe
 export async function fetchMyDesk(employeeId?: number): Promise<MyDeskInfo | null> {
   if (!isFacilioApiConfigured) return null;
 
-  const peopleId = await fetchCurrentPeopleId().catch(() => null);
-  if (peopleId) {
+  // MAINTENANCE sessions carry the people id directly; PORTAL sessions carry a login user id,
+  // so there the user's CLIENTCONTACT record id is resolved (email match) and sent instead —
+  // clientcontact_desks holds clientcontact ids, never login user ids.
+  const inMaintenance = (await fetchCurrentApp().catch(() => null))?.linkName === 'maintenance';
+  const contactId = inMaintenance ? await fetchCurrentPeopleId().catch(() => null) : await fetchCurrentClientContactId().catch(() => null);
+  if (contactId) {
     const res = await facilioApi.fetchAll('desks', {
       page: 1,
       perPage: 1,
       isArchived: false,
-      filters: JSON.stringify({ clientcontact_desks: { operatorId: 36, value: [String(peopleId)] } }),
+      filters: JSON.stringify({ clientcontact_desks: { operatorId: 36, value: [String(contactId)] } }),
     });
     const desk = res.list?.[0];
     if (!res.error && desk?.id) {
