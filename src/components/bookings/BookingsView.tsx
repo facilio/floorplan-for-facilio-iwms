@@ -26,7 +26,7 @@ const CATEGORIES: { id: CategoryId; label: string; bookable: boolean }[] = [
   { id: 'workstation', label: 'Desks', bookable: true },
   { id: 'parking', label: 'Parking', bookable: true },
   { id: 'locker', label: 'Lockers', bookable: false },
-  { id: 'room', label: 'Spaces', bookable: true },
+  { id: 'room', label: 'Rooms', bookable: true },
 ];
 
 // FULL day — bookings aren't limited to office hours (the grid still auto-scrolls to 07:00).
@@ -189,10 +189,9 @@ export function BookingsView() {
   // the actual create happens on form submit, and the nonce-driven effect above refetches.
   function openForm(date: string, start: number, end: number) {
     if (!catDef.bookable) return;
-    if (!resourceId) {
-      actions.showToast(`No bookable ${catDef.label.toLowerCase()} found — pick another category`);
-      return;
-    }
+    // No bookable resource of this category: silently no-op (toast removed on request) —
+    // the All-spaces form's own switch is the way to change type.
+    if (!resourceId) return;
     // Booking-date window (mirrors the form's own validation): rooms are same-day only,
     // everything else books at most one week ahead. ISO strings compare lexicographically.
     const today = orgTodayISO();

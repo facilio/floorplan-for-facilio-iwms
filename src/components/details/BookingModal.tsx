@@ -72,6 +72,16 @@ function BookingFormInner() {
     return pool;
   }, [state.units, orgUnits, snap]);
   const unit = unitById(state, resourceId) ?? unitPool.find((u) => u.id === resourceId) ?? unitById(state, target.unitId) ?? snap ?? null;
+  // The FORM SHOWN follows the type switch itself (both pills always render in All spaces —
+  // requested), independent of whether a resource of that type is picked/available yet.
+  const [typeOverride, setTypeOverride] = useState<UnitType | null>(null);
+  const effType: UnitType = typeOverride ?? unit?.type ?? 'workstation';
+  useEffect(() => {
+    if (!typeOverride || unit?.type === typeOverride) return;
+    const first = unitPool.find((u) => u.type === typeOverride && isBookable(u));
+    if (first) setResourceId(first.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [typeOverride, unitPool]);
   const module = state.bookingModule;
   const contacts = state.clientContacts;
 
@@ -126,10 +136,10 @@ function BookingFormInner() {
   // name) from the already-fetched list.
   useEffect(() => {
     if (!formList.length || !unit) return;
-    const def = pickDefaultBookingForm(formList, module, unit.type);
+    const def = pickDefaultBookingForm(formList, module, effType);
     if (def && def.id !== formId) setFormId(def.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [unit?.type, formList]);
+  }, [effType, formList]);
 
   // Step 2: (re)load the selected form's fields whenever the chosen form changes.
   useEffect(() => {
@@ -150,15 +160,15 @@ function BookingFormInner() {
   if (!unit) return null;
 
   const isFacility = module === 'facility';
-  const isRoom = unit.type === 'room';
-  const resourceFieldLabel = isFacility ? 'Facility' : SPACE_RESOURCE_LABEL[unit.type];
+  const isRoom = effType === 'room';
+  const resourceFieldLabel = isFacility ? 'Facility' : SPACE_RESOURCE_LABEL[effType];
   const fallbackFormName = isFacility ? FACILITY_FORM_NAME[unit.type] : SPACE_FORM_NAME[unit.type];
   const reserverLabel = isFacility ? 'Reserved For' : 'Reserved By';
 
   // ONLY rooms book by slots (HARDCODED 2-hour). Everything else — desks, parking, lockers —
   // books a plain start/end window.
   const slotLen = 120;
-  const useSlots = unit.type === 'room';
+  const useSlots = effType === 'room';
   // Full-day slot chips (00:00–24:00), not the old 08:00–18:00 office window.
   const slots = Array.from({ length: Math.floor((24 * 60) / slotLen) }, (_, i) => i * slotLen);
   // Desk start/end options — full day, half-hour steps, cross-filtered so end stays after start.
@@ -240,6 +250,10 @@ function BookingFormInner() {
   }
 
   async function onSubmit() {
+    if (!unit || unit.type !== effType) {
+      actions.showToast(`Pick a ${resourceFieldLabel.toLowerCase()} first`);
+      return;
+    }
     // ISO strings compare lexicographically — the min/max attributes hint, this enforces.
     if (slotDate < minDate || slotDate > maxDate) {
       actions.showToast(isRoom ? 'Rooms can only be booked for today' : 'Bookings can be made at most one week ahead');
@@ -330,13 +344,13 @@ function BookingFormInner() {
 
   // Bookable units of the SAME type as the picked one — the lookup's option set, org-wide.
   const resourceOptions = unitPool
-    .filter((u) => u.type === unit.type && isBookable(u))
+    .filter((u) => u.type === effType && isBookable(u))
     .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }))
     .map((u) => ({ value: u.id, label: u.label, sublabel: u.room ?? u.secondary ?? undefined }));
 
   const resourceControl = (
     <Select
-      value={resourceId}
+      value={unit && unit.type === effType ? resourceId : null}
       options={resourceOptions}
       onChange={setResourceId}
       placeholder={`Select a ${resourceFieldLabel.toLowerCase()}`}
@@ -559,11 +573,10 @@ function BookingFormInner() {
             switch flips desk/space/parking — the resource options AND the org form follow. */}
         {target.allowTypeSwitch && (
           <div role="tablist" aria-label="Booking type" style={{ display: 'flex', gap: 6 }}>
-            {/* Desk and Space only (requested) — the two org forms the switch flips between. */}
+            {/* Desk and Space, BOTH always shown (requested) — the two org forms the switch
+                flips between; an empty type still shows its form with the lookup awaiting. */}
             {(['workstation', 'room'] as const).map((t) => {
-              const first = unitPool.find((u) => u.type === t && isBookable(u));
-              if (!first) return null;
-              const active = unit!.type === t;
+              const active = effType === t;
               const label = t === 'workstation' ? 'Desk' : 'Space';
               return (
                 <button
@@ -572,7 +585,7 @@ function BookingFormInner() {
                   role="tab"
                   aria-selected={active}
                   onClick={() => {
-                    if (!active) setResourceId(first.id);
+                    if (!active) setTypeOverride(t);
                   }}
                   style={{
                     padding: '6px 12px',

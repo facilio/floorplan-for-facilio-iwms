@@ -137,7 +137,7 @@ export function DatePicker({
           ref={popRef}
           style={{
             position: 'fixed',
-            zIndex: 120,
+            zIndex: 320, // above the Modal overlay (200) — the popup opened BEHIND it and read as a dead button
             top: pos.top,
             left: pos.left,
             transform: pos.up ? 'translateY(-100%)' : undefined,
