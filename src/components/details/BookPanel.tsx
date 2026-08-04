@@ -55,6 +55,7 @@ export function BookPanel() {
                 options={TIME_OPTIONS.filter((o) => Number(o.value) < state.end && startSelectable(Number(o.value)))}
                 onChange={(v) => actions.setTimeRange(Number(v), Math.max(Number(v) + 15, state.end))}
                 fullWidth
+                searchable={false}
                 aria-label="Start time"
               />
             </div>
@@ -65,6 +66,7 @@ export function BookPanel() {
                 options={TIME_OPTIONS.filter((o) => Number(o.value) > state.start)}
                 onChange={(v) => actions.setTimeRange(Math.min(state.start, Number(v) - 15), Number(v))}
                 fullWidth
+                searchable={false}
                 aria-label="End time"
               />
             </div>

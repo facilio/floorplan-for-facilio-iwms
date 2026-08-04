@@ -18,6 +18,8 @@ interface SelectProps<T extends string = string> {
   disabled?: boolean;
   size?: 'sm' | 'md';
   fullWidth?: boolean;
+  /** Override the automatic typeahead row (lists of 8+): false keeps even long lists plain — e.g. time pickers, where scanning beats typing. */
+  searchable?: boolean;
   'aria-label'?: string;
 }
 
@@ -64,6 +66,7 @@ export function Select<T extends string = string>({
   disabled,
   size = 'md',
   fullWidth,
+  searchable: searchableProp,
   'aria-label': ariaLabel,
 }: SelectProps<T>) {
   const [open, setOpen] = useState(false);
@@ -79,7 +82,7 @@ export function Select<T extends string = string>({
   const selected = options.find((o) => o.value === value) ?? null;
   // Long option lists get a TYPEAHEAD row (requested — desk/people lookups are searchable);
   // short lists stay as plain listboxes.
-  const searchable = options.length >= 8;
+  const searchable = searchableProp ?? options.length >= 8;
   const q = query.trim().toLowerCase();
   const shown = q ? options.filter((o) => `${o.label} ${o.sublabel ?? ''}`.toLowerCase().includes(q)) : options;
 

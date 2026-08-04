@@ -344,6 +344,7 @@ function BookingFormInner() {
             options={TIME_OPTIONS.filter((o) => Number(o.value) < endMin)}
             onChange={(v) => setStartMin(Number(v))}
             fullWidth
+            searchable={false}
             aria-label="Start time"
           />
         </div>
@@ -354,6 +355,7 @@ function BookingFormInner() {
             options={TIME_OPTIONS.filter((o) => Number(o.value) > startMin)}
             onChange={(v) => setEndMin(Number(v))}
             fullWidth
+            searchable={false}
             aria-label="End time"
           />
         </div>
