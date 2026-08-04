@@ -629,6 +629,8 @@ function zoneFeatureToUnit(
   const label = (typeof p.label === 'string' && p.label.trim()) || tooltipTitleLabel(f) || id;
   const secondary = typeof p.secondaryLabel === 'string' && p.secondaryLabel.trim() ? p.secondaryLabel.trim() : undefined;
   const reservable = p.isReservable ?? p.reservable ?? p.space?.reservable;
+  // `isassignable_rooms`: a NON-reservable room with this flag is assignable to a client contact.
+  const assignable = p.isassignable_rooms ?? p.space?.isassignable_rooms;
   const department = departmentName(p) ?? departmentName(p.space);
 
   return {
@@ -642,6 +644,7 @@ function zoneFeatureToUnit(
     plan: planId,
     ...(department ? { department } : {}),
     ...(typeof reservable === 'boolean' ? { isReservable: reservable } : {}),
+    ...(typeof assignable === 'boolean' ? { isAssignableRoom: assignable } : {}),
     // Same objectId guard as markers — an id that isn't a real space record id must never be
     // linked as one on save (FloorPlan_MarkedZones.SPACE_ID is FK-constrained to BaseSpace).
     ...(recordId == null ? { markerOnly: true } : {}),
@@ -710,6 +713,7 @@ async function fetchFloorModuleRecords(floorId: string): Promise<Unit[]> {
           unplaced: true,
           ...(type === 'workstation' && DESK_TYPE_BY_NUM[r.deskType] ? { deskType: DESK_TYPE_BY_NUM[r.deskType] } : {}),
           ...(type === 'room' && typeof r.reservable === 'boolean' ? { isReservable: r.reservable } : {}),
+          ...(type === 'room' && typeof r.isassignable_rooms === 'boolean' ? { isAssignableRoom: r.isassignable_rooms } : {}),
           ...(departmentName(r) ? { department: departmentName(r) } : {}),
         })
       );
@@ -793,6 +797,10 @@ async function viewerDataUnitsForFloor(floorId: string): Promise<Unit[]> {
     } else {
       if (u.department && !placed.department) placed.department = u.department;
       if (u.deskType && !placed.deskType) placed.deskType = u.deskType;
+      // Room flags live on the SPACE record (custom fields the zone feed doesn't project) —
+      // the module record is the authority when the placed unit didn't carry them.
+      if (typeof u.isReservable === 'boolean' && placed.isReservable === undefined) placed.isReservable = u.isReservable;
+      if (typeof u.isAssignableRoom === 'boolean' && placed.isAssignableRoom === undefined) placed.isAssignableRoom = u.isAssignableRoom;
     }
   }
 
@@ -828,6 +836,13 @@ function contactIdFromMarker(p: Record<string, any>): string | null {
   return Number.isFinite(n) && n > 0 ? String(n) : null;
 }
 
+/** A room's client-contact assignee — the SPACE record's `clientcontact_rooms` lookup (the room twin of `clientcontact_desks`), on the record itself or nested under a zone's `space`. */
+function roomContactId(p: Record<string, any>): string | null {
+  const raw = p.clientcontact_rooms?.id ?? p.clientcontact_rooms ?? p.space?.clientcontact_rooms?.id ?? p.space?.clientcontact_rooms;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? String(n) : null;
+}
+
 /**
  * Desk/space -> client-contact assignee, from the same viewerData feed getUnits reads (ASSIGNMENT
  * mode). Keyed by the unit id getUnits assigns (recordId/deskId) so the two line up. See
@@ -845,6 +860,13 @@ async function viewerDataAssignmentsForFloor(floorId: string): Promise<Assignmen
       const contactId = contactIdFromMarker(p);
       if (recordId && contactId) map[String(recordId)] = contactId;
     }
+    // Room zones: the assignee rides the space record's `clientcontact_rooms` lookup.
+    for (const f of (data?.spaceZone?.features ?? []) as ViewerMarkerFeature[]) {
+      const p = f.properties ?? {};
+      const recordId = p.recordId ?? p.spaceId ?? p.space?.id;
+      const contactId = roomContactId(p);
+      if (recordId && contactId) map[String(recordId)] = contactId;
+    }
   }
   // The desks MODULE is the authority on the current assignee — `clientcontact_desks` lives on
   // the desk record, and the viewerData feed's marker properties don't always project it. Overlay
@@ -854,6 +876,13 @@ async function viewerDataAssignmentsForFloor(floorId: string): Promise<Assignmen
   const desks = await fetchFloorRecordsRaw('desks', floorId).catch(() => [] as any[]);
   for (const r of desks) {
     const contactId = contactIdFromMarker(r);
+    if (contactId) map[String(r.id)] = contactId;
+  }
+  // Same authority rule for rooms: the SPACE record's clientcontact_rooms wins over whatever
+  // the zone feed projected (usually nothing — it's a custom field).
+  const spaces = await fetchFloorRecordsRaw('space', floorId).catch(() => [] as any[]);
+  for (const r of spaces) {
+    const contactId = roomContactId(r);
     if (contactId) map[String(r.id)] = contactId;
   }
   return map;
@@ -2149,17 +2178,27 @@ function readConnectedAppId(): number | null {
  * cross-origin parent).
  */
 export function currentAppLinkName(): string | null {
+  const candidates: string[] = [];
   try {
     // Embedded: the parent frame's URL carries the app segment; same-origin access can throw.
-    const href = window.top && window.top !== window ? window.top.location.pathname : window.location.pathname;
+    candidates.push(window.top && window.top !== window ? window.top.location.pathname : window.location.pathname);
+  } catch {
+    /* cross-origin parent — try the referrer below */
+  }
+  try {
+    // The parent page's URL at load time — survives cross-origin when the referrer policy
+    // forwards the path (the embed's own pathname says nothing about the host app).
+    if (document.referrer) candidates.push(new URL(document.referrer).pathname);
+  } catch {
+    /* unparsable referrer — ignore */
+  }
+  for (const href of candidates) {
     for (const seg of href.split('/')) {
       const s = seg.trim().toLowerCase();
       // 'legacy'/'api'-style prefixes and the org subdomain segment aren't app link names; the
       // maintenance app is the one we actually need to recognize, so match it explicitly.
       if (s === 'maintenance') return s;
     }
-  } catch {
-    /* cross-origin parent — fall through */
   }
   return null;
 }
@@ -2242,10 +2281,12 @@ export function fetchCurrentApp(): Promise<CurrentApp> {
         if (id && !fallbackId) fallbackId = id;
       }
 
-      // 3) Ask the org's application endpoint — with the token's appId when we have one (some
-      // builds resolve fetchDetails only per-app), then without.
+      // 3) Ask the org's application endpoint — v2 FIRST: the SDK resolves paths under the
+      // current app (confirmed live: `/maintenance/api/application/fetchDetails` 404s while the
+      // v2 route is the one clientV2 itself boots from). Token appId variants included since
+      // some builds resolve fetchDetails only per-app.
       const tokenAppId = readConnectedAppId();
-      for (const path of ['application/fetchDetails', 'v2/application/fetchDetails']) {
+      for (const path of ['v2/application/fetchDetails', 'application/fetchDetails']) {
         for (const params of tokenAppId ? [{ considerRole: true, optimised: true, appId: tokenAppId }, { considerRole: true, optimised: true }] : [{ considerRole: true, optimised: true }]) {
           const body = await customGet(path, params).catch(() => null);
           const data = body?.data ?? body?.result ?? body ?? null;
@@ -2609,7 +2650,7 @@ export async function findUnitIdForDeskRecord(floorId: string, deskRecordId: num
  */
 export async function assignUnitReal(unit: Unit, contactId: string): Promise<void> {
   if (!isFacilioApiConfigured) return;
-  const moduleName = REAL_SPACE_MODULE[unit.type];
+  const moduleName = unit.type === 'room' ? ROOM_SPACE_MODULE : REAL_SPACE_MODULE[unit.type];
   if (!moduleName) return;
   const id = Number(contactId);
   if (!Number.isFinite(id)) return; // mock client-contact ids (e.g. "c1") aren't real backend ids.
@@ -2617,7 +2658,15 @@ export async function assignUnitReal(unit: Unit, contactId: string): Promise<voi
   const ref = await ensureRealSpaceRecord(unit);
   if (!ref) return;
 
-  if (unit.type === 'workstation') {
+  if (unit.type === 'room') {
+    // Assignable rooms carry their contact on the SPACE record's `clientcontact_rooms` lookup
+    // (the room twin of clientcontact_desks) — a plain field update, no Moves record.
+    const res = await facilioApi.updateRecord(moduleName, { id: ref.recordId, data: { clientcontact_rooms: { id } } });
+    if (res.error) {
+      // eslint-disable-next-line no-console
+      console.warn(`[facilio-api] room clientcontact_rooms update failed for unit ${unit.id}`, res.error);
+    }
+  } else if (unit.type === 'workstation') {
     // Order matters: the DESK updates FIRST (clientcontact_desks — the DESK module's contact
     // lookup, all-lowercase field name; the moves record below keeps its own clientcontact_moves
     // field), THEN the moves record is added for the history/reassignment mechanics. Once the
@@ -2661,11 +2710,11 @@ export async function assignUnitReal(unit: Unit, contactId: string): Promise<voi
  */
 export async function patchUnitContact(unit: Unit, contactId: string | null): Promise<void> {
   if (!isFacilioApiConfigured) return;
-  const moduleName = REAL_SPACE_MODULE[unit.type];
+  const moduleName = unit.type === 'room' ? ROOM_SPACE_MODULE : REAL_SPACE_MODULE[unit.type];
   if (!moduleName) return;
   const ref = await ensureRealSpaceRecord(unit);
   if (!ref) return;
-  const field = unit.type === 'workstation' ? 'clientcontact_desks' : 'employee';
+  const field = unit.type === 'workstation' ? 'clientcontact_desks' : unit.type === 'room' ? 'clientcontact_rooms' : 'employee';
   const value = contactId != null && Number.isFinite(Number(contactId)) ? { id: Number(contactId) } : null;
   const res = await facilioApi.updateRecord(moduleName, { id: ref.recordId, data: { [field]: value } });
   if (res.error) {
@@ -2682,7 +2731,7 @@ export async function patchUnitContact(unit: Unit, contactId: string | null): Pr
  */
 export async function vacateUnitReal(unit: Unit, contactId: string): Promise<void> {
   if (!isFacilioApiConfigured) return;
-  const moduleName = REAL_SPACE_MODULE[unit.type];
+  const moduleName = unit.type === 'room' ? ROOM_SPACE_MODULE : REAL_SPACE_MODULE[unit.type];
   if (!moduleName) return;
   const id = Number(contactId);
   if (!Number.isFinite(id)) return;
@@ -2690,7 +2739,13 @@ export async function vacateUnitReal(unit: Unit, contactId: string): Promise<voi
   const ref = await ensureRealSpaceRecord(unit);
   if (!ref) return;
 
-  if (unit.type === 'workstation') {
+  if (unit.type === 'room') {
+    const res = await facilioApi.updateRecord(moduleName, { id: ref.recordId, data: { clientcontact_rooms: null } });
+    if (res.error) {
+      // eslint-disable-next-line no-console
+      console.warn(`[facilio-api] room clientcontact_rooms clear failed for unit ${unit.id}`, res.error);
+    }
+  } else if (unit.type === 'workstation') {
     // Mirror of assign's ordering: the DESK clears FIRST (clientcontact_desks: null), THEN the
     // departure move is recorded. Same future path — the direct patch goes away once the
     // backend's Moves execution owns the desk field.

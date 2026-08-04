@@ -151,8 +151,10 @@ export interface Unit {
   markerKind?: string;
   /** Asset-associated markers — id of the linked asset (see lib/assets). */
   assetId?: string;
-  /** Rooms only — from the IWMS rooms module. true (or undefined) = bookable; false = assignable. */
+  /** Rooms only — the space record's `reservable` flag. true (or undefined) = bookable; takes priority over `isAssignableRoom`. */
   isReservable?: boolean;
+  /** Rooms only — the space record's `isassignable_rooms` flag: a NON-reservable room is assignable to a client contact (via `clientcontact_rooms`) when true. */
+  isAssignableRoom?: boolean;
 }
 
 export interface ClientContact {

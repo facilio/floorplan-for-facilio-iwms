@@ -57,7 +57,13 @@ export function isBookable(u: Unit): boolean {
 
 export function isAssignable(u: Unit): boolean {
   if (u.type === 'workstation') return (u.deskType ?? 'ASSIGNED') === 'ASSIGNED';
-  if (u.type === 'room') return u.isReservable === false;
+  if (u.type === 'room') {
+    // `reservable` takes PRIORITY: a room that is both reservable and assignable stays
+    // booking-only. Only a non-reservable room consults `isassignable_rooms`; rooms without
+    // that field keep the legacy "non-reservable = assignable" behavior.
+    if (u.isReservable !== false) return false;
+    return u.isAssignableRoom ?? true;
+  }
   return u.type === 'locker' || u.type === 'parking';
 }
 
