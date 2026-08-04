@@ -663,7 +663,8 @@ const FLOOR_RECORD_MODULES: { type: UnitType; moduleName: string; plan: PlanId }
   { type: 'workstation', moduleName: 'desks', plan: 'workstation' },
   { type: 'locker', moduleName: 'lockers', plan: 'locker' },
   { type: 'parking', moduleName: 'parkingstall', plan: 'parking' },
-  { type: 'room', moduleName: 'space', plan: 'custom' },
+  // ROOMS module, not `space` — the clientcontact_rooms/isassignable_rooms custom fields only come back from it.
+  { type: 'room', moduleName: 'rooms', plan: 'custom' },
 ];
 
 /**
@@ -888,7 +889,7 @@ async function viewerDataAssignmentsForFloor(floorId: string): Promise<Assignmen
   }
   // Same authority rule for rooms: the SPACE record's clientcontact_rooms wins over whatever
   // the zone feed projected (usually nothing — it's a custom field).
-  const spaces = await fetchFloorRecordsRaw('space', floorId).catch(() => [] as any[]);
+  const spaces = await fetchFloorRecordsRaw('rooms', floorId).catch(() => [] as any[]);
   for (const r of spaces) {
     const contactId = roomContactId(r);
     if (contactId) map[String(r.id)] = contactId;
@@ -1682,6 +1683,14 @@ const MARKER_RECORD_KEY: Partial<Record<Unit['type'], string>> = {
  */
 const ROOM_SPACE_MODULE = 'space';
 
+/**
+ * The org's ROOMS module (extends space, same record ids) — the custom fields live HERE
+ * (`clientcontact_rooms`, `isassignable_rooms`: the `_rooms` suffix IS this module's name), so
+ * room record READS and WRITES must use this module; fetching via the generic `space` module
+ * never returns those fields (confirmed live).
+ */
+const ROOM_RECORDS_MODULE = 'rooms';
+
 interface RealSpaceRef {
   recordId: number;
   /** The floor's site id — sent on `moves` records to match the real web app's payload shape. */
@@ -1890,7 +1899,7 @@ async function ensureRealZoneRecord(unit: Unit): Promise<RealSpaceRef | null> {
  */
 export async function resolveUnitRecordRef(unit: Unit): Promise<{ moduleName: string; recordId: number } | null> {
   if (!isFacilioApiConfigured) return null;
-  const moduleName = unit.type === 'room' ? ROOM_SPACE_MODULE : REAL_SPACE_MODULE[unit.type];
+  const moduleName = unit.type === 'room' ? ROOM_RECORDS_MODULE : REAL_SPACE_MODULE[unit.type];
   if (!moduleName) return null;
 
   const cached = realSpaceRecordCache.get(unit.id)?.recordId;
@@ -2702,7 +2711,7 @@ export async function findUnitIdForDeskRecord(floorId: string, deskRecordId: num
  */
 export async function assignUnitReal(unit: Unit, contactId: string): Promise<void> {
   if (!isFacilioApiConfigured) return;
-  const moduleName = unit.type === 'room' ? ROOM_SPACE_MODULE : REAL_SPACE_MODULE[unit.type];
+  const moduleName = unit.type === 'room' ? ROOM_RECORDS_MODULE : REAL_SPACE_MODULE[unit.type];
   if (!moduleName) return;
   const id = Number(contactId);
   if (!Number.isFinite(id)) return; // mock client-contact ids (e.g. "c1") aren't real backend ids.
@@ -2762,7 +2771,7 @@ export async function assignUnitReal(unit: Unit, contactId: string): Promise<voi
  */
 export async function patchUnitContact(unit: Unit, contactId: string | null): Promise<void> {
   if (!isFacilioApiConfigured) return;
-  const moduleName = unit.type === 'room' ? ROOM_SPACE_MODULE : REAL_SPACE_MODULE[unit.type];
+  const moduleName = unit.type === 'room' ? ROOM_RECORDS_MODULE : REAL_SPACE_MODULE[unit.type];
   if (!moduleName) return;
   const ref = await ensureRealSpaceRecord(unit);
   if (!ref) return;
@@ -2783,7 +2792,7 @@ export async function patchUnitContact(unit: Unit, contactId: string | null): Pr
  */
 export async function vacateUnitReal(unit: Unit, contactId: string): Promise<void> {
   if (!isFacilioApiConfigured) return;
-  const moduleName = unit.type === 'room' ? ROOM_SPACE_MODULE : REAL_SPACE_MODULE[unit.type];
+  const moduleName = unit.type === 'room' ? ROOM_RECORDS_MODULE : REAL_SPACE_MODULE[unit.type];
   if (!moduleName) return;
   const id = Number(contactId);
   if (!Number.isFinite(id)) return;
