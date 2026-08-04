@@ -9,7 +9,10 @@ import type { Assignments, Booking, Building, ClientContact, Floor, Site, Unit }
  * Only has an effect when a real backend is actually configured (`isFacilioApiConfigured`); in
  * plain local dev there's no "real" tier to prefer over, so disabling this does nothing there.
  */
-let allowLocalFallback = true;
+// Connected mode: NEVER fall back to the local seed by default — the mock portfolio (HQ
+// Berlin/München/Amsterdam) standing in for a failed org fetch reads as real data (reported).
+// Local/dev keeps the seed, and an explicit persisted setting can still re-enable it.
+let allowLocalFallback = !isFacilioApiConfigured;
 export function setAllowLocalFallback(value: boolean): void {
   allowLocalFallback = value;
 }

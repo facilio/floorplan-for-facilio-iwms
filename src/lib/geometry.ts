@@ -188,9 +188,12 @@ export function unitSortCompare(a: Unit, b: Unit): number {
 }
 
 export function fmtTime(minutes: number): string {
-  const h = Math.floor(minutes / 60);
+  // 12-hour AM/PM display (requested — no railway time). 24:00 renders as 12:00 AM (midnight).
+  const h24 = Math.floor(minutes / 60);
   const m = minutes % 60;
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  const ampm = h24 % 24 >= 12 ? 'PM' : 'AM';
+  const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+  return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
 }
 
 export interface TooltipPlacement {

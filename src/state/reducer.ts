@@ -3,6 +3,7 @@ import type { Booking, Building, Floor, FloorplanCustomization, MarkerDef, ModeP
 import { clamp, fitView } from '../lib/geometry';
 import { IMG_H, IMG_W, seedBookings } from '../lib/mockData';
 import { viewFromLocation } from '../lib/routes';
+import { isFacilioApiConfigured } from '../lib/facilioApi';
 import { DEFAULT_PERMS_MODULE_NAME } from '../lib/settingsStore';
 import type { AppState } from './types';
 
@@ -122,7 +123,7 @@ export function buildInitialState(): AppState {
     settingsTab: 'permissions',
     moduleColors: {},
     slotGranularity: 30,
-    allowLocalFallback: true,
+    allowLocalFallback: !isFacilioApiConfigured,
 
     toasts: [],
 

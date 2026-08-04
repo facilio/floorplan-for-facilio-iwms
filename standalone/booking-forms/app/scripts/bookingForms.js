@@ -245,7 +245,10 @@
   };
 
   function fmtTime(m) {
-    return ('0' + Math.floor(m / 60)).slice(-2) + ':' + ('0' + (m % 60)).slice(-2);
+    var h24 = Math.floor(m / 60);
+    var ampm = h24 % 24 >= 12 ? 'PM' : 'AM';
+    var h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+    return h12 + ':' + ('0' + (m % 60)).slice(-2) + ' ' + ampm;
   }
 
   function BookingForm(props) {

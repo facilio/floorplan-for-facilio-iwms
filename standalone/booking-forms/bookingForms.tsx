@@ -331,7 +331,12 @@ export async function createSpaceBooking(input: CreateBookingInput): Promise<{ o
 // <FacilioBookingForm> — the form UI
 // ---------------------------------------------------------------------------
 
-const fmtTime = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+const fmtTime = (m: number) => {
+  const h24 = Math.floor(m / 60);
+  const ampm = h24 % 24 >= 12 ? 'PM' : 'AM';
+  const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+  return `${h12}:${String(m % 60).padStart(2, '0')} ${ampm}`;
+};
 
 const ROOM_SLOT_MINUTES = 120; // rooms book HARDCODED 2h slots
 const KNOWN_FIELDS = new Set(['name', 'description', 'host', 'reservedBy', 'noOfAttendees', 'bookingStartTime', 'bookingEndTime', 'internalAttendees', 'externalAttendees']);
