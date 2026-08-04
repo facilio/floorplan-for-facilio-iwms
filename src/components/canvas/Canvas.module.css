@@ -10,10 +10,11 @@
   left: 0;
   top: 0;
   transform-origin: 0 0;
-  /* Own stacking context so panel repaints can't intersect the plan's paint. NO
-     will-change:transform here — it pinned the compositor to one cached raster scale, which
-     stretched (blurred) SVG plans on zoom instead of re-rasterizing them (reported). */
-  isolation: isolate;
+  /* NO compositing hints here (will-change and isolation both tried, both reverted): either
+     one can make the compositor group the plane into a cached texture whose raster scale
+     pins, stretching (blurring) the plan and the counter-scaled markers on zoom (reported).
+     The shattering that motivated them was actually the portfolio panel's backdrop-filter —
+     removed in FloatingPanel.module.css — so the plane needs no layer promotion at all. */
 }
 .hint {
   position: absolute;
