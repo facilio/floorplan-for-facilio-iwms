@@ -3,30 +3,34 @@ import { IMG_H, IMG_W } from '../../lib/mockData';
 import { isFacilioApiConfigured } from '../../lib/facilioApi';
 
 /**
- * HYBRID SVG plan rendering (benchmarked, see commit):
+ * HYBRID SVG plan rendering, gated by MEASURED paint cost (element counts proved a bad proxy —
+ * a real CAD export under the old 30k-element gate still painted at ~8fps during zoom on a
+ * retina machine, recorded and frame-analyzed):
  *
- * 1. Reasonably-sized SVGs render INLINE as real vectors — pixel-perfect at every zoom level,
- *    measured as smooth as a bitmap up to ~30k elements. The markup is sanitized first
- *    (scripts/foreignObject/event handlers/external hrefs stripped) since inlining executes
- *    in the app's DOM.
- * 2. Heavier SVGs fall back to a ONE-TIME 4× PNG raster: painting a huge vector drawing
- *    re-rasterizes it at every new zoom scale (a measured 492ms frame freeze — the reported
- *    stutter), while a fixed bitmap costs the same per frame no matter how complex the source
- *    was. Sharp to 400% zoom.
+ * 1. An SVG renders INLINE as real vectors — pixel-perfect at every zoom — only if a one-time
+ *    probe shows the whole drawing paints inside a per-frame budget. Inline content re-paints
+ *    at every new zoom scale, so this is exactly the number that decides smoothness. The
+ *    markup is sanitized first (scripts, foreignObject, on* handlers, non-local hrefs stripped).
+ * 2. Anything heavier gets the ONE-TIME 4× PNG raster: a bitmap costs the same per frame no
+ *    matter how complex the source was. Sharp to 400% zoom.
  *
  * Both paths keep ONE framing forever — unlike the old zoom-tier re-render (removed for
  *   framing drift), nothing about the source changes after the initial resolve.
  * Raster plans (PNG/JPG/server-rendered CAD) pass through untouched.
  */
-const INLINE_MAX_BYTES = 2.5 * 1024 * 1024;
-const INLINE_MAX_ELEMENTS = 30000;
+const INLINE_MAX_BYTES = 1.5 * 1024 * 1024;
+const INLINE_MAX_ELEMENTS = 20000;
+/**
+ * Inline budget for the paint probe: one full 1× draw of the plan, dpr-adjusted. Zoom repaints
+ * happen per frame, so a plan that can't paint well inside a frame at 1× can't hold frame rate
+ * inlined — it goes to the raster path instead.
+ */
+const INLINE_PAINT_BUDGET_MS = 8;
 const RASTER_SCALE = 4;
 const RASTER_MAX_EDGE = 8192;
-const svgRasterCache = new Map<string, string>();
-const svgRasterInFlight = new Map<string, Promise<string | null>>();
-/** Sanitized inline markup per url; null = too heavy/unusable → the raster path decides. */
-const svgInlineCache = new Map<string, string | null>();
-const svgInlineInFlight = new Map<string, Promise<string | null>>();
+type SvgPlanResolution = { inline: string | null; raster: string | null };
+const svgPlanCache = new Map<string, SvgPlanResolution>();
+const svgPlanInFlight = new Map<string, Promise<SvgPlanResolution>>();
 
 function isSvgUrl(url: string): boolean {
   return /^data:image\/svg|\.svg([?#]|$)/i.test(url);
@@ -89,12 +93,8 @@ function sanitizeSvgForInline(text: string): string | null {
   return new XMLSerializer().serializeToString(root);
 }
 
-async function rasterizeSvgOnce(url: string): Promise<string | null> {
+function rasterizeFromImage(img: HTMLImageElement): Promise<string | null> {
   try {
-    const img = new Image();
-    img.decoding = 'async';
-    img.src = url;
-    await img.decode();
     const w = img.naturalWidth || IMG_W;
     const h = img.naturalHeight || IMG_H;
     const k = Math.min(RASTER_SCALE, RASTER_MAX_EDGE / Math.max(w, h));
@@ -102,68 +102,85 @@ async function rasterizeSvgOnce(url: string): Promise<string | null> {
     canvas.width = Math.round(w * k);
     canvas.height = Math.round(h * k);
     const ctx = canvas.getContext('2d');
-    if (!ctx) return null;
+    if (!ctx) return Promise.resolve(null);
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
-    return blob ? URL.createObjectURL(blob) : null;
+    return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png')).then((blob) => (blob ? URL.createObjectURL(blob) : null));
   } catch {
-    return null;
+    return Promise.resolve(null);
   }
 }
 
+async function resolveSvgPlan(url: string): Promise<SvgPlanResolution> {
+  let img: HTMLImageElement | null = new Image();
+  try {
+    img.decoding = 'async';
+    img.src = url;
+    await img.decode();
+  } catch {
+    img = null;
+  }
+  const text = await svgTextFromUrl(url);
+  const sanitized = text ? sanitizeSvgForInline(text) : null;
+  if (sanitized && img) {
+    // PAINT PROBE: time one full draw of the vector at its native 1× size, scaled up by the
+    // device pixel ratio (a retina screen paints 4× the pixels — where the ~8fps zoom was
+    // recorded). First draw includes the real vector rasterization, which is what zoom tiles
+    // pay on every scale change.
+    try {
+      const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+      const w = Math.round((img.naturalWidth || IMG_W) * dpr);
+      const h = Math.round((img.naturalHeight || IMG_H) * dpr);
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        const t0 = performance.now();
+        ctx.drawImage(img, 0, 0, w, h);
+        const cost = performance.now() - t0;
+        if (cost <= INLINE_PAINT_BUDGET_MS) {
+          // eslint-disable-next-line no-console
+          console.info(`[floorplan] SVG plan renders INLINE (paint probe ${cost.toFixed(1)}ms @${dpr}x)`);
+          return { inline: sanitized, raster: null };
+        }
+        // eslint-disable-next-line no-console
+        console.info(`[floorplan] SVG plan too paint-heavy to inline (probe ${cost.toFixed(1)}ms @${dpr}x > ${INLINE_PAINT_BUDGET_MS}ms) — using ${RASTER_SCALE}x raster`);
+      }
+    } catch {
+      /* probe failed — raster is the safe path */
+    }
+  }
+  const raster = img ? await rasterizeFromImage(img) : null;
+  // If even the raster failed, a qualifying inline is still better than the raw stretchy <img>.
+  return { inline: raster ? null : sanitized, raster };
+}
+
 /**
- * Resolves how an SVG plan url renders: `inline` markup when it qualifies (vector-crisp at any
- * zoom), else a one-time high-res `raster`. Cached per url, deduped while in flight; non-SVG
- * urls resolve to neither and pass through as-is.
+ * Resolves how an SVG plan url renders — see resolveSvgPlan. Cached per url, deduped while in
+ * flight; non-SVG urls resolve to neither and pass through as-is.
  */
-function useSvgPlan(imageUrl?: string): { inline: string | null; raster: string | null } {
-  const [inline, setInline] = useState<string | null>(() => (imageUrl ? svgInlineCache.get(imageUrl) ?? null : null));
-  const [raster, setRaster] = useState<string | null>(() => (imageUrl ? svgRasterCache.get(imageUrl) ?? null : null));
+function useSvgPlan(imageUrl?: string): SvgPlanResolution {
+  const [res, setRes] = useState<SvgPlanResolution>(() => (imageUrl && svgPlanCache.get(imageUrl)) || { inline: null, raster: null });
   useEffect(() => {
-    setInline(imageUrl ? svgInlineCache.get(imageUrl) ?? null : null);
-    setRaster(imageUrl ? svgRasterCache.get(imageUrl) ?? null : null);
-    if (!imageUrl || !isSvgUrl(imageUrl)) return;
+    const cached = imageUrl ? svgPlanCache.get(imageUrl) : undefined;
+    setRes(cached ?? { inline: null, raster: null });
+    if (!imageUrl || !isSvgUrl(imageUrl) || cached) return;
     let alive = true;
-
-    const startRaster = () => {
-      const cached = svgRasterCache.get(imageUrl);
-      if (cached) {
-        if (alive) setRaster(cached);
-        return;
-      }
-      let job = svgRasterInFlight.get(imageUrl);
-      if (!job) {
-        job = rasterizeSvgOnce(imageUrl);
-        svgRasterInFlight.set(imageUrl, job);
-      }
-      void job.then((u) => {
-        svgRasterInFlight.delete(imageUrl);
-        if (u) svgRasterCache.set(imageUrl, u);
-        if (alive && u) setRaster(u);
-      });
-    };
-
-    if (svgInlineCache.has(imageUrl)) {
-      if (svgInlineCache.get(imageUrl) === null) startRaster();
-      return;
-    }
-    let job = svgInlineInFlight.get(imageUrl);
+    let job = svgPlanInFlight.get(imageUrl);
     if (!job) {
-      job = svgTextFromUrl(imageUrl).then((text) => (text ? sanitizeSvgForInline(text) : null));
-      svgInlineInFlight.set(imageUrl, job);
+      job = resolveSvgPlan(imageUrl);
+      svgPlanInFlight.set(imageUrl, job);
     }
-    void job.then((markup) => {
-      svgInlineInFlight.delete(imageUrl);
-      svgInlineCache.set(imageUrl, markup);
-      if (!alive) return;
-      if (markup) setInline(markup);
-      else startRaster();
+    void job.then((r) => {
+      svgPlanInFlight.delete(imageUrl);
+      svgPlanCache.set(imageUrl, r);
+      if (alive) setRes(r);
     });
     return () => {
       alive = false;
     };
   }, [imageUrl]);
-  return { inline, raster };
+  return res;
 }
 
 // The made-up architectural schematic below is a LOCAL-PROTOTYPE-ONLY fallback. In the deployed
