@@ -2094,14 +2094,18 @@ export function fetchSessionUser(): Promise<SessionUser> {
       const asId = (v: any) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : null);
       // The HOST's properties carry the logged-in user in connected mode — try that first.
       const props = await sdkProperties().catch(() => null);
+      // A props object with ONLY a role must not short-circuit — the people id (what my-desk
+      // and assignments key on) may live on another property or only on the account payload.
+      let propsPartial: { roleId: number | null; appId: number | null } | null = null;
       if (props) {
         for (const p of Object.values(props) as any[]) {
           const u = p?.user ?? p?.currentUser ?? p?.account?.user ?? p;
           const peopleId = asId(u?.peopleId ?? u?.people?.id);
           const roleId = asId(u?.roleId ?? u?.role?.roleId ?? u?.role?.id);
-          if (peopleId || roleId) {
+          if (peopleId) {
             return { peopleId, roleId, appId: asId(u?.applicationId ?? p?.appId ?? p?.applicationId) };
           }
+          if (roleId && !propsPartial) propsPartial = { roleId, appId: asId(u?.applicationId ?? p?.appId ?? p?.applicationId) };
         }
       }
       // `v2/account` and `v2/fetchAccount` both exist across versions; try both before giving up
@@ -2116,8 +2120,8 @@ export function fetchSessionUser(): Promise<SessionUser> {
         if (user) break;
       }
       const peopleId = asId(user?.peopleId ?? user?.people?.id ?? user?.peopleID);
-      const roleId = asId(user?.roleId ?? user?.role?.roleId ?? user?.role?.id);
-      const appId = asId(user?.applicationId ?? user?.appId ?? account?.app?.id ?? account?.appId);
+      const roleId = asId(user?.roleId ?? user?.role?.roleId ?? user?.role?.id) ?? propsPartial?.roleId ?? null;
+      const appId = asId(user?.applicationId ?? user?.appId ?? account?.app?.id ?? account?.appId) ?? propsPartial?.appId ?? null;
       if (!peopleId) {
         // Log the actual SHAPE (keys), not the value — "null" told us nothing last time.
         // eslint-disable-next-line no-console

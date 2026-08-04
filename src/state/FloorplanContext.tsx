@@ -1625,6 +1625,10 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
         })();
         myDesk = await fetchMyDesk().catch(() => null);
         firstRealFloor = myDesk?.floorId ?? (await getAnyFloor().catch(() => null))?.id;
+        // One line that says WHERE the app decided to land and why — "first floorplan didn't
+        // load" is only debuggable with this in the console.
+        // eslint-disable-next-line no-console
+        console.info('[boot] landing decision', { peopleId, myDesk, firstRealFloor });
       }
       const floorId = firstRealFloor ?? state.floorId;
       if (floorId !== state.floorId) dispatch({ type: 'SELECT_FLOOR_START', floorId });
