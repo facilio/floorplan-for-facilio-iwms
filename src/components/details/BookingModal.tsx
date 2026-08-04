@@ -126,10 +126,10 @@ function BookingFormInner() {
   const fallbackFormName = isFacility ? FACILITY_FORM_NAME[unit.type] : SPACE_FORM_NAME[unit.type];
   const reserverLabel = isFacility ? 'Reserved For' : 'Reserved By';
 
-  // Rooms: HARDCODED 2-hour slots. Desks: no slots at all (start/end selects below). Others
-  // keep the configured Settings slot length.
-  const slotLen = isRoom ? 120 : state.slotGranularity;
-  const useSlots = unit.type !== 'workstation';
+  // ONLY rooms book by slots (HARDCODED 2-hour). Everything else — desks, parking, lockers —
+  // books a plain start/end window.
+  const slotLen = 120;
+  const useSlots = unit.type === 'room';
   // Full-day slot chips (00:00–24:00), not the old 08:00–18:00 office window.
   const slots = Array.from({ length: Math.floor((24 * 60) / slotLen) }, (_, i) => i * slotLen);
   // Desk start/end options — full day, half-hour steps, cross-filtered so end stays after start.
@@ -318,8 +318,8 @@ function BookingFormInner() {
     </Field>
   );
 
-  // ROOMS: hardcoded 2h slot chips. DESKS: no slots — a plain start/end window on the chosen
-  // date. Parking/facility keep the configured slot chips.
+  // ROOMS: hardcoded 2h slot chips. Everything else: no slots — a plain start/end window on
+  // the chosen date.
   const timeWindow = !useSlots ? (
     <Field key="__time" label="Booking Window" required>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>

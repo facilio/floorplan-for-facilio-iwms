@@ -22,13 +22,12 @@
       var resourceLabel = q.get('resourceLabel') || ('#' + resourceId);
       var rootEl = document.getElementById('root');
       if (!resourceId) {
-        rootEl.textContent = 'Missing ?resourceId= in the URL (also supported: unitType, resourceLabel, slotMinutes).';
+        rootEl.textContent = 'Missing ?resourceId= in the URL (also supported: unitType, resourceLabel).';
       } else {
         FacilioBookingForms.mount(rootEl, {
           unitType: unitType,
           resourceId: resourceId,
           resourceLabel: resourceLabel,
-          slotMinutes: Number(q.get('slotMinutes')) || 30,
           onDone: function (id) {
             rootEl.innerHTML = '<p style="font: 600 14px system-ui">Booked ✓ (spacebooking #' + id + ')</p>';
           },

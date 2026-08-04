@@ -7,8 +7,8 @@
  *
  * Rules (kept in sync with the floorplan app's booking modal BY HAND):
  *  - Org form auto-picked by LINK NAME per resource type (desk/space/parking form).
- *  - Rooms: HARDCODED 2h slots, same-day only. Desks: no slots — start/end selects, up to
- *    one week ahead. Parking/locker: slot chips (default 30m), one week ahead.
+ *  - ONLY rooms book slots (HARDCODED 2h), same-day only. Desks/parking/lockers: no slots —
+ *    start/end selects, up to one week ahead.
  *  - Today's already-started slots/start times are rejected client-side.
  *  - Create goes to `spacebooking` with the right resource lookup field and parentModuleId.
  *
@@ -208,8 +208,9 @@
 
     var unitType = props.unitType;
     var isRoom = unitType === 'room';
-    var useSlots = unitType !== 'workstation';
-    var slotLen = isRoom ? ROOM_SLOT_MINUTES : (props.slotMinutes || 30);
+    // ONLY rooms book by slots — desks, parking, and lockers all book a plain start/end window.
+    var useSlots = isRoom;
+    var slotLen = ROOM_SLOT_MINUTES;
     var minDate = toLocalISO(new Date());
     var maxDate = isRoom ? minDate : toLocalISO(new Date(Date.now() + 7 * 86400000));
     var nowMinutes = new Date().getHours() * 60 + new Date().getMinutes();

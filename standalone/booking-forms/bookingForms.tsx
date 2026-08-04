@@ -8,8 +8,8 @@
  * Behavior (mirrors the floorplan app's booking modal, kept in sync by hand):
  *  - The org's OWN form is used, auto-picked by its LINK NAME per resource type
  *    (desk form for desks, space form for rooms, parking form for stalls) — no form switcher.
- *  - Rooms book HARDCODED 2-hour slots; desks book a plain start/end window (no slots);
- *    parking books slots of `slotMinutes` (default 30).
+ *  - ONLY rooms book slots (HARDCODED 2-hour); desks/parking/lockers book a plain
+ *    start/end window — no slots.
  *  - Date window: rooms are same-day only; everything else books at most one week ahead.
  *    Today's already-started slots/start-times are rejected.
  *  - The create goes to `spacebooking` with the resource in the RIGHT lookup field
@@ -311,16 +311,15 @@ export interface FacilioBookingFormProps {
   unitType: BookableType;
   resourceId: number;
   resourceLabel: string;
-  /** Slot length for parking/locker (rooms are hardcoded 2h; desks have no slots). Default 30. */
-  slotMinutes?: number;
   onDone?: (bookingId: number) => void;
   onCancel?: () => void;
 }
 
-export function FacilioBookingForm({ unitType, resourceId, resourceLabel, slotMinutes = 30, onDone, onCancel }: FacilioBookingFormProps) {
+export function FacilioBookingForm({ unitType, resourceId, resourceLabel, onDone, onCancel }: FacilioBookingFormProps) {
   const isRoom = unitType === 'room';
-  const useSlots = unitType !== 'workstation';
-  const slotLen = isRoom ? ROOM_SLOT_MINUTES : slotMinutes;
+  // ONLY rooms book by slots — desks, parking, and lockers all book a plain start/end window.
+  const useSlots = isRoom;
+  const slotLen = ROOM_SLOT_MINUTES;
 
   // Date window: rooms same-day only; everything else at most one week ahead.
   const minDate = toLocalISO(new Date());

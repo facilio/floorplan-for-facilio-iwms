@@ -17,9 +17,8 @@ Two equivalent builds:
 
 - Fetches the org's own `spacebooking` forms and auto-picks the right one **by link name**
   (desk form for desks, space form for rooms, parking form for stalls). No form switcher.
-- **Rooms:** hardcoded 2-hour slot chips, same-day booking only.
-- **Desks:** no slots — date + start/end time selects, bookable up to one week ahead.
-- **Parking/lockers:** slot chips of `slotMinutes` (default 30), one week ahead.
+- **Rooms:** hardcoded 2-hour slot chips, same-day booking only — the ONLY type with slots.
+- **Desks / parking / lockers:** no slots — date + start/end time selects, up to one week ahead.
 - Today's already-started slots/start times are blocked client-side.
 - Creates the `spacebooking` record with the resource in the correct lookup field
   (`desk` / `space` / `parkingStall`), `parentModuleId` resolved from the org's module list,
