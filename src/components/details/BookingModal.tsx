@@ -127,8 +127,32 @@ function BookingFormInner() {
 
   const contactOptions = contacts.map((c) => ({ value: c.id, label: c.name, sublabel: c.client }));
 
+  /** Any resource-family field (desk/space/parking/facility lookups), regardless of unit type. */
+  function isResourceFamilyField(f: BookingFormFieldMeta): boolean {
+    return (!!f.lookupModule && RESOURCE_LOOKUPS.has(f.lookupModule.toLowerCase())) || ['desk', 'space', 'parking', 'facility', 'location'].includes(f.name.toLowerCase());
+  }
+
+  /**
+   * THE resource field for the unit being booked — type-aware: a ROOM fills the space/Location
+   * field (spacebooking's `space` lookup), never the Desk field, and vice versa. Other
+   * resource-family fields on a shared form are skipped entirely (see renderOrgField).
+   */
   function isResourceField(f: BookingFormFieldMeta): boolean {
-    return (f.lookupModule && RESOURCE_LOOKUPS.has(f.lookupModule.toLowerCase())) || ['desk', 'space', 'parking', 'facility', 'location'].includes(f.name.toLowerCase());
+    const lm = (f.lookupModule ?? '').toLowerCase();
+    const nm = f.name.toLowerCase();
+    if (isFacility) return lm === 'facility' || nm === 'facility';
+    switch (unit!.type) {
+      case 'room':
+        return ['space', 'basespace'].includes(lm) || ['space', 'location'].includes(nm);
+      case 'workstation':
+        return lm === 'desks' || nm === 'desk';
+      case 'parking':
+        return ['parkingstall', 'parkinglot'].includes(lm) || nm === 'parking';
+      case 'locker':
+        return lm === 'lockers' || nm === 'locker';
+      default:
+        return isResourceFamilyField(f);
+    }
   }
 
   /** Org fields rendered generically (not mapped to a dedicated control) → typed extras for the API. */
