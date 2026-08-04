@@ -1230,6 +1230,22 @@ export async function uploadFloorplanFile(
     }
     if (attachRes.error) throw new Error(attachRes.error.message || `code ${attachRes.error.code}`);
     attachedToFloorPlan = true;
+    if (!existing) {
+      // FIRST plan record for this floor+type: stamp the FLOOR's indoorFloorPlanId when the
+      // floor doesn't carry one yet (requested) — the portal visibility filter keys on that
+      // field ({"indoorFloorPlanId":{"operatorId":2,"value":[]}}), so a floor whose first plan
+      // was uploaded through this app would otherwise stay invisible in portals. Best-effort:
+      // the plan is already attached, so a failed stamp only warns.
+      const createdId = Number((attachRes as any)?.indoorfloorplan?.id);
+      const existingLink = Number(floorRec?.indoorFloorPlanId ?? 0);
+      if (createdId > 0 && !(existingLink > 0)) {
+        const linkRes = await facilioApi.updateRecord('floor', { id: floorId, data: { indoorFloorPlanId: createdId } }).catch((e) => ({ error: { message: String(e) } }) as any);
+        if (linkRes?.error) {
+          // eslint-disable-next-line no-console
+          console.warn(`[facilio-api] couldn't set indoorFloorPlanId=${createdId} on floor ${floorId}`, linkRes.error);
+        }
+      }
+    }
     // The plan record just changed — drop every session cache that could serve the OLD plan:
     // the plan-type mapping (a create changes it), viewerData (geometry/file changed), and the
     // CAD source file (auto-map + hi-res zoom tiers must use the NEW drawing, not the one
