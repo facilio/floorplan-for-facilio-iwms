@@ -3,7 +3,9 @@
   inset: 0;
   z-index: 80;
   background: var(--bg-app);
-  overflow-y: auto;
+  /* The PAGE never scrolls — only the calendar grid does (.calScroll). Scrolling here made
+     the whole header block (breadcrumb, tabs, toolbar, day headers) ride away with the grid. */
+  overflow: hidden;
 }
 .inner {
   max-width: 1360px;
@@ -12,7 +14,9 @@
   padding: 16px 28px 96px;
   display: flex;
   flex-direction: column;
-  min-height: 100%;
+  /* Fixed to the viewport (not min-height) so the flex chain constrains .calScroll into its
+     own scrollbar instead of growing the page. */
+  height: 100%;
   box-sizing: border-box;
 }
 
@@ -580,6 +584,8 @@
 /* ---- Resource grid ---- */
 .rgWrap {
   flex: 1;
+  /* Under the fixed-height page layout the grid must shrink into its own scroller. */
+  min-height: 0;
   border: 1px solid var(--ink-200);
   border-radius: var(--radius-lg);
   background: #fff;
