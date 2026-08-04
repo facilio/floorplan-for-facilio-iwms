@@ -1591,12 +1591,8 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
           console.warn('[boot] client contacts load failed', err);
           return [] as ClientContact[];
         }),
-        dataSource.getAssets().catch((err) => {
-          showToastVia(dispatch, "Couldn't load the asset catalog");
-          // eslint-disable-next-line no-console
-          console.warn('[boot] assets load failed', err);
-          return [] as Asset[];
-        }),
+        // No toast for assets — an empty catalog is a normal state (see dataSource.getAssets).
+        dataSource.getAssets().catch(() => [] as Asset[]),
       ]);
       dispatch({ type: 'PORTFOLIO_LOADED', portfolio, clientContacts, assets });
 

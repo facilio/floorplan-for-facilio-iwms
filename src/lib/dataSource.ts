@@ -349,7 +349,10 @@ export class CompositeDataSource implements FloorplanDataSource {
     return this.run('getClientContacts');
   }
   getAssets() {
-    return this.run('getAssets');
+    // Assets are OPTIONAL chrome (the edit-mode asset picker, fed by a CMMS connector this
+    // build doesn't ship). With the local seed excluded in connected mode, every tier misses —
+    // that's a normal state, not an error: resolve empty instead of failing the boot.
+    return this.run('getAssets').catch(() => [] as Asset[]);
   }
   getUnits(floorId: string) {
     return this.run('getUnits', floorId);
