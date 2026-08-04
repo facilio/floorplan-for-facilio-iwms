@@ -161,6 +161,14 @@ export function markerStyle(state: AppState, unit: Unit, markerScale = 1): Marke
 
   // book mode
   if (!isBookable(unit)) {
+    // ASSIGNMENT-type units with an owner keep their OWN configurable "assigned" color here
+    // (requested: visually distinct from the grey/real non-reservable chip) — Settings › Desks
+    // › Assigned picks it, same swatch the assign view uses.
+    if (isAssignable(unit) && contactId) {
+      const { bg, bd, fg } = colorTriple(realAssignColor(cust, true), moduleColor(state, unit.type, 'assigned'), true);
+      const occ = initialsOf(contactNameFallback(state, contactId));
+      return { bg, bd, fg, opacity: 1, shadow, size, radius, zIndex, occText: occ, icon: occ ? null : markerIcon(unit.type) };
+    }
     // Previously 35%-opacity white — assigned desks were invisible on the plan. The real org's
     // "not reservable" color when configured (this app's non-bookable concept maps directly onto
     // it), else a solid grey chip, with the occupant's initials so the booking view still says

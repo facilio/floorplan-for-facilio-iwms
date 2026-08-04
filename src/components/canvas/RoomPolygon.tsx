@@ -29,6 +29,12 @@ export function RoomPolygon({
       const c = moduleColor(state, 'room', assigned ? 'assigned' : 'free');
       fill = `color-mix(in srgb, ${c} ${selected ? 26 : 14}%, transparent)`;
     }
+  } else if (isAssignable(unit)) {
+    // ASSIGNMENT-type room seen in BOOKING view — its own configurable assigned/free colors
+    // (requested: distinct from the bookable green/red), same as the assign view shows it.
+    const assigned = !!state.assignments[unit.id];
+    const c = moduleColor(state, 'room', assigned ? 'assigned' : 'free');
+    fill = `color-mix(in srgb, ${c} ${selected ? 26 : 14}%, transparent)`;
   } else {
     const booked = conflictsFor(state.bookings, unit.id, state.date, state.start, state.end).length > 0;
     const base = booked ? '182,25,25' : '41,160,30';
