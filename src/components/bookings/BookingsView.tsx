@@ -88,6 +88,8 @@ export function BookingsView() {
   const [calLoading, setCalLoading] = useState(true);
   /** Overlap-cluster preview modal target: rows derive live from bookingsByDate so a transition/refetch updates them. */
   const [preview, setPreview] = useState<{ date: string; ids: string[] } | null>(null);
+  /** "My bookings" popup — every booking of the current user in the visible range (requested). */
+  const [myOpen, setMyOpen] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
 
   const catDef = CATEGORIES.find((c) => c.id === category)!;
@@ -207,19 +209,16 @@ export function BookingsView() {
     else setFocusDate(shiftMonth(focusDate, dir));
   }
 
-  function jumpToMyBookings() {
-    if (!myBookingsInRange.length) {
-      actions.showToast('You have no bookings in this range');
-      return;
-    }
-    const soonest = [...myBookingsInRange].sort((a, b) => (a.date === b.date ? a.start - b.start : a.date.localeCompare(b.date)))[0];
-    const unit = state.units.find((u) => u.id === soonest.unitId);
-    if (unit) {
+  /** Row click in the My-bookings popup: focus the calendar on that booking. */
+  function jumpToBooking(b: Booking) {
+    const unit = state.units.find((u) => u.id === b.unitId);
+    if (unit && unit.type !== 'amenity') {
       setCategory(unit.type);
       setResourceId(unit.id);
     }
-    setFocusDate(soonest.date);
+    setFocusDate(b.date);
     if (calView === 'month') setCalView('week');
+    setMyOpen(false);
   }
 
   const rangeLabel = useMemo(() => {
@@ -245,7 +244,7 @@ export function BookingsView() {
             <h1 className={styles.h1}>Bookings</h1>
             <p className={styles.sub}>Calendar and resource view across bookable spaces</p>
           </div>
-          <button className={[styles.myBookings, myBookingsInRange.length ? styles.myBookingsActive : ''].join(' ')} onClick={jumpToMyBookings}>
+          <button className={[styles.myBookings, myBookingsInRange.length ? styles.myBookingsActive : ''].join(' ')} onClick={() => setMyOpen(true)}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <rect x="3" y="4" width="18" height="17" rx="2" />
               <path d="M16 2v4M8 2v4M3 10h18" />
@@ -354,6 +353,54 @@ export function BookingsView() {
             )}
             </div>
           </>
+        )}
+
+        {myOpen && (
+          <Modal onClose={() => setMyOpen(false)} width={520}>
+            <ModalHeader
+              title="My bookings"
+              subtitle={`${myBookingsInRange.length} booking(s) in the visible range`}
+              onClose={() => setMyOpen(false)}
+            />
+            <div style={{ padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: 12, maxHeight: '58vh', overflowY: 'auto' }}>
+              {myBookingsInRange.length === 0 && (
+                <p style={{ font: '400 13px/1.5 var(--font-sans)', color: 'var(--ink-500)', margin: 0 }}>
+                  No bookings in the visible date range — switch to Week or Month to widen it.
+                </p>
+              )}
+              {[...myBookingsInRange]
+                .sort((a, b) => (a.date === b.date ? a.start - b.start : a.date.localeCompare(b.date)))
+                .map((b) => {
+                  const unit = state.units.find((u) => u.id === b.unitId);
+                  return (
+                    <div key={b.id} style={{ border: '1px solid var(--ink-200)', borderRadius: 10, padding: '10px 12px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+                        <button
+                          type="button"
+                          title="Show on the calendar"
+                          onClick={() => jumpToBooking(b)}
+                          style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', font: '600 13.5px var(--font-sans)', color: 'var(--blue-600)', textAlign: 'left' }}
+                        >
+                          {unit?.label ?? b.name ?? `#${b.unitId}`}
+                        </button>
+                        <span style={{ font: '500 12px var(--font-sans)', color: 'var(--ink-600)', whiteSpace: 'nowrap' }}>
+                          {parseISO(b.date).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })} · {fmtTime(b.start)}–{fmtTime(b.end)}
+                        </span>
+                      </div>
+                      {b.purpose && <div style={{ font: '400 12.5px/1.4 var(--font-sans)', color: 'var(--ink-600)', marginTop: 2 }}>{b.purpose}</div>}
+                      {/* Same stateflow bar as the day preview — Cancel/Approve/... per the record's state. */}
+                      {/^\d+$/.test(b.id) ? (
+                        <StateflowActions moduleName="spacebooking" recordId={Number(b.id)} onChanged={() => setRefreshTick((t) => t + 1)} />
+                      ) : (
+                        <Button variant="danger" style={{ marginTop: 8 }} onClick={() => cancelBooking(b)}>
+                          Cancel
+                        </Button>
+                      )}
+                    </div>
+                  );
+                })}
+            </div>
+          </Modal>
         )}
 
         {preview && (
