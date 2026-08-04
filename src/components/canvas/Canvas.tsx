@@ -504,8 +504,22 @@ export function Canvas() {
   // tight pair shrink every icon on the floor.
   const markerSpacing = useMemo(() => markerNeighborSpacing(markerUnits), [markerUnits]);
   const markerInvFor = (id: string) => markerCounterScale(state.view.z, markerSpacing.get(id) ?? Infinity, 28); // 24px chip + 2×2px border
+  // Labels hide WHILE the zoom is in motion (map convention): the declutter set recomputes
+  // per zoom step, and labels popping in/out every frame read as flicker (reported, video).
+  // They return ~160ms after the camera settles.
+  const [zoomSettled, setZoomSettled] = useState(true);
+  const zoomSettleTimer = useRef<number | undefined>(undefined);
+  const prevZRef = useRef(state.view.z);
+  useEffect(() => {
+    if (state.view.z === prevZRef.current) return;
+    prevZRef.current = state.view.z;
+    setZoomSettled(false);
+    window.clearTimeout(zoomSettleTimer.current);
+    zoomSettleTimer.current = window.setTimeout(() => setZoomSettled(true), 160);
+    return () => window.clearTimeout(zoomSettleTimer.current);
+  }, [state.view.z]);
   // Same zoom gate labels always had (invZ ≤ 1.9): below ~53% zoom they're unreadable noise.
-  const labelsOn = state.view.z >= 0.53;
+  const labelsOn = zoomSettled && state.view.z >= 0.53;
   // One assignments scan per render, not one per marker (Marker's isMine fallback).
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const myUnitId = useMemo(() => myAssignedUnit(state)?.id ?? null, [state.assignments, state.bookBy, state.units, state.myDesk]);
