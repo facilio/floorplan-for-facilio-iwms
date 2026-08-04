@@ -92,8 +92,17 @@ export function PortfolioTree() {
     return childName.toLowerCase().includes(bq);
   };
 
+  // PORTALS show only sites/buildings/floors with an indoorfloorplan (scope from one filtered
+  // floor query; null = no filtering). A level whose set came back EMPTY (projection omitted
+  // the lookup) is not gated — fail open per level, never hide everything by accident.
+  const scope = state.portalPlanFloors;
+  const siteAllowed = (id: string) => !scope || Object.keys(scope.sites).length === 0 || !!scope.sites[id];
+  const buildingAllowed = (id: string) => !scope || Object.keys(scope.buildings).length === 0 || !!scope.buildings[id];
+  const floorAllowed = (id: string) => !scope || !!scope.floors[id] || !!state.floorsWithPlans[id];
+
   const items: Row[] = [];
   for (const site of state.portfolio) {
+    if (!siteAllowed(site.id)) continue;
     // Top search: sites only — API ids when configured, name filter otherwise.
     if (q && (isFacilioApiConfigured && siteIds ? !siteIds.has(site.id) : !site.name.toLowerCase().includes(q))) continue;
     const siteExpanded = !!state.expanded[site.id];
@@ -114,6 +123,7 @@ export function PortfolioTree() {
     // In-branch building search, scoped to THIS site — collapsed behind the row's search icon.
     if (branch?.id === site.id) items.push({ row: 'search', parentId: site.id, parentKind: 'site', pad: 24 });
     for (const building of site.buildings) {
+      if (!buildingAllowed(building.id)) continue;
       if (!branchPass(site.id, building.id, building.name)) continue;
       const buildingExpanded = !!state.expanded[building.id];
       items.push({
@@ -134,9 +144,7 @@ export function PortfolioTree() {
       if (branch?.id === building.id) items.push({ row: 'search', parentId: building.id, parentKind: 'building', pad: 42 });
       for (const floor of building.floors) {
         if (!branchPass(building.id, floor.id, floor.name)) continue;
-        // PORTALS list only floors that HAVE an indoorfloorplan (requested) — maintenance
-        // shows everything since plans are configured there. null map = no filtering.
-        if (state.portalPlanFloors && !state.portalPlanFloors[floor.id] && !state.floorsWithPlans[floor.id]) continue;
+        if (!floorAllowed(floor.id)) continue;
         // A floor "has a plan" if the static portfolio flag says so OR an actual floorplan is
         // known for it (uploaded this session, or listed from the vibe-db file store at boot) —
         // without the OR, a freshly-uploaded floor kept reading "no plan" in this tree.

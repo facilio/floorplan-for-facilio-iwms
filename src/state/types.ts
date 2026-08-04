@@ -1,4 +1,4 @@
-import type {
+import type { PortalPlanScope,
   AppMode,
   Assignments,
   Booking,
@@ -168,10 +168,11 @@ export interface AppState {
   /** True when running inside a non-maintenance (portal) app — resolved from fetchCurrentApp. */
   isPortalApp: boolean;
   /**
-   * PORTALS only: floorId -> plan types that actually have an indoorfloorplan (one org scan).
-   * null = maintenance app, still loading, or fail-open — NO filtering in any of those cases.
+   * PORTALS only: floors/buildings/sites that actually have an indoorfloorplan (one filtered
+   * floor query — see fetchPortalPlanFloors). null = maintenance app, still loading, or
+   * fail-open — NO filtering in any of those cases.
    */
-  portalPlanFloors: Record<string, PlanId[]> | null;
+  portalPlanFloors: PortalPlanScope | null;
   /** Which plan types actually have a configured floor plan, fetched lazily per-floor on selection (not eagerly for the whole portfolio). */
   floorPlanTypes: Record<string, { id: PlanId; name: string; recordId: number }[]>;
   /** True while a floor/plan-type's real image (or the plan-type list) is being fetched — drives the loading overlay over the canvas. */

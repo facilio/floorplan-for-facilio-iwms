@@ -36,13 +36,19 @@ export function MobileFloorPicker() {
 
   const site = state.portfolio.find((s) => s.id === state.mobPickSite);
   const building = site?.buildings.find((b) => b.id === state.mobPickBuilding);
+  // PORTALS show only sites/buildings/floors with an indoorfloorplan (see PortfolioTree —
+  // same fail-open-per-level rules).
+  const scope = state.portalPlanFloors;
+  const siteAllowed = (id: string) => !scope || Object.keys(scope.sites).length === 0 || !!scope.sites[id];
+  const buildingAllowed = (id: string) => !scope || Object.keys(scope.buildings).length === 0 || !!scope.buildings[id];
+  const floorAllowed = (id: string) => !scope || !!scope.floors[id] || !!state.floorsWithPlans[id];
 
   let title = 'Choose a site';
   let rows: { id: string; name: string; sub: string; kind: LevelKind; active?: boolean; showChevron?: boolean; onTap: () => void }[] = [];
 
   if (!site) {
     title = 'Choose a site';
-    rows = state.portfolio.map((s) => ({
+    rows = state.portfolio.filter((s) => siteAllowed(s.id)).map((s) => ({
       id: s.id,
       name: s.name,
       sub: `${s.buildings.length} building${s.buildings.length === 1 ? '' : 's'}`,
@@ -52,7 +58,7 @@ export function MobileFloorPicker() {
     }));
   } else if (!building) {
     title = site.name;
-    rows = site.buildings.map((b) => ({
+    rows = site.buildings.filter((b) => buildingAllowed(b.id)).map((b) => ({
       id: b.id,
       name: b.name,
       sub: `${b.floors.length} floor${b.floors.length === 1 ? '' : 's'}`,
@@ -62,8 +68,7 @@ export function MobileFloorPicker() {
     }));
   } else {
     title = building.name;
-    // PORTALS list only floors that HAVE an indoorfloorplan (null map = no filtering).
-    rows = building.floors.filter((f) => !state.portalPlanFloors || !!state.portalPlanFloors[f.id] || !!state.floorsWithPlans[f.id]).map((f) => ({
+    rows = building.floors.filter((f) => floorAllowed(f.id)).map((f) => ({
       id: f.id,
       name: f.name,
       sub: f.hasPlan ? '' : 'No plan',

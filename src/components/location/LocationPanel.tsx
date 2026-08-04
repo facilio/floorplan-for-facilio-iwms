@@ -33,8 +33,10 @@ export function LocationPanel() {
   const configured = state.floorPlanTypes[state.floorId];
   const portalConfigured = (p: { id: PlanId }) => {
     if (configured) return configured.some((t) => t.id === p.id);
-    if (state.portalPlanFloors) return (state.portalPlanFloors[state.floorId] ?? []).includes(p.id);
-    return true;
+    const scoped = state.portalPlanFloors?.floors[state.floorId];
+    // [] = the floor HAS a plan but the types aren't known yet (floor-filter path) — don't
+    // filter until the per-floor fetch lands.
+    return !scoped || scoped.length === 0 || scoped.includes(p.id);
   };
   const plans = !isFacilioApiConfigured ? floor?.plans : state.isPortalApp ? ALL_PLAN_TYPES.filter(portalConfigured) : ALL_PLAN_TYPES;
 

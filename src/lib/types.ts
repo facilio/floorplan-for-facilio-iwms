@@ -223,6 +223,17 @@ export interface Building {
   floors: Floor[];
 }
 
+/**
+ * PORTALS-only visibility scope, from one filtered floor query (floors carry
+ * `indoorFloorPlanId` when a plan exists): which floors have plans (value = configured plan
+ * types when known, [] = unknown), plus their parent buildings/sites for gating the tree.
+ */
+export interface PortalPlanScope {
+  floors: Record<string, PlanId[]>;
+  buildings: Record<string, true>;
+  sites: Record<string, true>;
+}
+
 export interface Site {
   id: string;
   name: string;

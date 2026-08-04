@@ -6,7 +6,7 @@ import { renderPdfToDataUrl } from './pdfPreview';
 import { computeSyntheticGeometry, geometryStringToQuad, lngLatToFraction, quadToGeometryString, quadToLngLat, type GeoQuad } from './geoReference';
 import type { FloorplanDataSource } from './dataSource';
 import type { Asset } from './assets';
-import type { Assignments, Booking, Building, ClientContact, DefaultPlanView, DeskType, Floor, FloorplanCustomization, MarkerDef, ModePerms, PlanId, PointGeom, PolyGeom, Site, Unit, UnitType } from './types';
+import type { PortalPlanScope, Assignments, Booking, Building, ClientContact, DefaultPlanView, DeskType, Floor, FloorplanCustomization, MarkerDef, ModePerms, PlanId, PointGeom, PolyGeom, Site, Unit, UnitType } from './types';
 
 /**
  * Sniffs a DWG/DXF/PDF signature off the file's own leading bytes — the fallback when no
@@ -1021,37 +1021,63 @@ export async function saveFloorplanDefaultView(floorId: string, planId: PlanId, 
  * tried first) — replaces walking the whole site/building tree just to find "a" floor.
  */
 /**
- * PORTALS-only floor gating: ONE org-wide scan of `indoorfloorplan` -> which floors have a
- * plan at all, and which plan types each has. Fail-OPEN contract: null means "don't filter"
- * (fetch failed, or the list projection lacked the floor lookup — an empty map would
- * otherwise hide every floor in the portal's pickers). Session-cached.
+ * PORTALS-only visibility scope. PRIMARY: floors carry `indoorFloorPlanId` when a plan exists
+ * (confirmed live), so ONE filtered floor query — {"indoorFloorPlanId":{"operatorId":2,
+ * "value":[]}}, the exact filter confirmed by the user — returns the plan-backed floors WITH
+ * their building/site lookups (sites/buildings gate off the same rows; plan TYPES stay
+ * unknown ([]) until the per-floor fetch refines them). FALLBACK when that yields nothing:
+ * scan `indoorfloorplan` (also yields plan types). FAIL-OPEN contract: null = never filter.
+ * Session-cached.
  */
-let portalPlanFloorsCache: Record<string, PlanId[]> | null | undefined;
-export async function fetchPortalPlanFloors(): Promise<Record<string, PlanId[]> | null> {
+let portalPlanScopeCache: PortalPlanScope | null | undefined;
+export async function fetchPortalPlanFloors(): Promise<PortalPlanScope | null> {
   if (!isFacilioApiConfigured) return null;
-  if (portalPlanFloorsCache !== undefined) return portalPlanFloorsCache;
-  const map: Record<string, PlanId[]> = {};
+  if (portalPlanScopeCache !== undefined) return portalPlanScopeCache;
+  const scope: PortalPlanScope = { floors: {}, buildings: {}, sites: {} };
   try {
     for (let page = 1; page <= 6; page++) {
-      const res = await facilioApi.fetchAll('indoorfloorplan', { page, perPage: 500 });
-      if (res.error) {
-        if (page === 1) return (portalPlanFloorsCache = null);
-        break;
-      }
+      const res = await facilioApi.fetchAll('floor', {
+        page,
+        perPage: 500,
+        filters: JSON.stringify({ indoorFloorPlanId: { operatorId: 2, value: [] } }),
+      });
+      if (res.error) break; // fall back to the module scan below
       for (const r of res.list ?? []) {
-        const floorId = r?.floor?.id != null ? String(r.floor.id) : null;
-        const planId = PLAN_ID_BY_TYPE[Number(r?.floorPlanType)];
-        if (!floorId || !planId) continue;
-        const list = (map[floorId] ??= []);
-        if (!list.includes(planId)) list.push(planId);
+        if (r?.id == null) continue;
+        scope.floors[String(r.id)] ??= [];
+        const b = r?.building?.id;
+        const st = r?.site?.id;
+        if (b != null) scope.buildings[String(b)] = true;
+        if (st != null) scope.sites[String(st)] = true;
       }
       if ((res.list ?? []).length < 500) break;
     }
   } catch {
-    return (portalPlanFloorsCache = null);
+    /* fall back below */
   }
-  portalPlanFloorsCache = Object.keys(map).length ? map : null;
-  return portalPlanFloorsCache;
+  if (Object.keys(scope.floors).length) return (portalPlanScopeCache = scope);
+  try {
+    for (let page = 1; page <= 6; page++) {
+      const res = await facilioApi.fetchAll('indoorfloorplan', { page, perPage: 500 });
+      if (res.error) break;
+      for (const r of res.list ?? []) {
+        const floorId = r?.floor?.id != null ? String(r.floor.id) : null;
+        const planId = PLAN_ID_BY_TYPE[Number(r?.floorPlanType)];
+        if (!floorId) continue;
+        const list = (scope.floors[floorId] ??= []);
+        if (planId && !list.includes(planId)) list.push(planId);
+        const b = r?.building?.id;
+        const st = r?.site?.id;
+        if (b != null) scope.buildings[String(b)] = true;
+        if (st != null) scope.sites[String(st)] = true;
+      }
+      if ((res.list ?? []).length < 500) break;
+    }
+  } catch {
+    return (portalPlanScopeCache = null);
+  }
+  portalPlanScopeCache = Object.keys(scope.floors).length ? scope : null;
+  return portalPlanScopeCache;
 }
 
 /** Whether a floor record actually resolves — guards `?floor=` deep links from dead ids. */
