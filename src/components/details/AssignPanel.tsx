@@ -76,8 +76,10 @@ export function AssignPanel() {
               <p className={card.helper}>This space is booked in Booking mode, not assigned.</p>
             )}
             {/* Buttons only for ASSIGNABLE units — a booking-type (HOT/HOTEL) desk selected in
-                assign view shows its state read-only (mirror of the booking view's rule). */}
-            <UnitStateflowSection unit={sel} readOnly={!isAssignable(sel)} />
+                assign view shows its state read-only (mirror of the booking view's rule).
+                Hidden entirely while the reassign picker is open: clicking Re-Assign removes
+                the buttons and shows just the picker (per request). */}
+            {state.webReassign !== sel.id && <UnitStateflowSection unit={sel} readOnly={!isAssignable(sel)} />}
           </div>
         </div>
       )}

@@ -33,6 +33,7 @@ export function StateflowActions({
   showStatusRow = true,
   readOnly = false,
   onChanged,
+  onTransitionStart,
   onTransitionDone,
 }: {
   moduleName: string;
@@ -41,6 +42,8 @@ export function StateflowActions({
   showStatusRow?: boolean;
   readOnly?: boolean;
   onChanged?: () => void;
+  /** Called the moment a transition is CLICKED (before the API round-trip) — for callers that open follow-up UI instantly (e.g. Re-Assign opening the person picker). */
+  onTransitionStart?: (t: TransitionOption) => void;
   /** Called after a transition executes successfully, with the transition that ran — for callers that mirror specific transitions into app state (e.g. a desk Vacate clearing the assignee). */
   onTransitionDone?: (t: TransitionOption) => void;
 }) {
@@ -95,6 +98,7 @@ export function StateflowActions({
       data = { transitionCommentData: { body, bodyHTML: body } };
     }
     setBusyId(`${kind}:${t.id}`);
+    onTransitionStart?.(t);
     try {
       if (kind === 'state') await executeStateTransition(moduleName, recordId, t.id, data);
       else await executeApprovalTransition(moduleName, recordId, t.id, data);
@@ -249,14 +253,17 @@ export function UnitStateflowSection({ unit, readOnly, showStatusRow }: { unit: 
       recordId={ref.recordId}
       readOnly={readOnly}
       showStatusRow={showStatusRow}
+      // An assign/re-assign transition opens the PERSON PICKER the moment it's clicked (no
+      // waiting on the API — reassign IS assign: the transition changes state, the picker
+      // writes who).
+      onTransitionStart={(t) => {
+        if (!/vacat|unassign/i.test(t.name) && /assign/i.test(t.name)) actions.setWebReassign(unit.id);
+      }}
       // A vacate-ish transition must ALSO clear the record's assignee lookup (the transition only
       // changes state) — clientcontact_moves: null on desks, employee: null on lockers/parking —
-      // and drop the local assignment so the overlay updates immediately. An assign/re-assign
-      // transition opens the PERSON PICKER (the same assign flow — reassign IS assign): the
-      // transition changes state, the picker writes who.
+      // and drop the local assignment so the overlay updates immediately.
       onTransitionDone={(t) => {
         if (/vacat|unassign/i.test(t.name)) actions.stateflowVacated(unit.id);
-        else if (/assign/i.test(t.name)) actions.setWebReassign(unit.id);
       }}
     />
   );
