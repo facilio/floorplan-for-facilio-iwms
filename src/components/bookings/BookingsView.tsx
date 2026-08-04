@@ -18,7 +18,8 @@ import styles from './BookingsView.module.css';
 
 /** Category tabs → the unit type they book. "All spaces" leads (requested); lockers are assignment-only (not time-booked). */
 type CategoryId = UnitType | 'all';
-const BOOKABLE_TYPES: UnitType[] = ['workstation', 'parking', 'room'];
+// "All spaces" lists ONLY bookable desks and rooms (requested) — parking keeps its own tab.
+const BOOKABLE_TYPES: UnitType[] = ['workstation', 'room'];
 const CATEGORIES: { id: CategoryId; label: string; bookable: boolean }[] = [
   { id: 'all', label: 'All spaces', bookable: true },
   { id: 'workstation', label: 'Desks', bookable: true },

@@ -534,11 +534,12 @@ function BookingFormInner() {
             switch flips desk/space/parking — the resource options AND the org form follow. */}
         {target.allowTypeSwitch && (
           <div role="tablist" aria-label="Booking type" style={{ display: 'flex', gap: 6 }}>
-            {(['workstation', 'room', 'parking'] as const).map((t) => {
+            {/* Desk and Space only (requested) — the two org forms the switch flips between. */}
+            {(['workstation', 'room'] as const).map((t) => {
               const first = state.units.find((u) => u.type === t && isBookable(u));
               if (!first) return null;
               const active = unit!.type === t;
-              const label = t === 'workstation' ? 'Desk' : t === 'room' ? 'Space' : 'Parking';
+              const label = t === 'workstation' ? 'Desk' : 'Space';
               return (
                 <button
                   key={t}
