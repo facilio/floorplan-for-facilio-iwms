@@ -2561,6 +2561,51 @@ export async function resolveHardcodedRolePerms(): Promise<Partial<ModePerms> | 
   return (roleId && HARDCODED_ROLE_PERMS[roleId]) || null;
 }
 
+// ---------------------------------------------------------------------------
+// ORG-WIDE app settings: colors / slot length / booking module / perms-module-name live in a
+// custom module record so EVERY user sees the same configuration — localStorage alone made
+// setup admin-local (each browser its own colors), which is wrong with users side by side.
+// Module: `custom_floorplansettings`, ONE record, the JSON config in its
+// `config_custom_floorplansettings` text field (field linkNames are `<name>_<module>`).
+// Who may WRITE it is the org's own module permissioning (give update to admins only).
+// ---------------------------------------------------------------------------
+const SETTINGS_MODULE = 'custom_floorplansettings';
+const SETTINGS_CONFIG_FIELDS = [`config_${SETTINGS_MODULE}`, 'config', `settings_${SETTINGS_MODULE}`, 'settings'];
+
+export async function fetchOrgSettings(): Promise<{ recordId: number; config: Record<string, unknown> } | null> {
+  if (!isFacilioApiConfigured) return null;
+  const res: any = await facilioApi.fetchAll(SETTINGS_MODULE, { page: 1, perPage: 1 }).catch(() => null);
+  const rec = res?.list?.[0];
+  if (res?.error || !rec?.id) return null;
+  for (const key of SETTINGS_CONFIG_FIELDS) {
+    const raw = rec[key];
+    if (typeof raw === 'string' && raw.trim()) {
+      try {
+        return { recordId: rec.id, config: JSON.parse(raw) };
+      } catch {
+        /* malformed JSON in this field — try the next candidate */
+      }
+    }
+  }
+  return { recordId: rec.id, config: {} };
+}
+
+/** Best-effort org-wide settings write — create the single record if missing, else update it. */
+export async function saveOrgSettings(config: Record<string, unknown>): Promise<boolean> {
+  if (!isFacilioApiConfigured) return false;
+  const existing = await fetchOrgSettings().catch(() => null);
+  const data = { name: 'floorplan-settings', [SETTINGS_CONFIG_FIELDS[0]]: JSON.stringify(config) };
+  const res = existing
+    ? await facilioApi.updateRecord(SETTINGS_MODULE, { id: existing.recordId, data })
+    : await facilioApi.createRecord(SETTINGS_MODULE, { data });
+  if (res.error) {
+    // eslint-disable-next-line no-console
+    console.warn('[facilio-api] org settings write failed (module missing or no permission) — settings stay device-local', res.error);
+    return false;
+  }
+  return true;
+}
+
 /** Writes ONE permission flag back to its module record, using the record's own field name. */
 export async function updateRolePermissionRecord(moduleName: string, rec: RolePermRecord, perm: keyof ModePerms, value: boolean): Promise<boolean> {
   if (!isFacilioApiConfigured) return false;

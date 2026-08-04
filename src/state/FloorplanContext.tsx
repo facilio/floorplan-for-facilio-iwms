@@ -11,7 +11,7 @@ import type { Asset } from '../lib/assets';
 import { isFacilioApiConfigured } from '../lib/facilioApi';
 import { assignUnitReal, createRealBooking, fetchCurrentPeopleId, fetchFloorplanCustomization, fetchFloorplanImage, fetchMyDesk, fetchUnitAssigneeFromSummary, findFloorParents, findUnitIdForDeskRecord, getAnyFloor, getFloorPlanSummary, patchUnitContact, resolveHardcodedRolePerms, resolveModePermsForCurrentUser, saveFloorplanDefaultView, saveFloorplanMarkers, vacateUnitReal } from '../lib/facilioApiDataSource';
 import { listFloorplanFloorIds, loadFloorplanFile, persistFloorplanFile } from '../lib/floorplanFileStore';
-import { DEFAULT_PERMS_MODULE_NAME, loadSettings, saveSettings, settingsFromState } from '../lib/settingsStore';
+import { DEFAULT_PERMS_MODULE_NAME, loadEffectiveSettings, saveSettings, settingsFromState } from '../lib/settingsStore';
 import { pathForView, viewFromLocation } from '../lib/routes';
 import { buildInitialState, reducer } from './reducer';
 import type { Action } from './reducer';
@@ -1509,7 +1509,7 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
 
   // Load persisted settings (vibe-db when deployed, else localStorage) once on mount.
   useEffect(() => {
-    loadSettings()
+    loadEffectiveSettings()
       .then((cfg) => {
         if (cfg) {
           // `customMarkers` is real org data (the markertype module) with its own real fetch
@@ -1614,7 +1614,7 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
         // (only the module name is) — perms resolve fresh from the org every load.
         // Fire-and-forget: the tabs simply snap to the resolved set when this lands.
         void (async () => {
-          const cfg = await loadSettings().catch(() => null);
+          const cfg = await loadEffectiveSettings().catch(() => null);
           const defaults: ModePerms = { edit: true, assign: true, book: true };
           // undefined = never saved -> the built-in default; '' = explicitly cleared -> NO module.
           const moduleName = (cfg?.permsModuleName !== undefined ? cfg.permsModuleName : DEFAULT_PERMS_MODULE_NAME).trim();

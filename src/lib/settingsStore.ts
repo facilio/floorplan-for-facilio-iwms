@@ -1,5 +1,6 @@
 import type { MarkerDef, Perms } from './types';
 import type { AppState } from '../state/types';
+import { fetchOrgSettings, saveOrgSettings } from './facilioApiDataSource';
 
 /**
  * The app's persisted settings, stored as a single multi-line JSON string in localStorage.
@@ -67,10 +68,37 @@ export async function loadSettings(): Promise<SettingsConfig | null> {
   }
 }
 
+/**
+ * The settings every consumer should actually apply: the ORG record (custom module
+ * `custom_floorplansettings`) wins field-by-field over localStorage — settings/setup are
+ * org-wide, not per-browser; the local copy is only a per-device/offline fallback. Session
+ * cached; invalidated on save.
+ */
+let effectiveCache: Promise<SettingsConfig | null> | null = null;
+export function loadEffectiveSettings(): Promise<SettingsConfig | null> {
+  if (!effectiveCache) {
+    effectiveCache = (async () => {
+      const local = await loadSettings().catch(() => null);
+      const org = await fetchOrgSettings().catch(() => null);
+      if (!org?.config || Object.keys(org.config).length === 0) return local;
+      return { ...(local ?? {}), ...(org.config as SettingsConfig) };
+    })();
+    effectiveCache.catch(() => {
+      effectiveCache = null;
+    });
+  }
+  return effectiveCache;
+}
+
 export async function saveSettings(cfg: SettingsConfig): Promise<void> {
   try {
     localStorage.setItem(LS_KEY, serializeSettings(cfg));
   } catch {
     /* ignore quota/serialization errors */
   }
+  // Best-effort ORG-WIDE write (permission-gated by the org's own module rules — non-admins
+  // simply fail silently and keep their device copy). Cache invalidated so the next load
+  // re-reads whatever actually stuck.
+  effectiveCache = null;
+  void saveOrgSettings(cfg as unknown as Record<string, unknown>);
 }
