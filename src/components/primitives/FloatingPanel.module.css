@@ -10,8 +10,11 @@
   animation: fp-panel-in var(--dur-base) var(--ease-standard);
 }
 .translucent {
-  background: rgba(255, 255, 255, 0.93);
-  backdrop-filter: blur(14px);
+  /* NO backdrop-filter here (was blur(14px)): blurring the backdrop forces the browser to
+     re-capture the transformed plan plane underneath on every frame, and with the details
+     panel also open the overlapping layers shattered SVG plan images into misaligned tiles
+     (reported). The 93%-white panel read as near-solid anyway — solid white loses nothing. */
+  background: #fff;
   border-color: rgba(216, 227, 241, 0.9);
   /* Soft, tight shadow — the previous 50px/42% throw darkened the legend and
      Reset-layout controls sitting below the panel into unreadability. */

@@ -10,6 +10,11 @@
   left: 0;
   top: 0;
   transform-origin: 0 0;
+  /* Own compositing layer: keeps the plan image's rasterized tiles intact when the floating
+     panels above it repaint — without this, panel invalidations could shatter a scaled SVG
+     plan into stale/misaligned tiles. */
+  will-change: transform;
+  isolation: isolate;
 }
 .hint {
   position: absolute;
