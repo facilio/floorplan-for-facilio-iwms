@@ -273,7 +273,12 @@ export function unitStatus(state: AppState, unit: Unit, contactName: (id: string
       text: contactId ? (name ? `Assigned · ${name}` : 'Occupied') : 'Not bookable',
       bg: TOKEN.ink100,
       fg: TOKEN.ink600,
-      dot: opaque(realBookColor(cust, category, 'nonReservableColor') ?? 'var(--ink-400)'),
+      // Assignment-type units dot with their own assigned/free color here (distinct on request).
+      dot: opaque(
+        isAssignable(unit)
+          ? moduleColor(state, unit.type, contactId ? 'assigned' : 'free')
+          : (realBookColor(cust, category, 'nonReservableColor') ?? 'var(--ink-400)')
+      ),
     };
   }
   const conflicts = conflictsFor(state.bookings, unit.id, state.date, state.start, state.end);

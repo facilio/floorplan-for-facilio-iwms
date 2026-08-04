@@ -51,18 +51,25 @@ export function bookedUnitIds(state: AppState): Set<string> {
 export function isBookable(u: Unit): boolean {
   if (u.type === 'locker' || u.type === 'amenity') return false;
   if (u.type === 'workstation') return u.deskType === 'HOT' || u.deskType === 'HOTEL';
-  if (u.type === 'room') return u.isReservable !== false;
+  if (u.type === 'room') {
+    if (u.isReservable === true) return true; // reservable wins over isassignable_rooms
+    if (u.isReservable === false) return false;
+    // `reservable` unset: an explicitly assignable room is NOT bookable (it was wrongly
+    // showing as "Available" in book mode); otherwise the legacy bookable default stands.
+    return u.isAssignableRoom !== true;
+  }
   return true;
 }
 
 export function isAssignable(u: Unit): boolean {
   if (u.type === 'workstation') return (u.deskType ?? 'ASSIGNED') === 'ASSIGNED';
   if (u.type === 'room') {
-    // `reservable` takes PRIORITY: a room that is both reservable and assignable stays
-    // booking-only. Only a non-reservable room consults `isassignable_rooms`; rooms without
-    // that field keep the legacy "non-reservable = assignable" behavior.
-    if (u.isReservable !== false) return false;
-    return u.isAssignableRoom ?? true;
+    // `reservable === true` takes PRIORITY: such a room stays booking-only even when also
+    // flagged assignable. Otherwise `isassignable_rooms` decides (including when `reservable`
+    // is unset); rooms explicitly non-reservable without the flag keep the legacy behavior.
+    if (u.isReservable === true) return false;
+    if (u.isAssignableRoom === true) return true;
+    return u.isReservable === false && u.isAssignableRoom !== false;
   }
   return u.type === 'locker' || u.type === 'parking';
 }

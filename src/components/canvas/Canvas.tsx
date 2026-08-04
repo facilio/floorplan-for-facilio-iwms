@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
 import { clamp, markerCounterScale, markerNeighborSpacing, polyAreaM2, polygonCentroid, toNorm, unitCenter } from '../../lib/geometry';
-import { myAssignedUnit } from '../../state/selectors';
+import { isAssignable, isBookable, myAssignedUnit } from '../../state/selectors';
+import { moduleColor } from '../../lib/unitStatus';
 import { IMG_H, IMG_W } from '../../lib/mockData';
 import { FloorplanBackground } from './FloorplanBackground';
 import { RoomPolygon } from './RoomPolygon';
@@ -694,14 +695,22 @@ function RoomLabel({ unit }: { unit: Unit }) {
     const area = polyAreaM2(geom.pts, state.pxPerMeter);
     sub = area != null ? `${area.toFixed(0)} m²` : '';
   } else if (state.mode === 'book') {
-    const conflicts = state.bookings.filter((b) => b.unitId === unit.id && b.date === state.date && b.start < state.end && b.end > state.start);
-    if (conflicts.length) {
-      const b = conflicts[0];
-      sub = `Booked ${String(Math.floor(b.start / 60)).padStart(2, '0')}:${String(b.start % 60).padStart(2, '0')}–${String(Math.floor(b.end / 60)).padStart(2, '0')}:${String(b.end % 60).padStart(2, '0')}`;
-      subFg = 'var(--danger-700)';
+    if (!isBookable(unit)) {
+      // An ASSIGNABLE (non-reservable) room is never "Available" to book — label it by its
+      // assignment state, in the room's own assigned/free colors (requested).
+      const occupied = !!state.assignments[unit.id];
+      sub = occupied ? 'Occupied' : isAssignable(unit) ? 'Assignable' : 'Not bookable';
+      subFg = isAssignable(unit) ? moduleColor(state, 'room', occupied ? 'assigned' : 'free') : 'var(--ink-600)';
     } else {
-      sub = 'Available';
-      subFg = 'var(--success-700)';
+      const conflicts = state.bookings.filter((b) => b.unitId === unit.id && b.date === state.date && b.start < state.end && b.end > state.start);
+      if (conflicts.length) {
+        const b = conflicts[0];
+        sub = `Booked ${String(Math.floor(b.start / 60)).padStart(2, '0')}:${String(b.start % 60).padStart(2, '0')}–${String(Math.floor(b.end / 60)).padStart(2, '0')}:${String(b.end % 60).padStart(2, '0')}`;
+        subFg = 'var(--danger-700)';
+      } else {
+        sub = 'Available';
+        subFg = 'var(--success-700)';
+      }
     }
   }
 
