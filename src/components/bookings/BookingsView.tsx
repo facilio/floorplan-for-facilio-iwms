@@ -5,7 +5,7 @@ import { conflictsFor, contactName, floorMeta, isBookable } from '../../state/se
 import { fmtTime } from '../../lib/geometry';
 import { dataSource } from '../../lib/dataSource';
 import { isFacilioApiConfigured } from '../../lib/facilioApi';
-import { fetchOrgBookableResources, fetchOrgBookingsForDate } from '../../lib/facilioApiDataSource';
+import { fetchOrgBookableResources, fetchOrgBookingsForRange } from '../../lib/facilioApiDataSource';
 import type { Booking, Unit, UnitType } from '../../lib/types';
 import { Button } from '../primitives/Button';
 import { Modal, ModalHeader } from '../primitives/Modal';
@@ -139,24 +139,23 @@ export function BookingsView() {
     return monthGridDates(focusDate);
   }, [calView, focusDate]);
 
-  // Load bookings for every visible date (single-date getBookings, one call per day).
+  // ONE request for the whole visible range (week = 7 days, month = 42), grouped per-day
+  // client-side — the per-day fan-out sprayed dozens of identical-shaped calls (reported).
   // `state.bookingsNonce` bumps whenever a booking is added/cancelled anywhere, so a booking made
   // through the shared form (which writes to global state, not this local cache) triggers a refetch.
   useEffect(() => {
     let cancelled = false;
     setCalLoading(true);
-    // Org-wide day fetch (no floor scoping — the portfolio filter is gone); local/mock mode
-    // keeps the per-floor read since its store has no org-wide view.
-    Promise.all(
-      visibleDates.map((d) =>
-        (isFacilioApiConfigured ? fetchOrgBookingsForDate(d) : dataSource.getBookings(state.floorId, d)).catch(() => [] as Booking[])
-      )
-    ).then((results) => {
+    const first = visibleDates[0];
+    const last = visibleDates[visibleDates.length - 1];
+    const load: Promise<Booking[]> = isFacilioApiConfigured
+      ? fetchOrgBookingsForRange(first, last).catch(() => [] as Booking[])
+      : Promise.all(visibleDates.map((d) => dataSource.getBookings(state.floorId, d).catch(() => [] as Booking[]))).then((r) => r.flat());
+    load.then((rows) => {
       if (cancelled) return;
       const map: Record<string, Booking[]> = {};
-      visibleDates.forEach((d, i) => {
-        map[d] = results[i];
-      });
+      for (const d of visibleDates) map[d] = [];
+      for (const b of rows) (map[b.date] ??= []).push(b);
       setBookingsByDate(map);
       setCalLoading(false);
     });

@@ -1,5 +1,5 @@
 import { apiOrigin, customDelete, customGet, customPost, facilioApi, fetchFilePreview, isFacilioApiConfigured, sdkProperties } from './facilioApi';
-import { epochAtInTz, isValidTimezone } from './orgTime';
+import { epochAtInTz, isValidTimezone, wallClockInTz } from './orgTime';
 import { executeStateTransition, fetchAvailableStates, findCancelTransition, isPendingApprovalName, stateName } from './stateflowApi';
 import { renderCadToDataUrl } from './cadPreview';
 import { renderPdfToDataUrl } from './pdfPreview';
@@ -2047,13 +2047,32 @@ export async function uploadMarkerIcon(file: File): Promise<number> {
  * was removed on request); the floor-scoped form remains the per-floor read getUnits shares.
  */
 async function fetchSpaceBookingsForDay(date: string, floorId: string | null): Promise<Booking[]> {
+  return fetchSpaceBookingsForRange(date, date, floorId);
+}
+
+/**
+ * ONE spacebooking fetch for a whole DATE RANGE (inclusive), rows grouped per-day client-side
+ * via the org timezone — the calendar's week/month views used to fire one request per visible
+ * day (42 for a month), now it's a single call. Paginated in case a busy org exceeds a page.
+ */
+async function fetchSpaceBookingsForRange(startISO: string, endISO: string, floorId: string | null): Promise<Booking[]> {
     const tz = await fetchOrgTimezone().catch(() => null);
-    const dayStart = epochAtInTz(date, 0, tz);
-    const dayEnd = epochAtInTz(date, 24 * 60, tz);
-    const res = await facilioApi.fetchAll('spacebooking', {
-      filters: JSON.stringify({ bookingStartTime: { operatorId: 20, value: [String(dayStart), String(dayEnd - 1)] } }),
-    });
-    if (res.error) throw new Error(`facilio-api: spacebooking fetch failed (${res.error.code ?? '?'} ${res.error.message ?? ''})`.trim());
+    const rangeStart = epochAtInTz(startISO, 0, tz);
+    const rangeEnd = epochAtInTz(endISO, 24 * 60, tz);
+    const rows: any[] = [];
+    for (let page = 1; page <= 6; page++) {
+      const res = await facilioApi.fetchAll('spacebooking', {
+        page,
+        perPage: 500,
+        filters: JSON.stringify({ bookingStartTime: { operatorId: 20, value: [String(rangeStart), String(rangeEnd - 1)] } }),
+      });
+      if (res.error) {
+        if (page === 1) throw new Error(`facilio-api: spacebooking fetch failed (${res.error.code ?? '?'} ${res.error.message ?? ''})`.trim());
+        break;
+      }
+      rows.push(...(res.list ?? []));
+      if ((res.list ?? []).length < 500) break;
+    }
     // The day filter above is ORG-WIDE — spacebooking rows aren't floor-filtered server-side —
     // so scope to THIS floor's bookable records (same cached per-floor fetches getUnits shares).
     // Without this, a booking on any other floor rode onto every floor's calendar and inflated
@@ -2062,8 +2081,7 @@ async function fetchSpaceBookingsForDay(date: string, floorId: string | null): P
       ? await Promise.all(['desks', 'space', 'parkingstall'].map((m) => fetchFloorRecordsRaw(m, floorId).catch(() => [] as any[])))
       : [[], [], []];
     const onFloor = new Set([...desks, ...spaces, ...stalls].map((r: any) => String(r.id)));
-    const toMinutes = (t: number) => Math.max(0, Math.min(24 * 60, Math.round((t - dayStart) / 60_000)));
-    return (res.list ?? [])
+    return rows
       .map((b: any): Booking | null => {
         const unitId = b.desk?.id ?? b.space?.id ?? b.parkingStall?.id;
         if (!unitId || !Number.isFinite(b.bookingStartTime)) return null;
@@ -2081,13 +2099,16 @@ async function fetchSpaceBookingsForDay(date: string, floorId: string | null): P
         const recordStateName = stateName(b.moduleState);
         // Dead states beyond literal "cancel" — orgs name them Terminated/Declined/Void too.
         if (recordStateName && /cancel|reject|terminat|declin|void/i.test(recordStateName)) return null;
+        // Each row lands on ITS OWN day (org wall clock) — the whole point of the range fetch.
+        const wc = wallClockInTz(b.bookingStartTime, tz);
+        const durMin = Math.max(0, Math.round(((b.bookingEndTime ?? b.bookingStartTime) - b.bookingStartTime) / 60_000));
         return {
           id: String(b.id),
           unitId: String(unitId),
           floorId: floorId ?? '',
-          date,
-          start: toMinutes(b.bookingStartTime),
-          end: toMinutes(b.bookingEndTime ?? b.bookingStartTime),
+          date: wc.dateISO,
+          start: wc.minutes,
+          end: Math.min(24 * 60, wc.minutes + durMin),
           by: b.reservedBy?.id != null ? String(b.reservedBy.id) : '',
           purpose: b.name ?? '',
           module: 'space',
@@ -2162,6 +2183,12 @@ export function fetchOrgBookableResources(): Promise<Unit[]> {
 export function fetchOrgBookingsForDate(date: string): Promise<Booking[]> {
   if (!isFacilioApiConfigured) return Promise.resolve([]);
   return fetchSpaceBookingsForDay(date, null);
+}
+
+/** Org-wide bookings for an INCLUSIVE date range — one request, grouped client-side. */
+export function fetchOrgBookingsForRange(startISO: string, endISO: string): Promise<Booking[]> {
+  if (!isFacilioApiConfigured) return Promise.resolve([]);
+  return fetchSpaceBookingsForRange(startISO, endISO, null);
 }
 
 export interface MyDeskInfo {

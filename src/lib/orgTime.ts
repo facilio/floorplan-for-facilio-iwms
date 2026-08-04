@@ -50,3 +50,28 @@ export function epochAtInTz(dateISO: string, minutes: number, tz: string | null)
   if (utcGuess - off2 !== t) t = utcGuess - off2;
   return t;
 }
+
+/** The wall-clock date + minutes that `epoch` shows in `tz` (null = browser zone). */
+export function wallClockInTz(epoch: number, tz: string | null): { dateISO: string; minutes: number } {
+  if (!tz) {
+    const d = new Date(epoch);
+    return {
+      dateISO: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`,
+      minutes: d.getHours() * 60 + d.getMinutes(),
+    };
+  }
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date(epoch));
+  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? 0);
+  return {
+    dateISO: `${get('year')}-${String(get('month')).padStart(2, '0')}-${String(get('day')).padStart(2, '0')}`,
+    minutes: (get('hour') % 24) * 60 + get('minute'),
+  };
+}
