@@ -6,6 +6,7 @@ import { fmtTime } from '../../lib/geometry';
 import { dataSource } from '../../lib/dataSource';
 import { isFacilioApiConfigured } from '../../lib/facilioApi';
 import { fetchOrgBookableResources, fetchOrgBookingsForRange } from '../../lib/facilioApiDataSource';
+import { orgNow } from '../../lib/orgTime';
 import type { Booking, Unit, UnitType } from '../../lib/types';
 import { Button } from '../primitives/Button';
 import { Modal, ModalHeader } from '../primitives/Modal';
@@ -64,9 +65,12 @@ function monthGridDates(iso: string): string[] {
   const first = addDays(toISO(d), -d.getDay());
   return Array.from({ length: 42 }, (_, i) => addDays(first, i));
 }
+// ORG clock, not the browser's — "now"/"today" must match the facility's timezone.
 function nowMinutes(): number {
-  const d = new Date();
-  return d.getHours() * 60 + d.getMinutes();
+  return orgNow().minutes;
+}
+function orgTodayISO(): string {
+  return orgNow().dateISO;
 }
 function shortDate(iso: string): string {
   const d = parseISO(iso);
@@ -191,7 +195,7 @@ export function BookingsView() {
     }
     // Booking-date window (mirrors the form's own validation): rooms are same-day only,
     // everything else books at most one week ahead. ISO strings compare lexicographically.
-    const today = toISO(new Date());
+    const today = orgTodayISO();
     const maxDate = category === 'room' ? today : addDays(today, 7);
     if (date < today || date > maxDate) {
       actions.showToast(category === 'room' ? 'Rooms can only be booked for today' : 'Bookings can be made at most one week ahead');
@@ -316,7 +320,7 @@ export function BookingsView() {
                 <button className={styles.navBtn} onClick={() => stepFocus(-1)} title="Previous">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
                 </button>
-                <button className={styles.todayBtn} onClick={() => setFocusDate(toISO(new Date()))}>Today</button>
+                <button className={styles.todayBtn} onClick={() => setFocusDate(orgTodayISO())}>Today</button>
                 <button className={styles.navBtn} onClick={() => stepFocus(1)} title="Next">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6" /></svg>
                 </button>
@@ -527,7 +531,7 @@ function CalendarGrid({ dates, bookingsFor, myId, snap, onCreate, onPreview, con
     return () => clearInterval(t);
   }, []);
 
-  const todayIso = toISO(new Date());
+  const todayIso = orgTodayISO();
   const todayVisible = dates.includes(todayIso);
   // The grid spans the working day, but expands to include the current hour
   // when today is on screen — so the now-line always has a real place, even
@@ -699,7 +703,7 @@ function MonthGrid({
   onPickDay: (date: string) => void;
 }) {
   const month = parseISO(monthIso).getMonth();
-  const todayIso = toISO(new Date());
+  const todayIso = orgTodayISO();
   return (
     <div className={styles.monthWrap}>
       <div className={styles.monthHead}>

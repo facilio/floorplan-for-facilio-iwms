@@ -75,3 +75,20 @@ export function wallClockInTz(epoch: number, tz: string | null): { dateISO: stri
     minutes: (get('hour') % 24) * 60 + get('minute'),
   };
 }
+
+// ---------------------------------------------------------------------------
+// Resolved-zone registry + org clock. fetchOrgTimezone (facilioApiDataSource) resolves the
+// org's zone once and registers it here; synchronous UI code then derives "now"/"today" from
+// the ORG clock — the browser zone only ever serves as the unresolved/local-mode fallback.
+// ---------------------------------------------------------------------------
+let resolvedTz: string | null = null;
+export function setOrgTimezone(tz: string | null): void {
+  resolvedTz = tz;
+}
+export function orgTimezone(): string | null {
+  return resolvedTz;
+}
+/** The org's wall clock RIGHT NOW: today's ISO date + minutes since midnight. */
+export function orgNow(): { dateISO: string; minutes: number } {
+  return wallClockInTz(Date.now(), resolvedTz);
+}

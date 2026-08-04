@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { orgNow } from '../../lib/orgTime';
 import { useFloorplan } from '../../state/FloorplanContext';
 import { contactName, floorMeta } from '../../state/selectors';
 import { fmtTime } from '../../lib/geometry';
@@ -30,14 +31,13 @@ const CHIP: Record<Status, { label: string; bg: string; fg: string; cardBorder: 
   upcoming: { label: 'Confirmed', bg: 'var(--ink-050)', fg: 'var(--ink-600)', cardBorder: 'var(--ink-200)' },
 };
 
+// ORG clock — check-in windows are the facility's, not the visitor's browser zone.
 function nowMinutes(): number {
-  const d = new Date();
-  return d.getHours() * 60 + d.getMinutes();
+  return orgNow().minutes;
 }
 
 function todayIso(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return orgNow().dateISO; // the ORG's today
 }
 
 function addDaysIso(iso: string, n: number): string {

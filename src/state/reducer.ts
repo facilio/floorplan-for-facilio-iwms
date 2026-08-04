@@ -6,6 +6,10 @@ import { viewFromLocation } from '../lib/routes';
 import { DEFAULT_PERMS_MODULE_NAME } from '../lib/settingsStore';
 import type { AppState } from './types';
 
+// Boot-time default only — the org timezone isn't resolved yet when the reducer initializes.
+// Every booking guard (min/max dates, past-slot checks) re-derives "today" from the ORG clock
+// (lib/orgTime), so a browser in another zone can't book the wrong day; this just seeds the
+// date pickers.
 function todayIso(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;

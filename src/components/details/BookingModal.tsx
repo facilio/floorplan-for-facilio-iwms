@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
 import { isBookable, unitById } from '../../state/selectors';
 import { fmtTime } from '../../lib/geometry';
+import { epochAtInTz, orgNow, orgTimezone, wallClockInTz } from '../../lib/orgTime';
 import { isFacilioApiConfigured } from '../../lib/facilioApi';
 import { fetchBookingFormById, fetchBookingFormList, pickDefaultBookingForm } from '../../lib/facilioApiDataSource';
 import type { BookingFormFieldMeta, BookingFormMeta, BookingFormSummary } from '../../lib/facilioApiDataSource';
@@ -149,14 +150,14 @@ function BookingFormInner() {
   const TIME_OPTIONS = Array.from({ length: 1440 / 30 + 1 }, (_, i) => i * 30).map((m) => ({ value: String(m), label: fmtTime(m) }));
 
   // Booking-date window: ROOMS are same-day only; desks/parking book at most ONE WEEK ahead.
-  const toLocalISO = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  const minDate = toLocalISO(new Date());
-  const maxDate = isRoom ? minDate : toLocalISO(new Date(Date.now() + 7 * 86400000));
+  // All of it on the ORG clock — "today" is the facility's today, not the browser's.
+  const nowOrg = orgNow();
+  const minDate = nowOrg.dateISO;
+  const maxDate = isRoom ? minDate : wallClockInTz(Date.now() + 7 * 86400000, orgTimezone()).dateISO;
   // For TODAY, slots that already started are off the table — the backend silently bumps a
   // past start to "now" (a 05:15 booking made at 08:16 came back as 08:19), so what you pick
   // must be what you get.
-  const nowMinutes = new Date().getHours() * 60 + new Date().getMinutes();
-  const slotSelectable = (m: number) => slotDate !== minDate || m >= nowMinutes;
+  const slotSelectable = (m: number) => slotDate !== minDate || m >= nowOrg.minutes;
 
   const contactOptions = contacts.map((c) => ({ value: c.id, label: c.name, sublabel: c.client }));
 
@@ -211,7 +212,11 @@ function BookingFormInner() {
         else if (f.required) return { values, missing: f.label || f.name };
       } else if (f.type === 'NUMBER' || f.type === 'DECIMAL') values[f.name] = Number(raw);
       else if (f.type === 'DATE' || f.type === 'DATETIME') {
-        const ts = Date.parse(raw);
+        // EPOCH MILLIS on the wire, interpreted in the ORG timezone — Date.parse read a bare
+        // date as UTC and a datetime as browser-local, shifting both against the facility.
+        const [d, t] = raw.split('T');
+        const [hh, mm] = (t ?? '00:00').split(':').map(Number);
+        const ts = /^\d{4}-\d{2}-\d{2}$/.test(d) ? epochAtInTz(d, (hh || 0) * 60 + (mm || 0), orgTimezone()) : Date.parse(raw);
         if (Number.isFinite(ts)) values[f.name] = ts;
       } else if (f.type === 'DECISION_BOX') values[f.name] = raw === '1';
       else values[f.name] = raw;

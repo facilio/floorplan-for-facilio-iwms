@@ -145,13 +145,64 @@
     return modulesCache;
   }
 
-  function epochAt(dateISO, minutes) {
+  // ---- ORG TIMEZONE: values on the wire are EPOCH MILLIS computed in the org's zone; all
+  // "today"/"now" guards read the org clock. Browser zone is only the unresolved fallback.
+  var orgTzCache = null;
+  function fetchOrgTimezone() {
+    if (!orgTzCache) {
+      orgTzCache = customGet('v2/account').catch(function () { return null; }).then(function (body) {
+        var account = (body && (body.result && body.result.account)) || (body && body.account) || null;
+        var cands = account ? [account.org && account.org.timezone, account.org && account.org.timeZone, account.user && account.user.timezone] : [];
+        for (var i = 0; i < cands.length; i++) {
+          var tz = cands[i];
+          if (typeof tz === 'string' && tz) {
+            try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); return tz; } catch (e) { /* next */ }
+          }
+        }
+        return null;
+      });
+    }
+    return orgTzCache;
+  }
+  function tzParts(at, tz) {
+    var parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).formatToParts(new Date(at));
+    var get = function (t) { var x = parts.find(function (q) { return q.type === t; }); return Number((x && x.value) || 0); };
+    return { y: get('year'), mo: get('month'), d: get('day'), h: get('hour') % 24, mi: get('minute'), s: get('second') };
+  }
+  function tzOffsetMs(tz, at) {
+    var q = tzParts(at, tz);
+    return Date.UTC(q.y, q.mo - 1, q.d, q.h, q.mi, q.s) - at;
+  }
+  function epochAt(dateISO, minutes, tz) {
     var p = dateISO.split('-').map(Number);
-    return new Date(p[0], (p[1] || 1) - 1, p[2] || 1, Math.floor(minutes / 60), minutes % 60, 0, 0).getTime();
+    if (!tz) return new Date(p[0], (p[1] || 1) - 1, p[2] || 1, Math.floor(minutes / 60), minutes % 60, 0, 0).getTime();
+    var guess = Date.UTC(p[0], (p[1] || 1) - 1, p[2] || 1, Math.floor(minutes / 60), minutes % 60, 0, 0);
+    var t = guess - tzOffsetMs(tz, guess);
+    var off2 = tzOffsetMs(tz, t);
+    if (guess - off2 !== t) t = guess - off2;
+    return t;
+  }
+  function dateISOInTz(at, tz) {
+    if (!tz) {
+      var d = new Date(at);
+      return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+    }
+    var q = tzParts(at, tz);
+    return q.y + '-' + ('0' + q.mo).slice(-2) + '-' + ('0' + q.d).slice(-2);
+  }
+  function orgNow(tz) {
+    if (!tz) {
+      var d = new Date();
+      return { dateISO: d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2), minutes: d.getHours() * 60 + d.getMinutes() };
+    }
+    var q = tzParts(Date.now(), tz);
+    return { dateISO: q.y + '-' + ('0' + q.mo).slice(-2) + '-' + ('0' + q.d).slice(-2), minutes: q.h * 60 + q.mi };
   }
 
   function createSpaceBooking(input) {
-    return moduleIdByName().then(function (map) {
+    return Promise.all([moduleIdByName(), fetchOrgTimezone()]).then(function (rr) {
+      var map = rr[0];
+      var tz = rr[1];
       var parentModuleId = map[RESOURCE_MODULE[input.unitType]];
       if (!parentModuleId) return { ok: false, reason: 'could not resolve parentModuleId' };
       var internal = (input.internalAttendees || []).map(function (id) { return { id: id }; });
@@ -160,8 +211,8 @@
       if (input.formId) { data.formId = input.formId; data.actionFormId = input.formId; }
       data[RESOURCE_LOOKUP_FIELD[input.unitType]] = { id: input.resourceId };
       data.parentModuleId = parentModuleId;
-      data.bookingStartTime = epochAt(input.dateISO, input.startMinutes);
-      data.bookingEndTime = epochAt(input.dateISO, input.endMinutes);
+      data.bookingStartTime = epochAt(input.dateISO, input.startMinutes, tz);
+      data.bookingEndTime = epochAt(input.dateISO, input.endMinutes, tz);
       data.noOfAttendees = input.noOfAttendees > 0 ? input.noOfAttendees : Math.max(1, internal.length);
       data.name = input.name || input.resourceLabel + ' booking';
       if (input.description) data.description = input.description;
@@ -196,9 +247,6 @@
   function fmtTime(m) {
     return ('0' + Math.floor(m / 60)).slice(-2) + ':' + ('0' + (m % 60)).slice(-2);
   }
-  function toLocalISO(d) {
-    return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
-  }
 
   function BookingForm(props) {
     var React = global.React;
@@ -211,9 +259,16 @@
     // ONLY rooms book by slots — desks, parking, and lockers all book a plain start/end window.
     var useSlots = isRoom;
     var slotLen = ROOM_SLOT_MINUTES;
-    var minDate = toLocalISO(new Date());
-    var maxDate = isRoom ? minDate : toLocalISO(new Date(Date.now() + 7 * 86400000));
-    var nowMinutes = new Date().getHours() * 60 + new Date().getMinutes();
+    var _tz = useState(null), tz = _tz[0], setTz = _tz[1];
+    useEffect(function () {
+      var alive = true;
+      fetchOrgTimezone().then(function (z) { if (alive) setTz(z); });
+      return function () { alive = false; };
+    }, []);
+    var nowOrg = orgNow(tz);
+    var minDate = nowOrg.dateISO;
+    var maxDate = isRoom ? minDate : dateISOInTz(Date.now() + 7 * 86400000, tz);
+    var nowMinutes = nowOrg.minutes;
 
     var _form = useState(null), form = _form[0], setForm = _form[1];
     var _loading = useState(true), loading = _loading[0], setLoading = _loading[1];

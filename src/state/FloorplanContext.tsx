@@ -9,7 +9,7 @@ import type { AmenityIcon, Assignments, Booking, ClientContact, DefaultPlanView,
 import type { CadGroup } from '../lib/cadAnalyze';
 import type { Asset } from '../lib/assets';
 import { isFacilioApiConfigured } from '../lib/facilioApi';
-import { assignUnitReal, createRealBooking, fetchCurrentPeopleId, fetchFloorplanCustomization, fetchFloorplanImage, fetchMyDesk, fetchUnitAssigneeFromSummary, findFloorParents, floorExists, findUnitIdForDeskRecord, getAnyFloor, getFloorPlanSummary, patchUnitContact, resolveHardcodedRolePerms, resolveModePermsForCurrentUser, saveFloorplanDefaultView, saveFloorplanMarkers, vacateUnitReal } from '../lib/facilioApiDataSource';
+import { assignUnitReal, createRealBooking, fetchCurrentPeopleId, fetchFloorplanCustomization, fetchFloorplanImage, fetchMyDesk, fetchOrgTimezone, fetchUnitAssigneeFromSummary, findFloorParents, floorExists, findUnitIdForDeskRecord, getAnyFloor, getFloorPlanSummary, patchUnitContact, resolveHardcodedRolePerms, resolveModePermsForCurrentUser, saveFloorplanDefaultView, saveFloorplanMarkers, vacateUnitReal } from '../lib/facilioApiDataSource';
 import { listFloorplanFloorIds, loadFloorplanFile, persistFloorplanFile } from '../lib/floorplanFileStore';
 import { DEFAULT_PERMS_MODULE_NAME, loadEffectiveSettings, saveSettings, settingsFromState } from '../lib/settingsStore';
 import { floorFromLocation, pathForView, viewFromLocation, withFloorParam } from '../lib/routes';
@@ -1608,6 +1608,9 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
       let myDesk: Awaited<ReturnType<typeof fetchMyDesk>> = null;
       let firstRealFloor: string | undefined;
       if (isFacilioApiConfigured) {
+        // Resolve the ORG TIMEZONE first thing — every "now"/"today" in the UI reads the org
+        // clock (see lib/orgTime), and the sync accessor needs this fetch to have landed.
+        void fetchOrgTimezone();
         // "Who am I" comes from the SESSION, not a setting: the logged-in user's people id is
         // the id space assignments/bookings use (desks.clientcontact_desks holds it). Resolved
         // once here (cached — fetchMyDesk reuses it) and stamped as bookBy so "My bookings",

@@ -1,5 +1,5 @@
 import { apiOrigin, customDelete, customGet, customPost, facilioApi, fetchFilePreview, isFacilioApiConfigured, sdkProperties } from './facilioApi';
-import { epochAtInTz, isValidTimezone, wallClockInTz } from './orgTime';
+import { epochAtInTz, isValidTimezone, setOrgTimezone, wallClockInTz } from './orgTime';
 import { executeStateTransition, fetchAvailableStates, findCancelTransition, isPendingApprovalName, stateName } from './stateflowApi';
 import { renderCadToDataUrl } from './cadPreview';
 import { renderPdfToDataUrl } from './pdfPreview';
@@ -3023,6 +3023,7 @@ export function fetchOrgTimezone(): Promise<string | null> {
       const account = body?.result?.account ?? body?.account ?? body?.data?.account ?? null;
       candidates.push(account?.org?.timezone, account?.org?.timeZone, account?.organisation?.timezone, account?.user?.timezone);
       const tz = candidates.find(isValidTimezone) ?? null;
+      setOrgTimezone(tz); // register for the SYNC org-clock helpers (orgNow/orgTimezone)
       // eslint-disable-next-line no-console
       console.info('[facilio-api] org timezone', tz ?? '(none — browser zone)');
       return tz;

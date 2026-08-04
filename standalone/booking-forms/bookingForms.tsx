@@ -217,9 +217,63 @@ function moduleIdByName(): Promise<Map<string, number>> {
   return modulesCache;
 }
 
-function epochAt(dateISO: string, minutes: number): number {
+// ---- ORG TIMEZONE: wire values are EPOCH MILLIS computed in the org's zone; "today"/"now"
+// guards read the org clock (browser zone = unresolved fallback).
+let orgTzCache: Promise<string | null> | null = null;
+function fetchOrgTimezone(): Promise<string | null> {
+  if (!orgTzCache) {
+    orgTzCache = customGet('v2/account')
+      .catch(() => null)
+      .then((body: any) => {
+        const account = body?.result?.account ?? body?.account ?? null;
+        for (const tz of [account?.org?.timezone, account?.org?.timeZone, account?.user?.timezone]) {
+          if (typeof tz === 'string' && tz) {
+            try {
+              new Intl.DateTimeFormat('en-US', { timeZone: tz });
+              return tz;
+            } catch {
+              /* next */
+            }
+          }
+        }
+        return null;
+      });
+  }
+  return orgTzCache;
+}
+function tzParts(at: number, tz: string) {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).formatToParts(new Date(at));
+  const get = (t: string) => Number(parts.find((q) => q.type === t)?.value ?? 0);
+  return { y: get('year'), mo: get('month'), d: get('day'), h: get('hour') % 24, mi: get('minute'), s: get('second') };
+}
+function tzOffsetMs(tz: string, at: number): number {
+  const q = tzParts(at, tz);
+  return Date.UTC(q.y, q.mo - 1, q.d, q.h, q.mi, q.s) - at;
+}
+function epochAt(dateISO: string, minutes: number, tz: string | null): number {
   const [y, m, d] = dateISO.split('-').map(Number);
-  return new Date(y, (m || 1) - 1, d || 1, Math.floor(minutes / 60), minutes % 60, 0, 0).getTime();
+  if (!tz) return new Date(y, (m || 1) - 1, d || 1, Math.floor(minutes / 60), minutes % 60, 0, 0).getTime();
+  const guess = Date.UTC(y, (m || 1) - 1, d || 1, Math.floor(minutes / 60), minutes % 60, 0, 0);
+  let t = guess - tzOffsetMs(tz, guess);
+  const off2 = tzOffsetMs(tz, t);
+  if (guess - off2 !== t) t = guess - off2;
+  return t;
+}
+function dateISOInTz(at: number, tz: string | null): string {
+  if (!tz) {
+    const d = new Date(at);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+  const q = tzParts(at, tz);
+  return `${q.y}-${String(q.mo).padStart(2, '0')}-${String(q.d).padStart(2, '0')}`;
+}
+function orgNowIn(tz: string | null): { dateISO: string; minutes: number } {
+  if (!tz) {
+    const d = new Date();
+    return { dateISO: dateISOInTz(Date.now(), null), minutes: d.getHours() * 60 + d.getMinutes() };
+  }
+  const q = tzParts(Date.now(), tz);
+  return { dateISO: dateISOInTz(Date.now(), tz), minutes: q.h * 60 + q.mi };
 }
 
 export interface CreateBookingInput {
@@ -243,6 +297,7 @@ export interface CreateBookingInput {
 }
 
 export async function createSpaceBooking(input: CreateBookingInput): Promise<{ ok: boolean; id?: number; reason?: string }> {
+  const tz = await fetchOrgTimezone().catch(() => null);
   const lookupField = RESOURCE_LOOKUP_FIELD[input.unitType];
   const parentModuleId = (await moduleIdByName()).get(RESOURCE_MODULE[input.unitType]) ?? null;
   if (!parentModuleId) return { ok: false, reason: 'could not resolve parentModuleId' };
@@ -257,8 +312,8 @@ export async function createSpaceBooking(input: CreateBookingInput): Promise<{ o
       ...(input.formId ? { formId: input.formId, actionFormId: input.formId } : {}),
       [lookupField]: { id: input.resourceId },
       parentModuleId,
-      bookingStartTime: epochAt(input.dateISO, input.startMinutes),
-      bookingEndTime: epochAt(input.dateISO, input.endMinutes),
+      bookingStartTime: epochAt(input.dateISO, input.startMinutes, tz),
+      bookingEndTime: epochAt(input.dateISO, input.endMinutes, tz),
       noOfAttendees: input.noOfAttendees && input.noOfAttendees > 0 ? input.noOfAttendees : Math.max(1, internal.length),
       name: input.name || `${input.resourceLabel} booking`,
       ...(input.description ? { description: input.description } : {}),
@@ -277,7 +332,6 @@ export async function createSpaceBooking(input: CreateBookingInput): Promise<{ o
 // ---------------------------------------------------------------------------
 
 const fmtTime = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
-const toLocalISO = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 const ROOM_SLOT_MINUTES = 120; // rooms book HARDCODED 2h slots
 const KNOWN_FIELDS = new Set(['name', 'description', 'host', 'reservedBy', 'noOfAttendees', 'bookingStartTime', 'bookingEndTime', 'internalAttendees', 'externalAttendees']);
@@ -321,10 +375,19 @@ export function FacilioBookingForm({ unitType, resourceId, resourceLabel, onDone
   const useSlots = isRoom;
   const slotLen = ROOM_SLOT_MINUTES;
 
-  // Date window: rooms same-day only; everything else at most one week ahead.
-  const minDate = toLocalISO(new Date());
-  const maxDate = isRoom ? minDate : toLocalISO(new Date(Date.now() + 7 * 86400000));
-  const nowMinutes = new Date().getHours() * 60 + new Date().getMinutes();
+  // Date window: rooms same-day only; everything else at most one week ahead — ORG clock.
+  const [tz, setTz] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    fetchOrgTimezone().then((z) => alive && setTz(z));
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const nowOrg = orgNowIn(tz);
+  const minDate = nowOrg.dateISO;
+  const maxDate = isRoom ? minDate : dateISOInTz(Date.now() + 7 * 86400000, tz);
+  const nowMinutes = nowOrg.minutes;
 
   const [form, setForm] = useState<BookingFormMeta | null>(null);
   const [loading, setLoading] = useState(true);

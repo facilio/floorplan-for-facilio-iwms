@@ -3,6 +3,7 @@ import type { MouseEvent as ReactMouseEvent } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
 import { bookedUnitIds, conflictsFor, contactName, isBookable, unitById } from '../../state/selectors';
 import { fmtTime } from '../../lib/geometry';
+import { orgNow, orgTimezone, wallClockInTz } from '../../lib/orgTime';
 import { Select } from '../primitives/Select';
 import { DatePicker } from '../primitives/DatePicker';
 import { Button } from '../primitives/Button';
@@ -29,13 +30,11 @@ export function BookPanel() {
 
   // Same client rules as the booking form: today .. one week ahead, and no past start times
   // for today (the backend bumps a past start to "now", so offering them only misleads).
-  const toLocalISO = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  const minDate = toLocalISO(new Date());
-  const maxDate = toLocalISO(new Date(Date.now() + 7 * 86400000));
-  const nowSlot = (() => {
-    const n = new Date();
-    return Math.floor((n.getHours() * 60 + n.getMinutes()) / 30) * 30;
-  })();
+  // All on the ORG clock.
+  const nowOrg = orgNow();
+  const minDate = nowOrg.dateISO;
+  const maxDate = wallClockInTz(Date.now() + 7 * 86400000, orgTimezone()).dateISO;
+  const nowSlot = Math.floor(nowOrg.minutes / 30) * 30;
   const startSelectable = (m: number) => state.date !== minDate || m >= nowSlot;
 
   return (

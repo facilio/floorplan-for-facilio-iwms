@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { orgNow } from '../../lib/orgTime';
 import { useFloorplan } from '../../state/FloorplanContext';
 import { useSheetDrag } from './useSheetDrag';
 import styles from './MobileDatePicker.module.css';
@@ -40,7 +41,7 @@ export function MobileDatePicker({ open, onClose }: { open: boolean; onClose: ()
 
   if (!open) return null;
 
-  const todayIso = toISO(new Date());
+  const todayIso = orgNow().dateISO; // the ORG's today, not the browser's
   const days = monthGrid(cursor.year, cursor.month);
 
   function step(delta: number) {

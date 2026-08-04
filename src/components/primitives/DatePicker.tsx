@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { orgNow } from '../../lib/orgTime';
 
 /**
  * App-wide DATE PICKER (replaces every native `<input type="date">` on request): a button
@@ -78,7 +79,7 @@ export function DatePicker({
     };
   }, [open]);
 
-  const todayIso = toISO(new Date());
+  const todayIso = orgNow().dateISO; // the ORG's today, not the browser's
   const inRange = (iso: string) => (!min || iso >= min) && (!max || iso <= max);
 
   const first = new Date(viewYear, viewMonth, 1);
