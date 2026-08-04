@@ -46,3 +46,21 @@ export function viewFromLocation(loc: { pathname: string; hash: string }): AppVi
   if (hashPath && VIEW_BY_PATH[hashPath.replace(/\/+$/, '') || '/']) return VIEW_BY_PATH[hashPath.replace(/\/+$/, '') || '/'];
   return viewFromPath(loc.pathname);
 }
+
+/**
+ * Floor deep-linking: `?floor=<floorId>` rides every view path. Boot prefers it over the
+ * my-desk/any-floor landing, and floor changes keep it current (FloorplanContext syncs both
+ * directions), so a copied URL reopens the SAME floorplan.
+ */
+export function floorFromLocation(loc: { search: string }): string | null {
+  try {
+    const v = new URLSearchParams(loc.search).get('floor');
+    return v && v.trim() ? v.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+export function withFloorParam(path: string, floorId: string | null): string {
+  return floorId ? `${path}?floor=${encodeURIComponent(floorId)}` : path;
+}

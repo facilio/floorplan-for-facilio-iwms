@@ -12,7 +12,7 @@ import { isFacilioApiConfigured } from '../lib/facilioApi';
 import { assignUnitReal, createRealBooking, fetchCurrentPeopleId, fetchFloorplanCustomization, fetchFloorplanImage, fetchMyDesk, fetchUnitAssigneeFromSummary, findFloorParents, findUnitIdForDeskRecord, getAnyFloor, getFloorPlanSummary, patchUnitContact, resolveHardcodedRolePerms, resolveModePermsForCurrentUser, saveFloorplanDefaultView, saveFloorplanMarkers, vacateUnitReal } from '../lib/facilioApiDataSource';
 import { listFloorplanFloorIds, loadFloorplanFile, persistFloorplanFile } from '../lib/floorplanFileStore';
 import { DEFAULT_PERMS_MODULE_NAME, loadEffectiveSettings, saveSettings, settingsFromState } from '../lib/settingsStore';
-import { pathForView, viewFromLocation } from '../lib/routes';
+import { floorFromLocation, pathForView, viewFromLocation, withFloorParam } from '../lib/routes';
 import { buildInitialState, reducer } from './reducer';
 import type { Action } from './reducer';
 import type { AppState } from './types';
@@ -1474,12 +1474,14 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
   // back in via popstate. The reducer's SET_ACTIVE_VIEW is idempotent, so no loops. A legacy
   // #/x hash link resolves via viewFromLocation and gets normalized to its path form here.
   useEffect(() => {
+    // The floor param rides along on every view path (see routes.floorFromLocation).
+    const url = withFloorParam(pathForView(state.activeView), state.floorId);
     if (viewFromLocation(window.location) !== state.activeView) {
-      window.history.pushState({}, '', pathForView(state.activeView));
-    } else if (window.location.hash) {
-      window.history.replaceState({}, '', pathForView(state.activeView));
+      window.history.pushState({}, '', url);
+    } else if (window.location.hash || floorFromLocation(window.location) !== state.floorId) {
+      window.history.replaceState({}, '', url);
     }
-  }, [state.activeView]);
+  }, [state.activeView, state.floorId]);
   useEffect(() => {
     const onPopState = () => dispatch({ type: 'SET_ACTIVE_VIEW', view: viewFromLocation(window.location) });
     window.addEventListener('popstate', onPopState);
@@ -1628,13 +1630,15 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
           dispatch({ type: 'SET_MODE_PERMS', perms: resolved ? { ...defaults, ...resolved } : defaults, fromModule: !!resolved });
         })();
         myDesk = await fetchMyDesk().catch(() => null);
-        firstRealFloor = myDesk?.floorId ?? (await getAnyFloor().catch(() => null))?.id;
+        // A `?floor=` deep link WINS over the my-desk landing — a shared URL must open the
+        // floorplan it names.
+        firstRealFloor = floorFromLocation(window.location) ?? myDesk?.floorId ?? (await getAnyFloor().catch(() => null))?.id;
         // One line that says WHERE the app decided to land and why — "first floorplan didn't
         // load" is only debuggable with this in the console.
         // eslint-disable-next-line no-console
         console.info('[boot] landing decision', { peopleId, myDesk, firstRealFloor });
       }
-      const floorId = firstRealFloor ?? state.floorId;
+      const floorId = firstRealFloor ?? floorFromLocation(window.location) ?? state.floorId;
       if (floorId !== state.floorId) dispatch({ type: 'SELECT_FLOOR_START', floorId });
       if (firstRealFloor) void revealFloorInPortfolio(dispatch, firstRealFloor);
 
