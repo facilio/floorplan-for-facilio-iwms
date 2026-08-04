@@ -2073,16 +2073,23 @@ async function fetchSpaceBookingsForDay(date: string, floorId: string | null): P
  * via the org timezone — the calendar's week/month views used to fire one request per visible
  * day (42 for a month), now it's a single call. Paginated in case a busy org exceeds a page.
  */
-async function fetchSpaceBookingsForRange(startISO: string, endISO: string, floorId: string | null): Promise<Booking[]> {
+async function fetchSpaceBookingsForRange(startISO: string, endISO: string, floorId: string | null, opts?: { forCurrentUser?: boolean }): Promise<Booking[]> {
     const tz = await fetchOrgTimezone().catch(() => null);
     const rangeStart = epochAtInTz(startISO, 0, tz);
     const rangeEnd = epochAtInTz(endISO, 24 * 60, tz);
+    // PORTALS scope to the signed-in user SERVER-SIDE (requested — no UI filtering): the
+    // reservedBy lookup rides the same filters object. Maintenance fetches unscoped.
+    const reservedById = opts?.forCurrentUser ? await fetchCurrentPeopleId().catch(() => null) : null;
+    const filters: Record<string, unknown> = {
+      bookingStartTime: { operatorId: 20, value: [String(rangeStart), String(rangeEnd - 1)] },
+      ...(reservedById != null ? { reservedBy: { operatorId: 36, value: [String(reservedById)] } } : {}),
+    };
     const rows: any[] = [];
     for (let page = 1; page <= 6; page++) {
       const res = await facilioApi.fetchAll('spacebooking', {
         page,
         perPage: 500,
-        filters: JSON.stringify({ bookingStartTime: { operatorId: 20, value: [String(rangeStart), String(rangeEnd - 1)] } }),
+        filters: JSON.stringify(filters),
       });
       if (res.error) {
         if (page === 1) throw new Error(`facilio-api: spacebooking fetch failed (${res.error.code ?? '?'} ${res.error.message ?? ''})`.trim());
@@ -2203,10 +2210,11 @@ export function fetchOrgBookingsForDate(date: string): Promise<Booking[]> {
   return fetchSpaceBookingsForDay(date, null);
 }
 
-/** Org-wide bookings for an INCLUSIVE date range — one request, grouped client-side. */
-export function fetchOrgBookingsForRange(startISO: string, endISO: string): Promise<Booking[]> {
+/** Org-wide bookings for an INCLUSIVE date range — one request, grouped client-side.
+ * `forCurrentUser` adds a server-side reservedBy filter (portal scoping). */
+export function fetchOrgBookingsForRange(startISO: string, endISO: string, opts?: { forCurrentUser?: boolean }): Promise<Booking[]> {
   if (!isFacilioApiConfigured) return Promise.resolve([]);
-  return fetchSpaceBookingsForRange(startISO, endISO, null);
+  return fetchSpaceBookingsForRange(startISO, endISO, null, opts);
 }
 
 export interface MyDeskInfo {
@@ -3164,7 +3172,20 @@ export function pickDefaultBookingForm(forms: BookingFormSummary[], module: 'spa
     const hit = forms.find((f) => re.test(f.name ?? ''));
     if (hit) return hit;
   }
-  return forms[0];
+  // Type-aware last resort: NEVER hand another type's form over just because it sits first in
+  // the list — the All-spaces Space switch was landing on the desk form when the org's space
+  // form link name matched no pattern (reported live).
+  const notForType: Partial<Record<UnitType, RegExp>> = {
+    room: /desk|parking|hot/i,
+    workstation: /space|room|parking/i,
+    parking: /desk|space|room|hot/i,
+    locker: /desk|space|room|parking|hot/i,
+  };
+  const avoid = notForType[unitType];
+  const fallback = avoid ? forms.find((f) => !avoid.test(f.name ?? '')) : undefined;
+  // eslint-disable-next-line no-console
+  console.info('[facilio-api] booking form fallback pick for', unitType, (fallback ?? forms[0])?.name, '(no link-name pattern matched)');
+  return fallback ?? forms[0];
 }
 
 const bookingFormListCache = new Map<string, Promise<BookingFormSummary[]>>();

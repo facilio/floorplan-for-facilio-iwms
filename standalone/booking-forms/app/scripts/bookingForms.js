@@ -110,6 +110,12 @@
         for (var i = 0; i < patterns.length && !chosen; i++) {
           chosen = forms.find(function (f) { return patterns[i].test(f.name || ''); }) || null;
         }
+        if (!chosen) {
+          // Type-aware last resort — never hand another type's form over (rooms were landing
+          // on the desk form when no link-name pattern matched).
+          var avoid = unitType === 'room' ? /desk|parking|hot/i : unitType === 'workstation' ? /space|room|parking/i : /desk|space|room|hot/i;
+          chosen = forms.find(function (f) { return !avoid.test(f.name || ''); }) || null;
+        }
         chosen = chosen || forms[0];
         return customGet('v2/forms/spacebooking', { fetchFormRuleFields: true, forCreate: true, formId: chosen.id, skipPermission: true })
           .catch(function () { return null; })

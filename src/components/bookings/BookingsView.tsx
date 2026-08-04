@@ -5,7 +5,7 @@ import { conflictsFor, contactName, floorMeta, isBookable } from '../../state/se
 import { fmtTime } from '../../lib/geometry';
 import { dataSource } from '../../lib/dataSource';
 import { isFacilioApiConfigured } from '../../lib/facilioApi';
-import { fetchOrgBookableResources, fetchOrgBookingsForRange } from '../../lib/facilioApiDataSource';
+import { fetchCurrentApp, fetchOrgBookableResources, fetchOrgBookingsForRange } from '../../lib/facilioApiDataSource';
 import { orgNow } from '../../lib/orgTime';
 import type { Booking, Unit, UnitType } from '../../lib/types';
 import { Button } from '../primitives/Button';
@@ -94,6 +94,15 @@ export function BookingsView() {
   const [preview, setPreview] = useState<{ date: string; ids: string[] } | null>(null);
   /** "My bookings" popup — every booking of the current user in the visible range (requested). */
   const [myOpen, setMyOpen] = useState(false);
+  // PORTALS see only their own bookings (scoped server-side); MAINTENANCE sees everything.
+  const [isPortal, setIsPortal] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    if (isFacilioApiConfigured) fetchCurrentApp().then((a) => alive && setIsPortal(!!a?.linkName && a.linkName !== 'maintenance')).catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
   const [refreshTick, setRefreshTick] = useState(0);
   // ORG-WIDE resource records (desks/rooms/parking everywhere, requested) — the current
   // floor's placed units still win on id collisions since they carry richer data.
@@ -153,7 +162,7 @@ export function BookingsView() {
     const first = visibleDates[0];
     const last = visibleDates[visibleDates.length - 1];
     const load: Promise<Booking[]> = isFacilioApiConfigured
-      ? fetchOrgBookingsForRange(first, last).catch(() => [] as Booking[])
+      ? fetchOrgBookingsForRange(first, last, isPortal ? { forCurrentUser: true } : undefined).catch(() => [] as Booking[])
       : Promise.all(visibleDates.map((d) => dataSource.getBookings(state.floorId, d).catch(() => [] as Booking[]))).then((r) => r.flat());
     load.then((rows) => {
       if (cancelled) return;
@@ -166,7 +175,7 @@ export function BookingsView() {
     return () => {
       cancelled = true;
     };
-  }, [state.floorId, visibleDates, state.bookingsNonce, refreshTick]);
+  }, [state.floorId, visibleDates, state.bookingsNonce, refreshTick, isPortal]);
 
   const myBookingsInRange = useMemo(() => {
     const mine: Booking[] = [];
@@ -177,10 +186,11 @@ export function BookingsView() {
   // The calendar shows EVERY booking on the floor for the date — no per-resource filter. The
   // resource picker only targets where drag-to-book CREATES a booking.
   function bookingsFor(date: string): Booking[] {
-    // The calendar/month views are USER-CENTRIC (requested): only the current user's bookings
-    // render, org-wide. The unfiltered day set stays in bookingsByDate for conflict checks and
-    // the resource grid's occupancy counts.
-    return (bookingsByDate[date] ?? []).filter((b) => b.by === state.bookBy);
+    // ALL fetched bookings render (org-wide) — the mine-only filter hid API rows whose
+    // reservedBy wasn't exactly the session id (bookings made FOR someone else, unresolved
+    // people id) and read as "records missing" (reported). The current user's own rows still
+    // highlight blue via myId, and the My-bookings popup/badge stay user-filtered.
+    return bookingsByDate[date] ?? [];
   }
 
   const selectedResource = resources.find((r) => r.id === resourceId) ?? null;

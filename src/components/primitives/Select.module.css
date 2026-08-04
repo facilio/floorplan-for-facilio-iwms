@@ -121,10 +121,13 @@
 
 .searchRow {
   position: sticky;
-  top: 0;
+  /* -4px cancels .listbox's own padding — pinned at 0, options scrolled past the search box
+     stayed visible in the padding band above it (a clipped row peeked out, reported). */
+  top: -4px;
   z-index: 1;
   background: #fff;
-  padding: 6px;
+  padding: 8px 6px 6px;
+  margin: -4px -4px 4px;
   border-bottom: 1px solid var(--ink-100);
   list-style: none;
 }

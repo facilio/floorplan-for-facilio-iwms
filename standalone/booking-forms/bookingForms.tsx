@@ -167,6 +167,11 @@ export async function fetchBookingForm(unitType: BookableType): Promise<BookingF
     chosen = forms.find((f) => re.test(f.name ?? ''));
     if (chosen) break;
   }
+  if (!chosen) {
+    // Type-aware last resort — never hand another type's form over.
+    const avoid = unitType === 'room' ? /desk|parking|hot/i : unitType === 'workstation' ? /space|room|parking/i : /desk|space|room|hot/i;
+    chosen = forms.find((f) => !avoid.test(f.name ?? ''));
+  }
   chosen = chosen ?? forms[0];
 
   const detailBody = await customGet('v2/forms/spacebooking', {
