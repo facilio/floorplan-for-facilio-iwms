@@ -6,10 +6,12 @@ No imports from the floorplan app; all org access goes through the FacilioAppSDK
 
 Two equivalent builds:
 
-- **`bookingForms.js` + `index.html`** — plain JavaScript (no JSX, no bundler), for hosts
-  that only accept these file types: css, html, jpeg, jpg, js, json, png, svg, txt, pdf.
-  Upload both files as-is; React loads from the unpkg CDN. Embed with
-  `index.html?unitType=room&resourceId=123&resourceLabel=E-1-CO11`, or call
+- **`app/scripts/form.html` + `app/scripts/bookingForms.js`** — plain JavaScript (no JSX,
+  no bundler), laid out at the EXACT path the connected-app host serves
+  (`<key>/app/scripts/form.html` — a root-level index 404s with NoSuchKey). Only allowed
+  file types: css, html, jpeg, jpg, js, json, png, svg, txt, pdf. Upload the `app` folder
+  as-is; React loads from the unpkg CDN. Embed with
+  `form.html?unitType=room&resourceId=123&resourceLabel=E-1-CO11`, or call
   `FacilioBookingForms.mount(el, props)` from your own page/script.
 - **`bookingForms.tsx`** — the same component for TypeScript/React codebases with a bundler.
 
