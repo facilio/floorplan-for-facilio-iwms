@@ -160,32 +160,39 @@ function AssignBody({ unitId }: { unitId: string }) {
   const { state, actions } = useFloorplan();
   const contactId = state.assignments[unitId];
   const reassigning = state.webReassign === unitId;
+  const name = contactId ? contactName(state, contactId) || 'Occupied' : null;
+
+  // The CURRENT assignee stays visible in both states — reassigning must never hide who holds
+  // the space right now. Reassign is data entry (it changes the contact lookup, not the record
+  // state — same as drag-to-reassign), so it gets a plain action button here (added on request).
+  const assignedRow = contactId ? (
+    <div className={styles.assignedRow}>
+      <span className={styles.avatar}>{initials(name!)}</span>
+      <span className={styles.assignedName} title={name!}>{name}</span>
+      <div style={{ marginLeft: 'auto' }}>
+        {reassigning ? (
+          <Button variant="tertiary" onClick={() => actions.setWebReassign(null)}>Cancel</Button>
+        ) : (
+          <Button variant="secondary" onClick={() => actions.setWebReassign(unitId)}>Reassign</Button>
+        )}
+      </div>
+    </div>
+  ) : null;
 
   if (contactId && !reassigning) {
-    const name = contactName(state, contactId) || 'Occupied';
-    return (
-      <div>
-        <div className={styles.assignedRow}>
-          <span className={styles.avatar}>{initials(name)}</span>
-          <span className={styles.assignedName} title={name}>{name}</span>
-        </div>
-        {/* No hardcoded Vacate/Reassign — state actions come exclusively from the record's own
-            stateflow buttons rendered below this card body (UnitStateflowSection), so only what
-            the record's current state actually allows is offered. Changing WHO holds the desk is
-            still possible by dragging a person from the list onto it. */}
-      </div>
-    );
+    return <div>{assignedRow}</div>;
   }
 
   return (
-    <div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {assignedRow}
       <Select
-        value={contactId ?? null}
-        placeholder="— Choose a person —"
+        value={reassigning ? null : contactId ?? null}
+        placeholder={reassigning ? '— Choose the new person —' : '— Choose a person —'}
         options={state.clientContacts.map((c) => ({ value: c.id, label: c.name, sublabel: c.client }))}
         onChange={(v) => actions.assign(v, unitId)}
         fullWidth
-        aria-label="Assign to"
+        aria-label={reassigning ? 'Reassign to' : 'Assign to'}
       />
       <p className={styles.dragHint} style={{ marginTop: 8 }}>
         Or drag a person from the list below onto this space.

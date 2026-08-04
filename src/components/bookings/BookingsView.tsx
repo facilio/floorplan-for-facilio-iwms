@@ -6,7 +6,6 @@ import { fmtTime } from '../../lib/geometry';
 import { dataSource } from '../../lib/dataSource';
 import type { Booking, Unit, UnitType } from '../../lib/types';
 import { Button } from '../primitives/Button';
-import { Select } from '../primitives/Select';
 import { Modal, ModalHeader } from '../primitives/Modal';
 import { StateflowActions } from '../details/StateflowActions';
 import { PortfolioTree } from '../location/PortfolioTree';
@@ -302,26 +301,15 @@ export function BookingsView() {
               </button>
             ))}
           </div>
-          {/* Space LOOKUP (restored on request): the calendar used to auto-select the first
-              bookable space — this picks exactly which space a clicked slot books. */}
-          {catDef.bookable && resources.length > 0 && (
-            <div style={{ minWidth: 220 }}>
-              <Select
-                value={resourceId}
-                options={resources.map((r) => ({ value: r.id, label: r.label, sublabel: r.room ?? undefined }))}
-                onChange={(v) => setResourceId(v)}
-                placeholder="Select a space"
-                fullWidth
-                aria-label="Space to book"
-              />
-            </div>
-          )}
+          {/* NO resource switcher here (removed on request, twice) — the SPACE is picked inside
+              the booking form's own lookup; the auto/grid-picked resource is only the default
+              the form opens with. */}
         </div>
 
         {catDef.bookable && selectedResource && (
           <p className={styles.hint}>
-            Click a slot on the calendar to book <strong>{selectedResource.label}</strong> for{' '}
-            {state.slotGranularity % 60 === 0 ? `${state.slotGranularity / 60}h` : `${state.slotGranularity}m`}.
+            Click a slot on the calendar to book for{' '}
+            {state.slotGranularity % 60 === 0 ? `${state.slotGranularity / 60}h` : `${state.slotGranularity}m`} — the space is picked in the form.
           </p>
         )}
 

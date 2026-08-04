@@ -87,8 +87,9 @@ export function BookPanel() {
           </div>
           <div className={card.cardBody}>
             {state.schedView === 'list' ? <ScheduleList unitId={sel.id} /> : <DayTimeline unitId={sel.id} />}
-            {/* Buttons only — the status pills moved up beside the name in the card header. */}
-            <UnitStateflowSection unit={sel} showStatusRow={false} />
+            {/* Desk STATEFLOW BUTTONS deliberately absent in the booking view (removed on
+                request) — the record's state shows read-only beside the name above; state
+                actions live in Assignment mode. */}
             {!bookedUnitIds(state).has(sel.id) || conflictsFor(state.bookings, sel.id, state.date, state.start, state.end).length === 0 ? (
               <Button variant="primary" fullWidth style={{ marginTop: 12 }} onClick={() => actions.openBookingForm({ unitId: sel.id, date: state.date, start: state.start, end: state.end })}>
                 New booking

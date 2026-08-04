@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
-import { unitById } from '../../state/selectors';
+import { isBookable, unitById } from '../../state/selectors';
 import { fmtTime } from '../../lib/geometry';
 import { isFacilioApiConfigured } from '../../lib/facilioApi';
 import { fetchBookingFormById, fetchBookingFormList, pickDefaultBookingForm } from '../../lib/facilioApiDataSource';
@@ -48,7 +48,10 @@ export function BookingModal() {
 function BookingFormInner() {
   const { state, actions } = useFloorplan();
   const target = state.bookForm!;
-  const unit = unitById(state, target.unitId);
+  // The RESOURCE is a form LOOKUP (added on request): the map/calendar selection is only the
+  // default; any bookable unit of the same type can be picked right here.
+  const [resourceId, setResourceId] = useState(target.unitId);
+  const unit = unitById(state, resourceId) ?? unitById(state, target.unitId);
   const module = state.bookingModule;
   const contacts = state.clientContacts;
 
@@ -270,12 +273,26 @@ function BookingFormInner() {
     if (ok) actions.closeBookingForm();
   }
 
+  // Bookable units of the SAME type as the picked one — the lookup's option set.
+  const resourceOptions = state.units
+    .filter((u) => !u.unplaced && u.type === unit.type && isBookable(u))
+    .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }))
+    .map((u) => ({ value: u.id, label: u.label, sublabel: u.room ?? u.secondary ?? undefined }));
+
+  const resourceControl = (
+    <Select
+      value={resourceId}
+      options={resourceOptions}
+      onChange={setResourceId}
+      placeholder={`Select a ${resourceFieldLabel.toLowerCase()}`}
+      fullWidth
+      aria-label={resourceFieldLabel}
+    />
+  );
+
   const resourceRow = (
     <Field key="__resource" label={resourceFieldLabel} required>
-      <div className={card.input} style={{ display: 'flex', alignItems: 'center', color: 'var(--ink-900)', background: 'var(--ink-050)' }}>
-        {unit.label}
-        {unit.secondary ? <span style={{ color: 'var(--ink-500)', marginLeft: 6 }}>· {unit.secondary}</span> : null}
-      </div>
+      {resourceControl}
     </Field>
   );
 
@@ -381,10 +398,7 @@ function BookingFormInner() {
       flags.resource = true;
       return (
         <Field key={f.name} label={f.label || resourceFieldLabel} required={f.required}>
-          <div className={card.input} style={{ display: 'flex', alignItems: 'center', color: 'var(--ink-900)', background: 'var(--ink-050)' }}>
-            {unit!.label}
-            {unit!.secondary ? <span style={{ color: 'var(--ink-500)', marginLeft: 6 }}>· {unit!.secondary}</span> : null}
-          </div>
+          {resourceControl}
         </Field>
       );
     }

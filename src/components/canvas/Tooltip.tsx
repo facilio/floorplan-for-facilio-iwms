@@ -97,8 +97,9 @@ export function Tooltip() {
       {/* The record's OWN stateflow: current state + approval pills ("the desk status"), and
           Assign/Vacate/whatever transitions its current state actually offers — STRICT rule,
           nothing hardcoded. Booking creation and the person picker are data-entry flows (not
-          state actions), so they keep their navigation buttons below. */}
-      <UnitStateflowSection unit={unit} />
+          state actions), so they keep their navigation buttons below. BOOK mode shows the
+          state read-only (no transition buttons — removed on request). */}
+      <UnitStateflowSection unit={unit} readOnly={state.mode === 'book'} />
 
       {state.mode === 'book' && bookable && !booked && (
         <Button variant="primary" fullWidth style={{ marginTop: 10 }} onClick={() => actions.openBookingForm({ unitId: unit.id, date: state.date, start: state.start, end: state.end })}>
