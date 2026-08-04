@@ -186,21 +186,42 @@ function facilioAppReady(): Promise<any> {
       settled = true;
       reject(new Error(`facilio-api: FacilioAppSDK never fired "app.loaded" within ${FACILIO_SDK_READY_TIMEOUT_MS}ms`));
     }, FACILIO_SDK_READY_TIMEOUT_MS);
+    const settle = (app: any) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(app);
+    };
+    const fail = (err: unknown) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(err);
+    };
     const start = () => {
       try {
-        const app = (window as any).FacilioAppSDK.init();
-        (window as any).facilioApp = app;
-        app.on('app.loaded', () => {
-          if (settled) return;
-          settled = true;
-          clearTimeout(timer);
-          resolve(app);
-        });
+        // init() shape varies across SDK builds: an event-emitter app (`.on('app.loaded')`),
+        // a plain ready app with no emitter (crashed here as "t.on is not a function" — live
+        // report), or a Promise of either. Handle all three.
+        Promise.resolve((window as any).FacilioAppSDK.init())
+          .then((app: any) => {
+            (window as any).facilioApp = app;
+            if (!app) return fail(new Error('facilio-api: FacilioAppSDK.init() returned nothing'));
+            if (typeof app.on === 'function') {
+              app.on('app.loaded', () => settle(app));
+              // Belt and braces: builds that fire app.loaded BEFORE the listener attaches
+              // would otherwise hang until the hard timeout — if the API surface is already
+              // there after a beat, it's ready.
+              setTimeout(() => {
+                if (!settled && app.api && app.request) settle(app);
+              }, 2500);
+            } else {
+              settle(app); // no emitter — the returned object IS the ready bridge
+            }
+          })
+          .catch(fail);
       } catch (err) {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        reject(err);
+        fail(err);
       }
     };
     if ((window as any).FacilioAppSDK) {

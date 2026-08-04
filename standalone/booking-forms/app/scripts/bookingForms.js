@@ -32,15 +32,28 @@
       var timer = setTimeout(function () {
         if (!settled) { settled = true; reject(new Error('FacilioAppSDK never fired app.loaded')); }
       }, SDK_TIMEOUT);
+      function settle(app) {
+        if (!settled) { settled = true; clearTimeout(timer); resolve(app); }
+      }
+      function fail(err) {
+        if (!settled) { settled = true; clearTimeout(timer); reject(err); }
+      }
       function start() {
         try {
-          var app = global.FacilioAppSDK.init();
-          global.facilioApp = app;
-          app.on('app.loaded', function () {
-            if (!settled) { settled = true; clearTimeout(timer); resolve(app); }
-          });
+          // init() shape varies across SDK builds: emitter app, plain ready app (no .on —
+          // crashed live), or a Promise of either.
+          Promise.resolve(global.FacilioAppSDK.init()).then(function (app) {
+            global.facilioApp = app;
+            if (!app) return fail(new Error('FacilioAppSDK.init() returned nothing'));
+            if (typeof app.on === 'function') {
+              app.on('app.loaded', function () { settle(app); });
+              setTimeout(function () { if (!settled && app.api && app.request) settle(app); }, 2500);
+            } else {
+              settle(app);
+            }
+          }).catch(fail);
         } catch (err) {
-          if (!settled) { settled = true; clearTimeout(timer); reject(err); }
+          fail(err);
         }
       }
       if (global.FacilioAppSDK) { start(); return; }
