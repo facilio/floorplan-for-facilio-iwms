@@ -530,15 +530,21 @@ export function Canvas() {
         const gb = b.geom as { x: number; y: number };
         return ga.y - gb.y || ga.x - gb.x;
       });
-    for (const u of order) {
+    // MARKER chips are obstacles too — a label that clears other labels but sits on a
+    // neighboring marker still reads as overlap (dense desk grids), so it's dropped as well.
+    const MARKER_HALF = 14; // ~24px chip + border, screen px
+    const centers = order.map((u) => {
       const g = u.geom as { x: number; y: number };
-      const cx = g.x * IMG_W * zq;
-      const cy = g.y * IMG_H * zq;
+      return { id: u.id, cx: g.x * IMG_W * zq, cy: g.y * IMG_H * zq };
+    });
+    for (const c of centers) {
+      const u = order.find((x) => x.id === c.id)!;
       const w = Math.min(u.label.length, 24) * 5.4 + 12;
-      const r = { x1: cx - w / 2, y1: cy - GAP - CHIP_H, x2: cx + w / 2, y2: cy - GAP };
+      const r = { x1: c.cx - w / 2, y1: c.cy - GAP - CHIP_H, x2: c.cx + w / 2, y2: c.cy - GAP };
       if (kept.some((k) => r.x1 < k.x2 && r.x2 > k.x1 && r.y1 < k.y2 && r.y2 > k.y1)) continue;
+      if (centers.some((p) => p.id !== c.id && r.x1 < p.cx + MARKER_HALF && r.x2 > p.cx - MARKER_HALF && r.y1 < p.cy + MARKER_HALF && r.y2 > p.cy - MARKER_HALF)) continue;
       kept.push(r);
-      ids.add(u.id);
+      ids.add(c.id);
     }
     return ids;
   }, [markerUnits, zq, state.selected]);
