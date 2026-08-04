@@ -2356,6 +2356,8 @@ export interface RolePermRecord {
   fieldKeys: Partial<Record<keyof ModePerms, string>>;
   /** The roles multi-lookup's ACTUAL field name (`roles_<moduleName>`, older orgs: `role`). */
   roleFieldKey: string;
+  /** False when EVERY perm boolean is unset on the record — such a record must not govern. */
+  hasExplicitValues: boolean;
 }
 
 /** An org role, for the permission records' role picker. */
@@ -2484,6 +2486,9 @@ export async function fetchRolePermissionRecords(
     for (const p of MODE_PERM_KEYS) {
       if (!fieldKeys[p]) fieldKeys[p] = `${PERM_BASE_KEY[p]}_${mod}`;
     }
+    // Whether ANY perm was explicitly set on the record — a matched record with every boolean
+    // unset must NOT govern (it would zero out all tabs); the defaults apply instead.
+    const hasExplicitValues = MODE_PERM_KEYS.some((p) => isBoolish(r[fieldKeys[p]!]));
     const values: Partial<ModePerms> = {};
     for (const p of MODE_PERM_KEYS) {
       values[p] = asPermBool(r[fieldKeys[p]!]);
@@ -2499,6 +2504,7 @@ export async function fetchRolePermissionRecords(
       values,
       fieldKeys,
       roleFieldKey,
+      hasExplicitValues,
     };
   });
 }
@@ -2515,7 +2521,7 @@ export async function resolveModePermsForCurrentUser(moduleName: string): Promis
   // On-load path: ONE filtered row (roles contains roleId, page 1 / perPage 1) instead of the
   // whole module. The roleIds check stays as a guard for builds that ignore an unknown filter
   // key; anything unexpected falls back to the full fetch + client-side filter.
-  const matches = (rs: RolePermRecord[]) => rs.filter((r) => r.roleIds.includes(roleId) && Object.keys(r.values).length > 0);
+  const matches = (rs: RolePermRecord[]) => rs.filter((r) => r.roleIds.includes(roleId) && r.hasExplicitValues);
   let hits = matches(await fetchRolePermissionRecords(moduleName, { roleId, page: 1, perPage: 1 }).catch(() => []));
   if (!hits.length) {
     hits = matches(await fetchRolePermissionRecords(moduleName));
