@@ -160,7 +160,10 @@ function BookingFormInner() {
     if (!meta) return { values: {}, missing: null };
     const values: Record<string, unknown> = {};
     for (const f of meta.fields) {
-      if (KNOWN_FIELDS.has(f.name) || isResourceField(f)) continue;
+      // The WHOLE resource family is excluded from extras — the create payload's own lookup
+      // carries the resource, and a shared form's other-type field (Desk on a room booking)
+      // must neither travel nor block submit as "required".
+      if (KNOWN_FIELDS.has(f.name) || isResourceFamilyField(f)) continue;
       const raw = (extras[f.name] ?? '').trim();
       if (!raw) {
         if (f.required) return { values, missing: f.label || f.name };
@@ -361,6 +364,9 @@ function BookingFormInner() {
         </Field>
       );
     }
+    // Resource-family fields for OTHER unit types (a shared form's Desk field on a room
+    // booking) aren't editable here — the payload's own lookup carries the resource.
+    if (isResourceFamilyField(f)) return null;
     // People lookups the app doesn't model (e.g. approvers) → employee select into extras.
     if (f.lookupModule && PEOPLE_LOOKUPS.has(f.lookupModule.toLowerCase())) {
       return (

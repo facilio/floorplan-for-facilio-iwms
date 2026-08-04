@@ -6,6 +6,7 @@ import { fmtTime } from '../../lib/geometry';
 import { dataSource } from '../../lib/dataSource';
 import type { Booking, Unit, UnitType } from '../../lib/types';
 import { Button } from '../primitives/Button';
+import { Select } from '../primitives/Select';
 import { Modal, ModalHeader } from '../primitives/Modal';
 import { StateflowActions } from '../details/StateflowActions';
 import { PortfolioTree } from '../location/PortfolioTree';
@@ -284,13 +285,27 @@ export function BookingsView() {
               </button>
             ))}
           </div>
-          {/* Resource DROPDOWN removed on request — this view is for viewing/managing bookings.
-              A booking target is picked on the floor plan (Book mode) or by clicking a row in
-              the Resource grid, which focuses the calendar on that space (see onPick below). */}
+          {/* Space LOOKUP (restored on request): the calendar used to auto-select the first
+              bookable space — this picks exactly which space a clicked slot books. */}
+          {catDef.bookable && resources.length > 0 && (
+            <div style={{ minWidth: 220 }}>
+              <Select
+                value={resourceId}
+                options={resources.map((r) => ({ value: r.id, label: r.label, sublabel: r.room ?? undefined }))}
+                onChange={(v) => setResourceId(v)}
+                placeholder="Select a space"
+                fullWidth
+                aria-label="Space to book"
+              />
+            </div>
+          )}
         </div>
 
         {catDef.bookable && selectedResource && (
-          <p className={styles.hint}>Drag across the calendar to book <strong>{selectedResource.label}</strong> for that window.</p>
+          <p className={styles.hint}>
+            Click a slot on the calendar to book <strong>{selectedResource.label}</strong> for{' '}
+            {state.slotGranularity % 60 === 0 ? `${state.slotGranularity / 60}h` : `${state.slotGranularity}m`}.
+          </p>
         )}
 
         {!resources.length ? (
@@ -494,24 +509,28 @@ function CalendarGrid({ dates, bookingsFor, myId, snap, onCreate, onPreview, con
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function yToMin(colTop: number, clientY: number): number {
+  /** The SLOT containing a y-position — selection is slot-based (fixed length = the Settings default slot), not free-range. */
+  function slotAt(colTop: number, clientY: number): number {
     const raw = (clientY - colTop) / PX_PER_MIN + dayStart;
-    return Math.max(dayStart, Math.min(dayEnd, Math.round(raw / snap) * snap));
+    return Math.max(dayStart, Math.min(dayEnd - snap, Math.floor(raw / snap) * snap));
   }
 
   function onColMouseDown(date: string, e: ReactMouseEvent) {
     if (e.button !== 0) return;
     const colTop = e.currentTarget.getBoundingClientRect().top;
-    const from = yToMin(colTop, e.clientY);
-    dragRef.current = { date, colTop, from, to: from };
-    setDrag({ date, from, to: from });
+    const from = slotAt(colTop, e.clientY);
+    dragRef.current = { date, colTop, from, to: from + snap };
+    setDrag({ date, from, to: from + snap });
     window.addEventListener('mousemove', onDragMove);
     window.addEventListener('mouseup', onDragUp);
   }
   function onDragMove(e: MouseEvent) {
     const d = dragRef.current;
     if (!d) return;
-    d.to = yToMin(d.colTop, e.clientY);
+    // Dragging MOVES the one-slot selection; it never stretches it — bookings are slot-sized.
+    const s = slotAt(d.colTop, e.clientY);
+    d.from = s;
+    d.to = s + snap;
     setDrag({ date: d.date, from: d.from, to: d.to });
   }
   function onDragUp() {
@@ -522,12 +541,8 @@ function CalendarGrid({ dates, bookingsFor, myId, snap, onCreate, onPreview, con
     setDrag(null);
     // The create side-effect lives OUTSIDE any setState updater — React StrictMode double-
     // invokes updaters to check purity, which would otherwise fire the booking twice.
-    if (d) {
-      const start = Math.min(d.from, d.to);
-      const end = Math.max(d.from, d.to);
-      // Require a real drag of at least one slot — a stray click shouldn't create a booking.
-      if (end - start >= snap) onCreate(d.date, start, end);
-    }
+    // Clicking a slot books that slot (the form still confirms before anything is created).
+    if (d) onCreate(d.date, d.from, d.to);
   }
 
   return (
