@@ -1,4 +1,5 @@
 import { apiOrigin, customDelete, customGet, customPost, facilioApi, fetchFilePreview, isFacilioApiConfigured, sdkProperties } from './facilioApi';
+import { epochAtInTz, isValidTimezone } from './orgTime';
 import { executeStateTransition, fetchAvailableStates, findCancelTransition, isPendingApprovalName, stateName } from './stateflowApi';
 import { renderCadToDataUrl } from './cadPreview';
 import { renderPdfToDataUrl } from './pdfPreview';
@@ -2039,8 +2040,9 @@ export async function uploadMarkerIcon(file: File): Promise<number> {
  * was removed on request); the floor-scoped form remains the per-floor read getUnits shares.
  */
 async function fetchSpaceBookingsForDay(date: string, floorId: string | null): Promise<Booking[]> {
-    const dayStart = epochAt(date, 0);
-    const dayEnd = epochAt(date, 24 * 60);
+    const tz = await fetchOrgTimezone().catch(() => null);
+    const dayStart = epochAtInTz(date, 0, tz);
+    const dayEnd = epochAtInTz(date, 24 * 60, tz);
     const res = await facilioApi.fetchAll('spacebooking', {
       filters: JSON.stringify({ bookingStartTime: { operatorId: 20, value: [String(dayStart), String(dayEnd - 1)] } }),
     });
@@ -2892,6 +2894,38 @@ async function moduleIdFor(moduleName: string, sampleRecordId: number): Promise<
 }
 
 /** (dateISO, minutesFromMidnight) -> epoch millis in the browser's local timezone. */
+/**
+ * The ORG's timezone (IANA name) — booking epochs are computed in it, not the browser zone
+ * (see lib/orgTime). Sources: the SDK's own properties, then the account payload. Null when
+ * neither names a usable zone — callers then use the browser zone.
+ */
+let orgTimezoneCache: Promise<string | null> | null = null;
+export function fetchOrgTimezone(): Promise<string | null> {
+  if (!isFacilioApiConfigured) return Promise.resolve(null);
+  if (!orgTimezoneCache) {
+    orgTimezoneCache = (async () => {
+      const candidates: unknown[] = [];
+      const props = await sdkProperties().catch(() => null);
+      if (props) {
+        for (const p of Object.values(props) as any[]) {
+          candidates.push(p?.org?.timezone, p?.account?.org?.timezone, p?.timezone, p?.user?.timezone);
+        }
+      }
+      const body = await customGet('v2/account').catch(() => null);
+      const account = body?.result?.account ?? body?.account ?? body?.data?.account ?? null;
+      candidates.push(account?.org?.timezone, account?.org?.timeZone, account?.organisation?.timezone, account?.user?.timezone);
+      const tz = candidates.find(isValidTimezone) ?? null;
+      // eslint-disable-next-line no-console
+      console.info('[facilio-api] org timezone', tz ?? '(none — browser zone)');
+      return tz;
+    })();
+    orgTimezoneCache.catch(() => {
+      orgTimezoneCache = null;
+    });
+  }
+  return orgTimezoneCache;
+}
+
 function epochAt(dateISO: string, minutes: number): number {
   const [y, m, d] = dateISO.split('-').map(Number);
   return new Date(y, m - 1, d, Math.floor(minutes / 60), minutes % 60, 0, 0).getTime();
@@ -3146,8 +3180,8 @@ export async function createRealBooking(unit: Unit, dateISO: string, start: numb
       ...(input.formId ? { formId: input.formId, actionFormId: input.formId } : {}),
       [lookupField]: { id: ref.recordId },
       parentModuleId,
-      bookingStartTime: epochAt(dateISO, start),
-      bookingEndTime: epochAt(dateISO, end),
+      bookingStartTime: epochAtInTz(dateISO, start, await fetchOrgTimezone().catch(() => null)),
+      bookingEndTime: epochAtInTz(dateISO, end, await fetchOrgTimezone().catch(() => null)),
       noOfAttendees: input.noOfAttendees && input.noOfAttendees > 0 ? input.noOfAttendees : Math.max(1, internal.length),
       name: input.name || `${unit.label} booking`,
       ...(input.description ? { description: input.description } : {}),
