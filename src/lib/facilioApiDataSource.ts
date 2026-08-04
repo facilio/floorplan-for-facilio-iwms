@@ -201,58 +201,7 @@ export class FacilioApiDataSource implements FloorplanDataSource {
    */
   async getBookings(floorId: string, date: string): Promise<Booking[]> {
     this.assertConfigured();
-    const dayStart = epochAt(date, 0);
-    const dayEnd = epochAt(date, 24 * 60);
-    const res = await facilioApi.fetchAll('spacebooking', {
-      filters: JSON.stringify({ bookingStartTime: { operatorId: 20, value: [String(dayStart), String(dayEnd - 1)] } }),
-    });
-    if (res.error) throw new Error(`facilio-api: spacebooking fetch failed (${res.error.code ?? '?'} ${res.error.message ?? ''})`.trim());
-    // The day filter above is ORG-WIDE — spacebooking rows aren't floor-filtered server-side —
-    // so scope to THIS floor's bookable records (same cached per-floor fetches getUnits shares).
-    // Without this, a booking on any other floor rode onto every floor's calendar and inflated
-    // the "My bookings" badge with rows the current floor never renders.
-    const [desks, spaces, stalls] = await Promise.all(
-      ['desks', 'space', 'parkingstall'].map((m) => fetchFloorRecordsRaw(m, floorId).catch(() => [] as any[]))
-    );
-    const onFloor = new Set([...desks, ...spaces, ...stalls].map((r: any) => String(r.id)));
-    const toMinutes = (t: number) => Math.max(0, Math.min(24 * 60, Math.round((t - dayStart) / 60_000)));
-    return (res.list ?? [])
-      .map((b: any): Booking | null => {
-        const unitId = b.desk?.id ?? b.space?.id ?? b.parkingStall?.id;
-        if (!unitId || !Number.isFinite(b.bookingStartTime)) return null;
-        // Stateflow/approval read-side: pending when the record is approval-enabled
-        // (approvalFlowId + approvalStatus, same gate the real client uses) and its status label
-        // is unresolvable or reads pending/requested/waiting. Transition-cancelled/rejected rows
-        // are dropped below so a cancel-by-transition doesn't resurrect on refetch (best-effort —
-        // list projections that omit moduleState keep the row).
-        const approvalStatusName = stateName(b.approvalStatus);
-        // approvalStatus must be a real LOOKUP OBJECT — Facilio's unset sentinel is -1 (a
-        // number), which `!= null` alone would treat as approval-enabled and mark every plain
-        // booking pending.
-        const approvalEnabled = b.approvalFlowId != null && b.approvalFlowId !== -1 && b.approvalStatus != null && typeof b.approvalStatus === 'object';
-        const approvalPending = approvalEnabled && (approvalStatusName === null || isPendingApprovalName(approvalStatusName));
-        const recordStateName = stateName(b.moduleState);
-        // Dead states beyond literal "cancel" — orgs name them Terminated/Declined/Void too.
-        if (recordStateName && /cancel|reject|terminat|declin|void/i.test(recordStateName)) return null;
-        return {
-          id: String(b.id),
-          unitId: String(unitId),
-          floorId,
-          date,
-          start: toMinutes(b.bookingStartTime),
-          end: toMinutes(b.bookingEndTime ?? b.bookingStartTime),
-          by: b.reservedBy?.id != null ? String(b.reservedBy.id) : '',
-          purpose: b.name ?? '',
-          module: 'space',
-          name: b.name ?? '',
-          approvalPending,
-          approvalStatusName,
-          stateName: recordStateName,
-        };
-      })
-      // An EMPTY floor set can also mean the record fetches failed — showing the unscoped rows
-      // beats silently blanking real bookings in that case.
-      .filter((b: Booking | null): b is Booking => b !== null && (onFloor.size === 0 || onFloor.has(b.unitId)));
+    return fetchSpaceBookingsForDay(date, floorId);
   }
   // Booking WRITES stay on their existing paths: creation goes through createRealBooking (the
   // org-form-aware create), with the local tier's copy as the interim store — so this tier's
@@ -2072,6 +2021,72 @@ export async function uploadMarkerIcon(file: File): Promise<number> {
   const res = await facilioApi.uploadFiles([file]);
   if (res.error || !res.ids?.length) throw new Error(res.error?.message || 'facilio-api: marker icon upload failed');
   return Number(res.ids[0]);
+}
+
+/**
+ * One day's spacebooking rows, org-wide (`floorId: null`) or scoped to a floor's bookable
+ * records. The org-wide form feeds the USER-CENTRIC bookings calendar (the portfolio filter
+ * was removed on request); the floor-scoped form remains the per-floor read getUnits shares.
+ */
+async function fetchSpaceBookingsForDay(date: string, floorId: string | null): Promise<Booking[]> {
+    const dayStart = epochAt(date, 0);
+    const dayEnd = epochAt(date, 24 * 60);
+    const res = await facilioApi.fetchAll('spacebooking', {
+      filters: JSON.stringify({ bookingStartTime: { operatorId: 20, value: [String(dayStart), String(dayEnd - 1)] } }),
+    });
+    if (res.error) throw new Error(`facilio-api: spacebooking fetch failed (${res.error.code ?? '?'} ${res.error.message ?? ''})`.trim());
+    // The day filter above is ORG-WIDE — spacebooking rows aren't floor-filtered server-side —
+    // so scope to THIS floor's bookable records (same cached per-floor fetches getUnits shares).
+    // Without this, a booking on any other floor rode onto every floor's calendar and inflated
+    // the "My bookings" badge with rows the current floor never renders.
+    const [desks, spaces, stalls] = floorId
+      ? await Promise.all(['desks', 'space', 'parkingstall'].map((m) => fetchFloorRecordsRaw(m, floorId).catch(() => [] as any[])))
+      : [[], [], []];
+    const onFloor = new Set([...desks, ...spaces, ...stalls].map((r: any) => String(r.id)));
+    const toMinutes = (t: number) => Math.max(0, Math.min(24 * 60, Math.round((t - dayStart) / 60_000)));
+    return (res.list ?? [])
+      .map((b: any): Booking | null => {
+        const unitId = b.desk?.id ?? b.space?.id ?? b.parkingStall?.id;
+        if (!unitId || !Number.isFinite(b.bookingStartTime)) return null;
+        // Stateflow/approval read-side: pending when the record is approval-enabled
+        // (approvalFlowId + approvalStatus, same gate the real client uses) and its status label
+        // is unresolvable or reads pending/requested/waiting. Transition-cancelled/rejected rows
+        // are dropped below so a cancel-by-transition doesn't resurrect on refetch (best-effort —
+        // list projections that omit moduleState keep the row).
+        const approvalStatusName = stateName(b.approvalStatus);
+        // approvalStatus must be a real LOOKUP OBJECT — Facilio's unset sentinel is -1 (a
+        // number), which `!= null` alone would treat as approval-enabled and mark every plain
+        // booking pending.
+        const approvalEnabled = b.approvalFlowId != null && b.approvalFlowId !== -1 && b.approvalStatus != null && typeof b.approvalStatus === 'object';
+        const approvalPending = approvalEnabled && (approvalStatusName === null || isPendingApprovalName(approvalStatusName));
+        const recordStateName = stateName(b.moduleState);
+        // Dead states beyond literal "cancel" — orgs name them Terminated/Declined/Void too.
+        if (recordStateName && /cancel|reject|terminat|declin|void/i.test(recordStateName)) return null;
+        return {
+          id: String(b.id),
+          unitId: String(unitId),
+          floorId: floorId ?? '',
+          date,
+          start: toMinutes(b.bookingStartTime),
+          end: toMinutes(b.bookingEndTime ?? b.bookingStartTime),
+          by: b.reservedBy?.id != null ? String(b.reservedBy.id) : '',
+          purpose: b.name ?? '',
+          module: 'space',
+          name: b.name ?? '',
+          approvalPending,
+          approvalStatusName,
+          stateName: recordStateName,
+        };
+      })
+      // An EMPTY floor set can also mean the record fetches failed — showing the unscoped rows
+      // beats silently blanking real bookings in that case.
+      .filter((b: Booking | null): b is Booking => b !== null && (floorId == null || onFloor.size === 0 || onFloor.has(b.unitId)));
+  }
+
+/** Org-wide day bookings for the user-centric calendar — no floor scoping. */
+export function fetchOrgBookingsForDate(date: string): Promise<Booking[]> {
+  if (!isFacilioApiConfigured) return Promise.resolve([]);
+  return fetchSpaceBookingsForDay(date, null);
 }
 
 export interface MyDeskInfo {

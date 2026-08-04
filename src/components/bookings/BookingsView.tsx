@@ -4,73 +4,17 @@ import { useFloorplan } from '../../state/FloorplanContext';
 import { conflictsFor, contactName, floorMeta, isBookable } from '../../state/selectors';
 import { fmtTime } from '../../lib/geometry';
 import { dataSource } from '../../lib/dataSource';
+import { isFacilioApiConfigured } from '../../lib/facilioApi';
+import { fetchOrgBookingsForDate } from '../../lib/facilioApiDataSource';
 import type { Booking, Unit, UnitType } from '../../lib/types';
 import { Button } from '../primitives/Button';
 import { Modal, ModalHeader } from '../primitives/Modal';
 import { StateflowActions } from '../details/StateflowActions';
-import { PortfolioTree } from '../location/PortfolioTree';
-import loc from '../location/LocationPanel.module.css';
 import styles from './BookingsView.module.css';
 
-/**
- * The calendar's location switcher — the SAME control as the portfolio tab's (LocationPanel):
- * the Site › Building path over the floor name with a chevron, expanding into the full
- * PortfolioTree. Here it lives in the header breadcrumb spot and opens as a popover; picking a
- * floor (PortfolioTree calls selectFloor) reloads units/bookings in place and closes it.
- */
-function LocationSwitcher() {
-  const { state } = useFloorplan();
-  const [open, setOpen] = useState(false);
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const meta = floorMeta(state, state.floorId);
-
-  // A floor pick changes floorId — that's the close signal (the tree lives inside the popover).
-  useEffect(() => {
-    setOpen(false);
-  }, [state.floorId]);
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
-    };
-    window.addEventListener('mousedown', onDown);
-    return () => window.removeEventListener('mousedown', onDown);
-  }, [open]);
-
-  return (
-    <div ref={wrapRef} className={styles.locSwitcherWrap}>
-      <button className={loc.switcher} onClick={() => setOpen((o) => !o)}>
-        <span className={loc.switcherIcon}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 2L2 7l10 5 10-5-10-5z M2 12l10 5 10-5 M2 17l10 5 10-5" />
-          </svg>
-        </span>
-        <span className={loc.switcherText}>
-          <span className={loc.switcherPath}>{meta ? `${meta.site.name} › ${meta.building.name}` : ''}</span>
-          <span className={loc.switcherName}>{meta?.floor.name ?? 'Choose a floor'}</span>
-        </span>
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="var(--ink-500)"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          style={{ flexShrink: 0, transform: `rotate(${open ? 180 : 0}deg)`, transition: 'transform 160ms var(--ease-standard)' }}
-        >
-          <path d="M6 9l6 6 6-6" />
-        </svg>
-      </button>
-      {open && (
-        <div className={styles.locPopover}>
-          <PortfolioTree />
-        </div>
-      )}
-    </div>
-  );
-}
+// The portfolio/location switcher is GONE from this view (removed on request): the calendar
+// is user-centric — it shows ALL of the current user's bookings across the org, so a floor
+// filter had nothing to scope. Booking creation still targets the floorplan's current floor.
 
 /** Category tabs → the unit type they book. Lockers are assignment-only (not time-booked). */
 const CATEGORIES: { id: UnitType; label: string; bookable: boolean }[] = [
@@ -177,7 +121,13 @@ export function BookingsView() {
   useEffect(() => {
     let cancelled = false;
     setCalLoading(true);
-    Promise.all(visibleDates.map((d) => dataSource.getBookings(state.floorId, d).catch(() => [] as Booking[]))).then((results) => {
+    // Org-wide day fetch (no floor scoping — the portfolio filter is gone); local/mock mode
+    // keeps the per-floor read since its store has no org-wide view.
+    Promise.all(
+      visibleDates.map((d) =>
+        (isFacilioApiConfigured ? fetchOrgBookingsForDate(d) : dataSource.getBookings(state.floorId, d)).catch(() => [] as Booking[])
+      )
+    ).then((results) => {
       if (cancelled) return;
       const map: Record<string, Booking[]> = {};
       visibleDates.forEach((d, i) => {
@@ -200,7 +150,10 @@ export function BookingsView() {
   // The calendar shows EVERY booking on the floor for the date — no per-resource filter. The
   // resource picker only targets where drag-to-book CREATES a booking.
   function bookingsFor(date: string): Booking[] {
-    return bookingsByDate[date] ?? [];
+    // The calendar/month views are USER-CENTRIC (requested): only the current user's bookings
+    // render, org-wide. The unfiltered day set stays in bookingsByDate for conflict checks and
+    // the resource grid's occupancy counts.
+    return (bookingsByDate[date] ?? []).filter((b) => b.by === state.bookBy);
   }
 
   const selectedResource = resources.find((r) => r.id === resourceId) ?? null;
@@ -278,7 +231,6 @@ export function BookingsView() {
         <div className={styles.headerRow}>
           <div>
             <div className={styles.breadcrumb}>
-              <LocationSwitcher />
             </div>
             <h1 className={styles.h1}>Bookings</h1>
             <p className={styles.sub}>Calendar and resource view across bookable spaces</p>
@@ -406,7 +358,8 @@ export function BookingsView() {
                   return (
                     <div key={b.id} style={{ border: '1px solid var(--ink-200)', borderRadius: 10, padding: '10px 12px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
-                        <span style={{ font: '600 13.5px var(--font-sans)', color: 'var(--ink-900)' }}>{unit?.label ?? `#${b.unitId}`}</span>
+                        {/* Other-floor bookings have no local unit — the booking's own name beats a raw record id. */}
+                        <span style={{ font: '600 13.5px var(--font-sans)', color: 'var(--ink-900)' }}>{unit?.label ?? b.name ?? `#${b.unitId}`}</span>
                         <span style={{ font: '500 12px var(--font-sans)', color: 'var(--ink-600)' }}>
                           {fmtTime(b.start)}–{fmtTime(b.end)}
                         </span>
