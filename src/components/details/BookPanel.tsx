@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
 import { bookedUnitIds, conflictsFor, contactName, isBookable, unitById } from '../../state/selectors';
@@ -36,6 +36,17 @@ export function BookPanel() {
   const maxDate = wallClockInTz(Date.now() + 7 * 86400000, orgTimezone()).dateISO;
   const nowSlot = Math.floor(nowOrg.minutes / 30) * 30;
   const startSelectable = (m: number) => state.date !== minDate || m >= nowSlot;
+  // Self-heal a PAST window on today (e.g. the seeded 10:00 opened at 3 PM): bump the start
+  // to the current slot, keeping the duration — a past value isn't in the filtered options
+  // and rendered the Start select blank.
+  useEffect(() => {
+    if (state.date === minDate && state.start < nowSlot) {
+      const dur = Math.max(30, state.end - state.start);
+      const start = Math.min(1410, nowSlot);
+      actions.setTimeRange(start, Math.min(1440, start + dur));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.date, state.start, nowSlot]);
 
   return (
     <div className={styles.stack}>

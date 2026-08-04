@@ -13,6 +13,7 @@ import { assignUnitReal, createRealBooking, fetchCurrentPeopleId, fetchFloorplan
 import { listFloorplanFloorIds, loadFloorplanFile, persistFloorplanFile } from '../lib/floorplanFileStore';
 import { DEFAULT_PERMS_MODULE_NAME, loadEffectiveSettings, saveSettings, settingsFromState } from '../lib/settingsStore';
 import { floorFromLocation, pathForView, viewFromLocation, withFloorParam } from '../lib/routes';
+import { orgNow } from '../lib/orgTime';
 import { buildInitialState, reducer } from './reducer';
 import type { Action } from './reducer';
 import type { AppState } from './types';
@@ -1606,7 +1607,13 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
       if (isFacilioApiConfigured) {
         // Resolve the ORG TIMEZONE first thing — every "now"/"today" in the UI reads the org
         // clock (see lib/orgTime), and the sync accessor needs this fetch to have landed.
-        void fetchOrgTimezone();
+        // Then re-anchor the DEFAULT booking window to the org's CURRENT time: the reducer
+        // seeds a fixed 10:00–11:00, which by afternoon is a past window (blank Start select).
+        void fetchOrgTimezone().then(() => {
+          const now = orgNow();
+          const start = Math.min(1410, Math.ceil(now.minutes / 30) * 30);
+          dispatch({ type: 'SET_TIME_RANGE', start, end: Math.min(1440, start + 60) });
+        });
         // "Who am I" comes from the SESSION, not a setting: the logged-in user's people id is
         // the id space assignments/bookings use (desks.clientcontact_desks holds it). Resolved
         // once here (cached — fetchMyDesk reuses it) and stamped as bookBy so "My bookings",

@@ -668,3 +668,158 @@
   color: var(--ink-600);
   max-width: 380px;
 }
+
+/* ── Portfolio filter (button below My bookings + popover tree, approved design) ── */
+.headerActions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.filterWrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+.filterPop {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 300px;
+  background: #fff;
+  border: 1px solid var(--ink-200);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  padding: 10px;
+  z-index: 60;
+}
+.filterSearch {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1.5px solid var(--ink-200);
+  border-radius: 6px;
+  padding: 7px 9px;
+  font: 500 12.5px var(--font-sans);
+  color: var(--ink-900);
+  margin-bottom: 8px;
+}
+.filterSearch:focus {
+  outline: none;
+  border-color: var(--blue-500);
+}
+.filterTree {
+  max-height: 280px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.filterRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  font: 600 13px/1.2 var(--font-sans);
+  color: var(--ink-900);
+}
+.filterRow:hover {
+  background: var(--ink-050);
+}
+.filterRow input {
+  accent-color: var(--blue-500);
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  margin: 0;
+}
+.filterRowL2 {
+  margin-left: 16px;
+  font-weight: 500;
+}
+.filterRowL3 {
+  margin-left: 32px;
+  font-weight: 400;
+  color: var(--ink-700);
+}
+.filterName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chevBtn {
+  border: none;
+  background: none;
+  color: var(--ink-400);
+  cursor: pointer;
+  padding: 2px 4px;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+.filterLoading {
+  padding: 6px 8px 6px 40px;
+  color: var(--ink-500);
+  font: 400 12.5px var(--font-sans);
+}
+.filterFoot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid var(--ink-100);
+  margin-top: 8px;
+  padding-top: 9px;
+}
+.filterReset {
+  border: none;
+  background: none;
+  color: var(--ink-600);
+  font: 600 12.5px var(--font-sans);
+  cursor: pointer;
+}
+.filterReset:hover {
+  color: #b61919;
+}
+.filterApply {
+  background: var(--blue-500);
+  border: none;
+  color: #fff;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font: 600 13px var(--font-sans);
+  cursor: pointer;
+}
+.filterApply:hover {
+  background: var(--blue-600);
+}
+.filterChips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: 300px;
+}
+.filterChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--blue-025, #eef4fd);
+  border: 1px solid var(--blue-100, #d6e6fb);
+  color: var(--blue-600);
+  border-radius: 999px;
+  padding: 3px 7px 3px 10px;
+  font: 500 11.5px var(--font-sans);
+}
+.chipX {
+  border: none;
+  background: none;
+  color: inherit;
+  font: 700 13px/1 var(--font-sans);
+  cursor: pointer;
+  padding: 0;
+}

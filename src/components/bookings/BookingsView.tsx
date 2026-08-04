@@ -7,7 +7,7 @@ import { dataSource } from '../../lib/dataSource';
 import { isFacilioApiConfigured } from '../../lib/facilioApi';
 import { fetchCurrentApp, fetchOrgBookableResources, fetchOrgBookingsForRange } from '../../lib/facilioApiDataSource';
 import { orgNow } from '../../lib/orgTime';
-import type { Booking, Unit, UnitType } from '../../lib/types';
+import type { Booking, Building, Floor, Site, Unit, UnitType } from '../../lib/types';
 import { Button } from '../primitives/Button';
 import { Modal, ModalHeader } from '../primitives/Modal';
 import { StateflowActions } from '../details/StateflowActions';
@@ -104,6 +104,10 @@ export function BookingsView() {
     };
   }, []);
   const [refreshTick, setRefreshTick] = useState(0);
+  // PORTFOLIO FILTER (approved design: button + popover tree below My bookings) — the applied
+  // floors ride the range request as API filters (see fetchSpaceBookingsForRange floorIds),
+  // never a client-side row filter. Names kept for the removable chips.
+  const [floorFilter, setFloorFilter] = useState<{ id: string; name: string }[]>([]);
   // ORG-WIDE resource records (desks/rooms/parking everywhere, requested) — the current
   // floor's placed units still win on id collisions since they carry richer data.
   const [orgUnits, setOrgUnits] = useState<Unit[]>([]);
@@ -162,7 +166,10 @@ export function BookingsView() {
     const first = visibleDates[0];
     const last = visibleDates[visibleDates.length - 1];
     const load: Promise<Booking[]> = isFacilioApiConfigured
-      ? fetchOrgBookingsForRange(first, last, isPortal ? { forCurrentUser: true } : undefined).catch(() => [] as Booking[])
+      ? fetchOrgBookingsForRange(first, last, {
+          ...(isPortal ? { forCurrentUser: true } : {}),
+          ...(floorFilter.length ? { floorIds: floorFilter.map((f) => f.id) } : {}),
+        }).catch(() => [] as Booking[])
       : Promise.all(visibleDates.map((d) => dataSource.getBookings(state.floorId, d).catch(() => [] as Booking[]))).then((r) => r.flat());
     load.then((rows) => {
       if (cancelled) return;
@@ -175,7 +182,7 @@ export function BookingsView() {
     return () => {
       cancelled = true;
     };
-  }, [state.floorId, visibleDates, state.bookingsNonce, refreshTick, isPortal]);
+  }, [state.floorId, visibleDates, state.bookingsNonce, refreshTick, isPortal, floorFilter]);
 
   const myBookingsInRange = useMemo(() => {
     const mine: Booking[] = [];
@@ -272,14 +279,17 @@ export function BookingsView() {
             <h1 className={styles.h1}>Bookings</h1>
             <p className={styles.sub}>Calendar and resource view across bookable spaces</p>
           </div>
-          <button className={[styles.myBookings, myBookingsInRange.length ? styles.myBookingsActive : ''].join(' ')} onClick={() => setMyOpen(true)}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="4" width="18" height="17" rx="2" />
-              <path d="M16 2v4M8 2v4M3 10h18" />
-            </svg>
-            My bookings
-            <span className={styles.myBadge}>{myBookingsInRange.length}</span>
-          </button>
+          <div className={styles.headerActions}>
+            <button className={[styles.myBookings, myBookingsInRange.length ? styles.myBookingsActive : ''].join(' ')} onClick={() => setMyOpen(true)}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="4" width="18" height="17" rx="2" />
+                <path d="M16 2v4M8 2v4M3 10h18" />
+              </svg>
+              My bookings
+              <span className={styles.myBadge}>{myBookingsInRange.length}</span>
+            </button>
+            <PortfolioFilter applied={floorFilter} onApply={setFloorFilter} />
+          </div>
         </div>
 
         <div className={styles.pickerRow}>
@@ -793,6 +803,225 @@ function ResourceGrid({
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────── Portfolio filter ─────────────────────────── */
+
+/**
+ * "Filter" button + popover checkbox tree (Site → Building → Floor), per the approved
+ * design sample. Buildings/floors LAZY-load on expand (same dataSource methods the
+ * portfolio tab uses); a search box narrows loaded rows. Apply hands the drafted floors
+ * up (the parent re-fetches with them IN the API request); Reset clears everything.
+ */
+function PortfolioFilter({ applied, onApply }: { applied: { id: string; name: string }[]; onApply: (floors: { id: string; name: string }[]) => void }) {
+  const { state } = useFloorplan();
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  /** Draft selection while the popover is open — floorId → floor name (for chips). */
+  const [draft, setDraft] = useState<Map<string, string>>(new Map());
+  const [buildingsBySite, setBuildingsBySite] = useState<Record<string, Building[]>>({});
+  const [floorsByBuilding, setFloorsByBuilding] = useState<Record<string, Floor[]>>({});
+  const [openSites, setOpenSites] = useState<Set<string>>(new Set());
+  const [openBuildings, setOpenBuildings] = useState<Set<string>>(new Set());
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  // The portfolio tree in state may already carry children (site expanded elsewhere) —
+  // use those; a cached [] from the lazy fetch means "loaded, none", null means "not yet".
+  const buildingsOf = (site: Site): Building[] | null => (site.buildings.length ? site.buildings : buildingsBySite[site.id] ?? null);
+  const floorsOf = (b: Building): Floor[] | null => (b.floors.length ? b.floors : floorsByBuilding[b.id] ?? null);
+
+  const loadBuildings = async (site: Site): Promise<Building[]> => {
+    const have = buildingsOf(site);
+    if (have) return have;
+    const list = await dataSource.getBuildingsForSite(site.id).catch(() => [] as Building[]);
+    setBuildingsBySite((m) => ({ ...m, [site.id]: list }));
+    return list;
+  };
+  const loadFloors = async (b: Building): Promise<Floor[]> => {
+    const have = floorsOf(b);
+    if (have) return have;
+    const list = await dataSource.getFloorsForBuilding(b.id).catch(() => [] as Floor[]);
+    setFloorsByBuilding((m) => ({ ...m, [b.id]: list }));
+    return list;
+  };
+
+  // Chip labels carry the building for context — several buildings share floor names
+  // ("Floor 1"), so a bare floor name on a chip is ambiguous.
+  const chipLabel = (b: Building, f: Floor) => `${b.name} · ${f.name}`;
+
+  const setAllOrNone = (entries: { id: string; name: string }[]) =>
+    setDraft((d) => {
+      const n = new Map(d);
+      const allSelected = entries.length > 0 && entries.every((e) => n.has(e.id));
+      if (allSelected) entries.forEach((e) => n.delete(e.id));
+      else entries.forEach((e) => n.set(e.id, e.name));
+      return n;
+    });
+
+  const toggleFloor = (b: Building, f: Floor) =>
+    setDraft((d) => {
+      const n = new Map(d);
+      if (n.has(f.id)) n.delete(f.id);
+      else n.set(f.id, chipLabel(b, f));
+      return n;
+    });
+  const toggleBuilding = async (b: Building) => {
+    setOpenBuildings((s) => new Set(s).add(b.id));
+    setAllOrNone((await loadFloors(b)).map((f) => ({ id: f.id, name: chipLabel(b, f) })));
+  };
+  const toggleSite = async (site: Site) => {
+    setOpenSites((s) => new Set(s).add(site.id));
+    const bs = await loadBuildings(site);
+    setOpenBuildings((s) => new Set([...s, ...bs.map((x) => x.id)]));
+    const entries = await Promise.all(bs.map(async (b) => (await loadFloors(b)).map((f) => ({ id: f.id, name: chipLabel(b, f) }))));
+    setAllOrNone(entries.flat());
+  };
+
+  const q = search.trim().toLowerCase();
+  const hit = (name: string) => name.toLowerCase().includes(q);
+  const siteVisible = (site: Site) =>
+    !q || hit(site.name) || (buildingsOf(site) ?? []).some((b) => hit(b.name) || (floorsOf(b) ?? []).some((f) => hit(f.name)));
+
+  const openPopover = () => {
+    if (!open) setDraft(new Map(applied.map((f) => [f.id, f.name])));
+    setOpen((o) => !o);
+  };
+  const reset = () => {
+    setDraft(new Map());
+    setSearch('');
+    setOpen(false);
+    onApply([]);
+  };
+  const apply = () => {
+    setOpen(false);
+    onApply(Array.from(draft, ([id, name]) => ({ id, name })));
+  };
+
+  const checkboxRef = (some: boolean, all: boolean) => (el: HTMLInputElement | null) => {
+    if (el) el.indeterminate = some && !all;
+  };
+
+  return (
+    <div className={styles.filterWrap} ref={wrapRef}>
+      <button className={[styles.myBookings, applied.length ? styles.myBookingsActive : ''].join(' ')} onClick={openPopover}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" />
+        </svg>
+        Filter
+        {applied.length > 0 && <span className={styles.myBadge}>{applied.length}</span>}
+      </button>
+      {applied.length > 0 && (
+        <div className={styles.filterChips}>
+          {applied.map((f) => (
+            <span key={f.id} className={styles.filterChip}>
+              {f.name}
+              <button className={styles.chipX} title="Remove" onClick={() => onApply(applied.filter((x) => x.id !== f.id))}>
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      {open && (
+        <div className={styles.filterPop}>
+          <input className={styles.filterSearch} placeholder="Search sites, buildings, floors…" value={search} onChange={(e) => setSearch(e.target.value)} autoFocus />
+          <div className={styles.filterTree}>
+            {state.portfolio.filter(siteVisible).map((site) => {
+              const expanded = q ? true : openSites.has(site.id);
+              const bs = buildingsOf(site);
+              const siteFloors = (bs ?? []).flatMap((b) => floorsOf(b) ?? []);
+              const siteSel = siteFloors.filter((f) => draft.has(f.id)).length;
+              const siteAll = siteFloors.length > 0 && siteSel === siteFloors.length;
+              return (
+                <div key={site.id}>
+                  <label className={styles.filterRow}>
+                    <input type="checkbox" checked={siteAll} ref={checkboxRef(siteSel > 0, siteAll)} onChange={() => void toggleSite(site)} />
+                    <span className={styles.filterName}>{site.name}</span>
+                    <button
+                      className={styles.chevBtn}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setOpenSites((s) => {
+                          const n = new Set(s);
+                          if (n.has(site.id)) n.delete(site.id);
+                          else n.add(site.id);
+                          return n;
+                        });
+                        void loadBuildings(site);
+                      }}
+                    >
+                      {expanded ? '▾' : '▸'}
+                    </button>
+                  </label>
+                  {expanded && bs === null && <div className={styles.filterLoading}>Loading…</div>}
+                  {expanded &&
+                    (bs ?? [])
+                      .filter((b) => !q || hit(site.name) || hit(b.name) || (floorsOf(b) ?? []).some((f) => hit(f.name)))
+                      .map((b) => {
+                        const bExpanded = q ? true : openBuildings.has(b.id);
+                        const fls = floorsOf(b);
+                        const bSel = (fls ?? []).filter((f) => draft.has(f.id)).length;
+                        const bAll = (fls ?? []).length > 0 && bSel === (fls ?? []).length;
+                        return (
+                          <div key={b.id}>
+                            <label className={[styles.filterRow, styles.filterRowL2].join(' ')}>
+                              <input type="checkbox" checked={bAll} ref={checkboxRef(bSel > 0, bAll)} onChange={() => void toggleBuilding(b)} />
+                              <span className={styles.filterName}>{b.name}</span>
+                              <button
+                                className={styles.chevBtn}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  setOpenBuildings((s) => {
+                                    const n = new Set(s);
+                                    if (n.has(b.id)) n.delete(b.id);
+                                    else n.add(b.id);
+                                    return n;
+                                  });
+                                  void loadFloors(b);
+                                }}
+                              >
+                                {bExpanded ? '▾' : '▸'}
+                              </button>
+                            </label>
+                            {bExpanded && fls === null && <div className={styles.filterLoading}>Loading…</div>}
+                            {bExpanded &&
+                              (fls ?? [])
+                                .filter((f) => !q || hit(site.name) || hit(b.name) || hit(f.name))
+                                .map((f) => (
+                                  <label key={f.id} className={[styles.filterRow, styles.filterRowL3].join(' ')}>
+                                    <input type="checkbox" checked={draft.has(f.id)} onChange={() => toggleFloor(b, f)} />
+                                    <span className={styles.filterName}>{f.name}</span>
+                                  </label>
+                                ))}
+                          </div>
+                        );
+                      })}
+                </div>
+              );
+            })}
+            {state.portfolio.filter(siteVisible).length === 0 && <div className={styles.filterLoading}>No matches</div>}
+          </div>
+          <div className={styles.filterFoot}>
+            <button className={styles.filterReset} onClick={reset}>
+              ⟲ Reset filter
+            </button>
+            <button className={styles.filterApply} onClick={apply}>
+              Apply
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

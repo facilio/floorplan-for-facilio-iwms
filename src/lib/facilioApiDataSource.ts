@@ -2073,30 +2073,66 @@ async function fetchSpaceBookingsForDay(date: string, floorId: string | null): P
  * via the org timezone — the calendar's week/month views used to fire one request per visible
  * day (42 for a month), now it's a single call. Paginated in case a busy org exceeds a page.
  */
-async function fetchSpaceBookingsForRange(startISO: string, endISO: string, floorId: string | null, opts?: { forCurrentUser?: boolean }): Promise<Booking[]> {
+async function fetchSpaceBookingsForRange(
+  startISO: string,
+  endISO: string,
+  floorId: string | null,
+  opts?: { forCurrentUser?: boolean; floorIds?: string[] }
+): Promise<Booking[]> {
     const tz = await fetchOrgTimezone().catch(() => null);
     const rangeStart = epochAtInTz(startISO, 0, tz);
     const rangeEnd = epochAtInTz(endISO, 24 * 60, tz);
     // PORTALS scope to the signed-in user SERVER-SIDE (requested — no UI filtering): the
     // reservedBy lookup rides the same filters object. Maintenance fetches unscoped.
     const reservedById = opts?.forCurrentUser ? await fetchCurrentPeopleId().catch(() => null) : null;
-    const filters: Record<string, unknown> = {
+    const baseFilters: Record<string, unknown> = {
       bookingStartTime: { operatorId: 20, value: [String(rangeStart), String(rangeEnd - 1)] },
       ...(reservedById != null ? { reservedBy: { operatorId: 36, value: [String(reservedById)] } } : {}),
     };
-    const rows: any[] = [];
-    for (let page = 1; page <= 6; page++) {
-      const res = await facilioApi.fetchAll('spacebooking', {
-        page,
-        perPage: 500,
-        filters: JSON.stringify(filters),
-      });
-      if (res.error) {
-        if (page === 1) throw new Error(`facilio-api: spacebooking fetch failed (${res.error.code ?? '?'} ${res.error.message ?? ''})`.trim());
-        break;
+
+    const fetchPages = async (filters: Record<string, unknown>): Promise<any[]> => {
+      const acc: any[] = [];
+      for (let page = 1; page <= 6; page++) {
+        const res = await facilioApi.fetchAll('spacebooking', { page, perPage: 500, filters: JSON.stringify(filters) });
+        if (res.error) {
+          if (page === 1) throw new Error(`facilio-api: spacebooking fetch failed (${res.error.code ?? '?'} ${res.error.message ?? ''})`.trim());
+          break;
+        }
+        acc.push(...(res.list ?? []));
+        if ((res.list ?? []).length < 500) break;
       }
-      rows.push(...(res.list ?? []));
-      if ((res.list ?? []).length < 500) break;
+      return acc;
+    };
+
+    let rows: any[];
+    if (opts?.floorIds?.length) {
+      // PORTFOLIO FILTER, server-side (requested): filter fields AND together, so one query
+      // can't OR across the three resource lookups — instead the selected floors' record ids
+      // are gathered (cached per-floor fetches) and ONE query per lookup field carries its
+      // id set (operatorId 36 accepts multiple values). Results merge + dedupe.
+      const perFloor = await Promise.all(
+        opts.floorIds.flatMap((f) =>
+          (['desks', 'rooms', 'parkingstall'] as const).map((m) => fetchFloorRecordsRaw(m, f).catch(() => [] as any[]).then((list) => ({ m, list })))
+        )
+      );
+      const idsByField: Record<string, string[]> = { desk: [], space: [], parkingStall: [] };
+      for (const { m, list } of perFloor) {
+        const field = m === 'desks' ? 'desk' : m === 'rooms' ? 'space' : 'parkingStall';
+        for (const r of list as any[]) idsByField[field].push(String(r.id));
+      }
+      const queries = Object.entries(idsByField)
+        .filter(([, ids]) => ids.length > 0)
+        .map(([field, ids]) => fetchPages({ ...baseFilters, [field]: { operatorId: 36, value: ids } }).catch(() => [] as any[]));
+      const merged = (await Promise.all(queries)).flat();
+      const seen = new Set<string>();
+      rows = merged.filter((b: any) => {
+        const id = String(b.id);
+        if (seen.has(id)) return false;
+        seen.add(id);
+        return true;
+      });
+    } else {
+      rows = await fetchPages(baseFilters);
     }
     // The day filter above is ORG-WIDE — spacebooking rows aren't floor-filtered server-side —
     // so scope to THIS floor's bookable records (same cached per-floor fetches getUnits shares).
@@ -2212,7 +2248,11 @@ export function fetchOrgBookingsForDate(date: string): Promise<Booking[]> {
 
 /** Org-wide bookings for an INCLUSIVE date range — one request, grouped client-side.
  * `forCurrentUser` adds a server-side reservedBy filter (portal scoping). */
-export function fetchOrgBookingsForRange(startISO: string, endISO: string, opts?: { forCurrentUser?: boolean }): Promise<Booking[]> {
+export function fetchOrgBookingsForRange(
+  startISO: string,
+  endISO: string,
+  opts?: { forCurrentUser?: boolean; floorIds?: string[] }
+): Promise<Booking[]> {
   if (!isFacilioApiConfigured) return Promise.resolve([]);
   return fetchSpaceBookingsForRange(startISO, endISO, null, opts);
 }
