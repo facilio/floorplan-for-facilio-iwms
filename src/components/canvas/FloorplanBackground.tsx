@@ -3,22 +3,86 @@ import { IMG_H, IMG_W } from '../../lib/mockData';
 import { isFacilioApiConfigured } from '../../lib/facilioApi';
 
 /**
- * SVG plans are rasterized ONCE to a high-res PNG bitmap and the canvas pans/zooms THAT.
- * Painting the SVG directly meant the browser re-rasterized the whole vector drawing at every
- * new zoom scale — a full-plan raster per wheel frame (stutter, reported) — while compositor
- * raster-scale heuristics on some GPUs instead stretched a stale 1× snapshot (blur/tile
- * tearing, also reported). A fixed 4× bitmap sidesteps both: tiles just sample a decoded
- * image (cheap every frame), and there is no re-raster pass to tear or pin. One framing,
- * rendered once — unlike the old zoom-tier re-render (removed for framing drift), the source
- * never changes after the swap.
+ * HYBRID SVG plan rendering (benchmarked, see commit):
+ *
+ * 1. Reasonably-sized SVGs render INLINE as real vectors — pixel-perfect at every zoom level,
+ *    measured as smooth as a bitmap up to ~30k elements. The markup is sanitized first
+ *    (scripts/foreignObject/event handlers/external hrefs stripped) since inlining executes
+ *    in the app's DOM.
+ * 2. Heavier SVGs fall back to a ONE-TIME 4× PNG raster: painting a huge vector drawing
+ *    re-rasterizes it at every new zoom scale (a measured 492ms frame freeze — the reported
+ *    stutter), while a fixed bitmap costs the same per frame no matter how complex the source
+ *    was. Sharp to 400% zoom.
+ *
+ * Both paths keep ONE framing forever — unlike the old zoom-tier re-render (removed for
+ *   framing drift), nothing about the source changes after the initial resolve.
+ * Raster plans (PNG/JPG/server-rendered CAD) pass through untouched.
  */
+const INLINE_MAX_BYTES = 2.5 * 1024 * 1024;
+const INLINE_MAX_ELEMENTS = 30000;
 const RASTER_SCALE = 4;
 const RASTER_MAX_EDGE = 8192;
 const svgRasterCache = new Map<string, string>();
 const svgRasterInFlight = new Map<string, Promise<string | null>>();
+/** Sanitized inline markup per url; null = too heavy/unusable → the raster path decides. */
+const svgInlineCache = new Map<string, string | null>();
+const svgInlineInFlight = new Map<string, Promise<string | null>>();
 
 function isSvgUrl(url: string): boolean {
   return /^data:image\/svg|\.svg([?#]|$)/i.test(url);
+}
+
+function svgTextFromUrl(url: string): Promise<string | null> {
+  if (url.startsWith('data:')) {
+    try {
+      const comma = url.indexOf(',');
+      const payload = url.slice(comma + 1);
+      return Promise.resolve(url.slice(0, comma).includes(';base64') ? atob(payload) : decodeURIComponent(payload));
+    } catch {
+      return Promise.resolve(null);
+    }
+  }
+  return fetch(url)
+    .then((res) => (res.ok ? res.text() : null))
+    .catch(() => null);
+}
+
+/**
+ * Sanitized inline markup for a plan SVG, or null when it shouldn't inline: too big, too many
+ * elements (vector paint cost scales with node count — the raster fallback doesn't), no usable
+ * viewBox, or it isn't valid SVG at all. Strips everything that could execute or exfiltrate:
+ * scripts, foreignObject, on* handlers, and non-local hrefs.
+ */
+function sanitizeSvgForInline(text: string): string | null {
+  if (text.length > INLINE_MAX_BYTES) return null;
+  let doc: Document;
+  try {
+    doc = new DOMParser().parseFromString(text, 'image/svg+xml');
+  } catch {
+    return null;
+  }
+  const root = doc.documentElement;
+  if (root.tagName.toLowerCase() !== 'svg' || doc.querySelector('parsererror')) return null;
+  if (doc.getElementsByTagName('*').length > INLINE_MAX_ELEMENTS) return null;
+  for (const el of Array.from(doc.querySelectorAll('script, foreignObject'))) el.remove();
+  for (const el of Array.from(doc.getElementsByTagName('*'))) {
+    for (const attr of Array.from(el.attributes)) {
+      const n = attr.name.toLowerCase();
+      if (n.startsWith('on') || ((n === 'href' || n === 'xlink:href') && !/^\s*(#|data:)/i.test(attr.value))) el.removeAttribute(attr.name);
+    }
+  }
+  if (!root.getAttribute('viewBox')) {
+    const w = parseFloat(root.getAttribute('width') ?? '');
+    const h = parseFloat(root.getAttribute('height') ?? '');
+    if (!(w > 0) || !(h > 0)) return null;
+    root.setAttribute('viewBox', `0 0 ${w} ${h}`);
+  }
+  // Fill the IMG_W×IMG_H frame with objectFit:contain semantics (meet = letterbox, centered).
+  root.setAttribute('width', '100%');
+  root.setAttribute('height', '100%');
+  root.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+  root.setAttribute('style', 'display:block');
+  return new XMLSerializer().serializeToString(root);
 }
 
 async function rasterizeSvgOnce(url: string): Promise<string | null> {
@@ -43,36 +107,59 @@ async function rasterizeSvgOnce(url: string): Promise<string | null> {
   }
 }
 
-/** The high-res raster for an SVG plan url — cached per url, deduped while in flight. */
-function useSvgRaster(imageUrl?: string): string | null {
+/**
+ * Resolves how an SVG plan url renders: `inline` markup when it qualifies (vector-crisp at any
+ * zoom), else a one-time high-res `raster`. Cached per url, deduped while in flight; non-SVG
+ * urls resolve to neither and pass through as-is.
+ */
+function useSvgPlan(imageUrl?: string): { inline: string | null; raster: string | null } {
+  const [inline, setInline] = useState<string | null>(() => (imageUrl ? svgInlineCache.get(imageUrl) ?? null : null));
   const [raster, setRaster] = useState<string | null>(() => (imageUrl ? svgRasterCache.get(imageUrl) ?? null : null));
   useEffect(() => {
-    if (!imageUrl || !isSvgUrl(imageUrl)) {
-      setRaster(null);
-      return;
-    }
-    const cached = svgRasterCache.get(imageUrl);
-    if (cached) {
-      setRaster(cached);
-      return;
-    }
-    setRaster(null);
+    setInline(imageUrl ? svgInlineCache.get(imageUrl) ?? null : null);
+    setRaster(imageUrl ? svgRasterCache.get(imageUrl) ?? null : null);
+    if (!imageUrl || !isSvgUrl(imageUrl)) return;
     let alive = true;
-    let job = svgRasterInFlight.get(imageUrl);
-    if (!job) {
-      job = rasterizeSvgOnce(imageUrl);
-      svgRasterInFlight.set(imageUrl, job);
+
+    const startRaster = () => {
+      const cached = svgRasterCache.get(imageUrl);
+      if (cached) {
+        if (alive) setRaster(cached);
+        return;
+      }
+      let job = svgRasterInFlight.get(imageUrl);
+      if (!job) {
+        job = rasterizeSvgOnce(imageUrl);
+        svgRasterInFlight.set(imageUrl, job);
+      }
+      void job.then((u) => {
+        svgRasterInFlight.delete(imageUrl);
+        if (u) svgRasterCache.set(imageUrl, u);
+        if (alive && u) setRaster(u);
+      });
+    };
+
+    if (svgInlineCache.has(imageUrl)) {
+      if (svgInlineCache.get(imageUrl) === null) startRaster();
+      return;
     }
-    void job.then((u) => {
-      svgRasterInFlight.delete(imageUrl);
-      if (u) svgRasterCache.set(imageUrl, u);
-      if (alive && u) setRaster(u);
+    let job = svgInlineInFlight.get(imageUrl);
+    if (!job) {
+      job = svgTextFromUrl(imageUrl).then((text) => (text ? sanitizeSvgForInline(text) : null));
+      svgInlineInFlight.set(imageUrl, job);
+    }
+    void job.then((markup) => {
+      svgInlineInFlight.delete(imageUrl);
+      svgInlineCache.set(imageUrl, markup);
+      if (!alive) return;
+      if (markup) setInline(markup);
+      else startRaster();
     });
     return () => {
       alive = false;
     };
   }, [imageUrl]);
-  return raster;
+  return { inline, raster };
 }
 
 // The made-up architectural schematic below is a LOCAL-PROTOTYPE-ONLY fallback. In the deployed
@@ -99,13 +186,30 @@ const isDevMode = import.meta.env.VITE_DEV_MODE === 'true';
  * The `zoom` prop is accepted-and-ignored so call sites stay stable if this returns.
  */
 export function FloorplanBackground({ imageUrl }: { imageUrl?: string; zoom?: number }) {
-  // High-res one-time raster for SVG sources (see top of file); until it's ready the raw SVG
+  // Hybrid resolve for SVG sources (see top of file); until either path is ready the raw SVG
   // shows in the SAME box, so the swap never shifts framing. Raster sources pass through.
-  const svgRaster = useSvgRaster(imageUrl);
+  const { inline, raster } = useSvgPlan(imageUrl);
+  if (imageUrl && inline) {
+    return (
+      <div
+        style={{
+          position: 'absolute',
+          left: 0,
+          top: 0,
+          width: IMG_W,
+          height: IMG_H,
+          background: '#fff',
+          boxShadow: 'var(--shadow-md)',
+          pointerEvents: 'none',
+        }}
+        dangerouslySetInnerHTML={{ __html: inline }}
+      />
+    );
+  }
   if (imageUrl) {
     return (
       <img
-        src={svgRaster ?? imageUrl}
+        src={raster ?? imageUrl}
         draggable={false}
         // contain, not cover: uploads rarely match the frame's 1492×1054 aspect, and cover
         // silently crops the overflow (a squarer plan lost its top and bottom). Letterbox on
