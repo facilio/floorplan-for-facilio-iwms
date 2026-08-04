@@ -37,15 +37,6 @@ const KNOWN_FIELDS = new Set(['name', 'description', 'host', 'reservedBy', 'noOf
 const RESOURCE_LOOKUPS = new Set(['desks', 'space', 'basespace', 'parkingstall', 'facility', 'parkinglot']);
 const PEOPLE_LOOKUPS = new Set(['people', 'employee', 'clientcontact', 'users']);
 
-function toLocalInput(dateISO: string, minutes: number): string {
-  return `${dateISO}T${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
-}
-function fromLocalInput(v: string): { date: string; minutes: number } {
-  const [d, t] = v.split('T');
-  const [h, m] = (t ?? '0:0').split(':').map(Number);
-  return { date: d, minutes: (h || 0) * 60 + (m || 0) };
-}
-
 export function BookingModal() {
   const { state } = useFloorplan();
   if (!state.bookForm) return null;
@@ -68,11 +59,10 @@ function BookingFormInner() {
   const [host, setHost] = useState(defaultContact);
   const [reservedBy, setReservedBy] = useState(defaultContact);
   const [noOfAttendees, setNoOfAttendees] = useState('1');
-  const [startInput, setStartInput] = useState(toLocalInput(target.date, target.start));
-  const [endInput, setEndInput] = useState(toLocalInput(target.date, target.end));
   const [internalAttendees, setInternalAttendees] = useState<string[]>([]);
   const [externalAttendees, setExternalAttendees] = useState<string[]>([]);
-  // Facility mode books a discrete slot: a date + a start minute (slot length = slotGranularity).
+  // BOTH modules book a discrete slot: a date + a start minute (slot length = slotGranularity).
+  // The space form's free start/end datetime inputs were replaced by this on request.
   const [slotDate, setSlotDate] = useState(target.date);
   const [slotStart, setSlotStart] = useState<number | null>(target.start);
   const [submitting, setSubmitting] = useState(false);
@@ -170,20 +160,14 @@ function BookingFormInner() {
   }
 
   async function onSubmit() {
-    const s = fromLocalInput(startInput);
-    const e = fromLocalInput(endInput);
-    let date = s.date;
-    let start = s.minutes;
-    let end = e.minutes;
-    if (isFacility) {
-      if (slotStart == null) {
-        actions.showToast('Pick a time slot');
-        return;
-      }
-      date = slotDate;
-      start = slotStart;
-      end = slotStart + slotLen;
+    // Slot-based for BOTH modules: the booking window is date + slot (start, start + duration).
+    if (slotStart == null) {
+      actions.showToast('Pick a time slot');
+      return;
     }
+    const date = slotDate;
+    const start = slotStart;
+    const end = slotStart + slotLen;
     // Known/built-in fields are rendered with a required indicator (the real org form's own
     // `required` flag when one's loaded, else the hardcoded fallback layout's required set) but
     // were never actually validated before submit — only the generic org-form extras were.
@@ -249,16 +233,9 @@ function BookingFormInner() {
     </Field>
   );
 
-  const timeWindow = !isFacility ? (
-    <div key="__time" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-      <Field label="Start Time" required>
-        <input className={card.input} type="datetime-local" value={startInput} onChange={(e) => setStartInput(e.target.value)} />
-      </Field>
-      <Field label="End Time" required>
-        <input className={card.input} type="datetime-local" value={endInput} onChange={(e) => setEndInput(e.target.value)} />
-      </Field>
-    </div>
-  ) : (
+  // ONE slot-based time control for both modules (the space form's start/end datetime inputs
+  // were replaced on request): full-day chips stepped by the configured slot duration.
+  const timeWindow = (
     <Field key="__time" label="Time Slots" required>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         <div>
