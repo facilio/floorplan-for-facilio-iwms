@@ -124,8 +124,10 @@ export function Marker({ unit, invZ, onDragStart, myUnitId, labelVisible }: { un
           <img src={style.img} alt="" draggable={false} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'inherit', pointerEvents: 'none' }} />
         ) : (
           <>
-            {style.occText && <span style={{ font: '700 9px/1 var(--font-sans)' }}>{style.occText}</span>}
-            {!style.occText && style.icon && ICONS[style.icon]}
+            {/* Chips compacted below ~15px (dense pods) drop their glyph — a 9px monogram
+                overflowing a 12px chip reads as noise, the color already carries the state. */}
+            {style.size >= 15 && style.occText && <span style={{ font: '700 9px/1 var(--font-sans)' }}>{style.occText}</span>}
+            {style.size >= 15 && !style.occText && style.icon && ICONS[style.icon]}
           </>
         )}
       </div>

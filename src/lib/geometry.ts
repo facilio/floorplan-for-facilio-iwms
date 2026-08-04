@@ -167,7 +167,10 @@ export function markerCounterScale(z: number, planSpacing: number, footprintPx: 
   const anchored = footprintPx * z; // scales exactly with the drawing
   let target = Math.min(Math.max(anchored, footprintPx * 0.58), footprintPx * 1.6);
   if (Number.isFinite(planSpacing)) {
-    target = Math.min(target, Math.max(planSpacing * z * 0.95, footprintPx * 0.58));
+    // Dense pods: cap at 78% of the on-screen neighbour gap (borders/shadows eat the rest —
+    // 95% still read as touching), and allow shrinking to 42% of nominal — overlapping chips
+    // are worse clutter than small ones (the glyph hides below ~15px, see Marker).
+    target = Math.min(target, Math.max(planSpacing * z * 0.78, footprintPx * 0.42));
   }
   return target / (footprintPx * z);
 }
