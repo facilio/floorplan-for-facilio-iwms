@@ -1637,11 +1637,9 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
         // actually resolves; a dead id falls back (with a toast) instead of stranding the
         // user on an empty canvas.
         const urlFloor = floorFromLocation(window.location);
-        let deepLinkFloor: string | null = null;
-        if (urlFloor) {
-          deepLinkFloor = (await floorExists(urlFloor).catch(() => false)) ? urlFloor : null;
-          if (!deepLinkFloor) showToastVia(dispatch, "The floor in this link isn't available — showing your floor instead", { variant: 'error' });
-        }
+        // A dead ?floor= id falls back SILENTLY (no toast — removed on request) to the normal
+        // my-desk/any-floor landing.
+        const deepLinkFloor = urlFloor && (await floorExists(urlFloor).catch(() => false)) ? urlFloor : null;
         firstRealFloor = deepLinkFloor ?? myDesk?.floorId ?? (await getAnyFloor().catch(() => null))?.id;
         // One line that says WHERE the app decided to land and why — "first floorplan didn't
         // load" is only debuggable with this in the console.
