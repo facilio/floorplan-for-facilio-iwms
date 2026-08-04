@@ -16,8 +16,11 @@ import styles from './BookingsView.module.css';
 // is user-centric — it shows ALL of the current user's bookings across the org, so a floor
 // filter had nothing to scope. Booking creation still targets the floorplan's current floor.
 
-/** Category tabs → the unit type they book. Lockers are assignment-only (not time-booked). */
-const CATEGORIES: { id: UnitType; label: string; bookable: boolean }[] = [
+/** Category tabs → the unit type they book. "All spaces" leads (requested); lockers are assignment-only (not time-booked). */
+type CategoryId = UnitType | 'all';
+const BOOKABLE_TYPES: UnitType[] = ['workstation', 'parking', 'room'];
+const CATEGORIES: { id: CategoryId; label: string; bookable: boolean }[] = [
+  { id: 'all', label: 'All spaces', bookable: true },
   { id: 'workstation', label: 'Desks', bookable: true },
   { id: 'parking', label: 'Parking', bookable: true },
   { id: 'locker', label: 'Lockers', bookable: false },
@@ -76,7 +79,7 @@ export function BookingsView() {
   const [layout, setLayout] = useState<'calendar' | 'grid'>('calendar');
   const [calView, setCalView] = useState<CalView>('week');
   const [focusDate, setFocusDate] = useState(state.date);
-  const [category, setCategory] = useState<UnitType>('workstation');
+  const [category, setCategory] = useState<CategoryId>('all');
   // No resource dropdown anymore — this is set by clicking a Resource-grid row (or My bookings),
   // and only gates where drag-to-book CREATES; the calendar always shows the whole floor.
   const [resourceId, setResourceId] = useState<string | null>(null);
@@ -93,7 +96,7 @@ export function BookingsView() {
     // HOT/HOTEL only (ASSIGNED desks are assignment-only; see lib/types DeskType).
     // UNPLACED records count too (requested): a bookable room with no zone drawn on the
     // plan is still a real, bookable resource here.
-    () => state.units.filter((u) => u.type === category && isBookable(u)).sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true })),
+    () => state.units.filter((u) => (category === 'all' ? BOOKABLE_TYPES.includes(u.type) : u.type === category) && isBookable(u)).sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true })),
     [state.units, category]
   );
 

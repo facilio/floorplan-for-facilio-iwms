@@ -1195,7 +1195,7 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
     /** Which real module bookings target (Space vs Facility) — mutually exclusive, set in Settings. */
     setBookingModule: (module: AppState['bookingModule']) => dispatch({ type: 'SET_BOOKING_MODULE', module }),
     /** Opens the shared booking form for a resource + window (used by the calendar drag and the book sidebar). */
-    openBookingForm: (target: { unitId: string; date: string; start: number; end: number }) => dispatch({ type: 'SET_BOOK_FORM', form: target }),
+    openBookingForm: (target: { unitId: string; date: string; start: number; end: number; allowTypeSwitch?: boolean }) => dispatch({ type: 'SET_BOOK_FORM', form: target }),
     updateBookForm: (patch: Partial<{ unitId: string; date: string; start: number; end: number }>) => dispatch({ type: 'UPDATE_BOOK_FORM', patch }),
     closeBookingForm: () => dispatch({ type: 'SET_BOOK_FORM', form: null }),
     /**

@@ -103,6 +103,15 @@ function BookingFormInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // The All-spaces switch flips the resource TYPE — re-pick that type's own form (by link
+  // name) from the already-fetched list.
+  useEffect(() => {
+    if (!formList.length || !unit) return;
+    const def = pickDefaultBookingForm(formList, module, unit.type);
+    if (def && def.id !== formId) setFormId(def.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unit?.type, formList]);
+
   // Step 2: (re)load the selected form's fields whenever the chosen form changes.
   useEffect(() => {
     if (formId == null) return;
@@ -521,7 +530,40 @@ function BookingFormInner() {
       <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14, maxHeight: '64vh', overflowY: 'auto' }}>
         {/* NO form switcher (removed on request): the unit type's own form is auto-picked by
             its LINK NAME (pickDefaultBookingForm) — desk bookings get only the desk form,
-            space bookings only the space form. */}
+            space bookings only the space form. From "All spaces" (allowTypeSwitch) a TYPE
+            switch flips desk/space/parking — the resource options AND the org form follow. */}
+        {target.allowTypeSwitch && (
+          <div role="tablist" aria-label="Booking type" style={{ display: 'flex', gap: 6 }}>
+            {(['workstation', 'room', 'parking'] as const).map((t) => {
+              const first = state.units.find((u) => u.type === t && isBookable(u));
+              if (!first) return null;
+              const active = unit!.type === t;
+              const label = t === 'workstation' ? 'Desk' : t === 'room' ? 'Space' : 'Parking';
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => {
+                    if (!active) setResourceId(first.id);
+                  }}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: 999,
+                    border: `1px solid ${active ? 'var(--blue-500)' : 'var(--ink-200)'}`,
+                    background: active ? 'var(--blue-025)' : '#fff',
+                    color: active ? 'var(--blue-600)' : 'var(--ink-700)',
+                    font: `${active ? 600 : 500} 12px/1 var(--font-sans)`,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        )}
         {formLoading ? (
           <div style={{ padding: '28px 0', textAlign: 'center', font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--ink-500)' }}>
             Loading the org's booking form…
