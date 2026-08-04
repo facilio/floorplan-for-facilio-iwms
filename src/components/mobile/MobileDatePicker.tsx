@@ -42,6 +42,13 @@ export function MobileDatePicker({ open, onClose }: { open: boolean; onClose: ()
   if (!open) return null;
 
   const todayIso = orgNow().dateISO; // the ORG's today, not the browser's
+  // Same booking window the web date picker enforces: today through +7 days (hardcoded rule);
+  // past days and beyond-a-week days are not selectable.
+  const maxIso = (() => {
+    const d = parseISO(todayIso);
+    d.setDate(d.getDate() + 7);
+    return toISO(d);
+  })();
   const days = monthGrid(cursor.year, cursor.month);
 
   function step(delta: number) {
@@ -78,10 +85,12 @@ export function MobileDatePicker({ open, onClose }: { open: boolean; onClose: ()
             const inMonth = d.getMonth() === cursor.month;
             const isSel = iso === selected;
             const isToday = iso === todayIso;
+            const outOfWindow = iso < todayIso || iso > maxIso;
             return (
               <button
                 key={iso}
-                className={[styles.day, inMonth ? '' : styles.dayDim, isSel ? styles.daySel : '', isToday && !isSel ? styles.dayToday : ''].join(' ')}
+                disabled={outOfWindow}
+                className={[styles.day, inMonth ? '' : styles.dayDim, isSel ? styles.daySel : '', isToday && !isSel ? styles.dayToday : '', outOfWindow ? styles.dayDisabled : ''].join(' ')}
                 onClick={() => {
                   actions.setDate(iso);
                   onClose();

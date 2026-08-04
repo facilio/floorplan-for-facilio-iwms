@@ -46,7 +46,6 @@ export function MobileQrScanner({ onClose }: { onClose: () => void }) {
   const { state, actions } = useFloorplan();
   const videoRef = useRef<HTMLVideoElement>(null);
   const [cameraState, setCameraState] = useState<'starting' | 'live' | 'unavailable'>('starting');
-  const [manualCode, setManualCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Unit | null>(null);
   const doneRef = useRef(false);
@@ -58,6 +57,7 @@ export function MobileQrScanner({ onClose }: { onClose: () => void }) {
       setError(`No space matching “${raw.slice(0, 60)}” on this floor.`);
       return;
     }
+    setError(null);
     doneRef.current = true;
     if (isBookable(unit)) {
       // Bookable space -> the design's "Scan result" check-in screen: today's/upcoming bookings
@@ -168,31 +168,11 @@ export function MobileQrScanner({ onClose }: { onClose: () => void }) {
       ) : (
         <div className={styles.noCamera}>
           Couldn't start the camera — it may be blocked (check the browser's camera permission for
-          this site) or unavailable on this device. You can still enter the code printed under the
-          QR below.
+          this site) or unavailable on this device.
         </div>
       )}
 
-      <form
-        className={styles.manualRow}
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (manualCode.trim()) handleCode(manualCode);
-        }}
-      >
-        <input
-          className={styles.manualInput}
-          value={manualCode}
-          placeholder="Or type the space code (e.g. WS-07)"
-          onChange={(e) => {
-            setManualCode(e.target.value);
-            setError(null);
-          }}
-        />
-        <button className={styles.manualGo} type="submit" disabled={!manualCode.trim()}>
-          Find
-        </button>
-      </form>
+      {/* NO manual code/search field here (removed on request) — scanning the QR is the flow. */}
       {error && <div className={styles.error}>{error}</div>}
     </div>
   );

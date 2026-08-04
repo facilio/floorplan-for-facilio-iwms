@@ -101,3 +101,10 @@
 .todayBtn:active {
   background: var(--blue-025);
 }
+
+/* Outside the bookable window (org today .. +7 days) */
+.dayDisabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  text-decoration: line-through;
+}

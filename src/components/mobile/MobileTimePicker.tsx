@@ -1,4 +1,5 @@
 import { useFloorplan } from '../../state/FloorplanContext';
+import { orgNow } from '../../lib/orgTime';
 import { useSheetDrag } from './useSheetDrag';
 import styles from './MobileTimePicker.module.css';
 
@@ -22,8 +23,12 @@ export function MobileTimePicker() {
   function adjustPick(delta: number) {
     const editingStart = state.mobTimePick !== 'end';
     const cur = editingStart ? state.start : state.end;
-    const next = clampMinutes(cur + delta);
+    let next = clampMinutes(cur + delta);
     if (editingStart) {
+      // Booking today: the start can't step into the past (ORG clock) — same block the web
+      // slot pickers enforce.
+      const now = orgNow();
+      if (state.date === now.dateISO) next = Math.max(next, Math.floor(now.minutes / step) * step);
       const dur = Math.max(step, state.end - state.start);
       actions.setTimeRange(next, Math.min(1439, next + dur));
     } else {
