@@ -125,6 +125,11 @@ function BookingFormInner() {
   // Full-day slot chips (00:00–24:00), not the old 08:00–18:00 office window.
   const slots = Array.from({ length: (24 * 60) / slotLen }, (_, i) => i * slotLen);
 
+  // Booking-date window: ROOMS are same-day only; desks/parking book at most ONE WEEK ahead.
+  const toLocalISO = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const minDate = toLocalISO(new Date());
+  const maxDate = isRoom ? minDate : toLocalISO(new Date(Date.now() + 7 * 86400000));
+
   const contactOptions = contacts.map((c) => ({ value: c.id, label: c.name, sublabel: c.client }));
 
   /** Any resource-family field (desk/space/parking/facility lookups), regardless of unit type. */
@@ -190,6 +195,11 @@ function BookingFormInner() {
     // Slot-based for BOTH modules: the booking window is date + slot (start, start + duration).
     if (slotStart == null) {
       actions.showToast('Pick a time slot');
+      return;
+    }
+    // ISO strings compare lexicographically — the min/max attributes hint, this enforces.
+    if (slotDate < minDate || slotDate > maxDate) {
+      actions.showToast(isRoom ? 'Rooms can only be booked for today' : 'Bookings can be made at most one week ahead');
       return;
     }
     const date = slotDate;
@@ -267,7 +277,7 @@ function BookingFormInner() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         <div>
           <div className={card.label}>Select Date</div>
-          <input className={card.input} type="date" value={slotDate} onChange={(e) => setSlotDate(e.target.value)} />
+          <input className={card.input} type="date" value={slotDate} min={minDate} max={maxDate} onChange={(e) => setSlotDate(e.target.value)} />
         </div>
         <div>
           <div className={card.label}>Time Slot</div>

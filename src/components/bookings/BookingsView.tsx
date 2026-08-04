@@ -210,6 +210,14 @@ export function BookingsView() {
   // the actual create happens on form submit, and the nonce-driven effect above refetches.
   function openForm(date: string, start: number, end: number) {
     if (!resourceId || !catDef.bookable) return;
+    // Booking-date window (mirrors the form's own validation): rooms are same-day only,
+    // everything else books at most one week ahead. ISO strings compare lexicographically.
+    const today = toISO(new Date());
+    const maxDate = category === 'room' ? today : addDays(today, 7);
+    if (date < today || date > maxDate) {
+      actions.showToast(category === 'room' ? 'Rooms can only be booked for today' : 'Bookings can be made at most one week ahead');
+      return;
+    }
     if (conflictsFor(bookingsByDate[date] ?? [], resourceId, date, start, end).length) {
       actions.showToast('That window overlaps an existing booking');
       return;
