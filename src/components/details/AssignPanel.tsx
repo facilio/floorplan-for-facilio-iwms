@@ -70,8 +70,12 @@ export function AssignPanel() {
           </div>
           <div className={card.cardBody}>
             {sel.department && <p className={card.helper}>Department · {sel.department}</p>}
-            {/* Bookable-only units get NO explanatory note (removed on approval). */}
-            {isAssignable(sel) && <AssignBody unitId={sel.id} />}
+            {/* Bookable-only DESKS get no note (removed on approval); ROOMS get this exact line. */}
+            {isAssignable(sel) ? (
+              <AssignBody unitId={sel.id} />
+            ) : sel.type === 'room' ? (
+              <p className={card.helper}>Meeting Rooms can only be booked, not assigned</p>
+            ) : null}
             {/* Buttons only for ASSIGNABLE units — a booking-type (HOT/HOTEL) desk selected in
                 assign view shows its state read-only (mirror of the booking view's rule).
                 Hidden entirely while the reassign picker is open: clicking Re-Assign removes

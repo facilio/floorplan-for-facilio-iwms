@@ -140,8 +140,10 @@ export function Tooltip() {
           {contactId ? 'Manage' : 'Assign a person'}
         </Button>
       )}
-      {/* No note for bookable-only units in assign mode (removed on approval) — the status
-          pill alone carries the state. */}
+      {/* Bookable-only DESKS get no note (removed on approval); ROOMS get this exact line. */}
+      {state.mode === 'assign' && !assignable && unit.type === 'room' && (
+        <div className={styles.note}>Meeting Rooms can only be booked, not assigned</div>
+      )}
       </>
       )}
 

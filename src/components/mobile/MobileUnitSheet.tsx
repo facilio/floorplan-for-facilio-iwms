@@ -92,6 +92,9 @@ export function MobileUnitSheet() {
         )}
         {!isAmenity && showBookTab && bookable && status.key === 'booked' && <div className={styles.infoBox}>This space is currently booked for the selected time window.</div>}
         {!isAmenity && showBookTab && !bookable && <div className={styles.infoBox}>Lockers are assigned via the Assign tab, not booked.</div>}
+        {!isAmenity && !showBookTab && !assignable && unit.type === 'room' && (
+          <div className={styles.infoBox}>Meeting Rooms can only be booked, not assigned</div>
+        )}
 
         {!showBookTab && assignable && contactId && !state.mobAssignEdit && (
           <>
