@@ -64,10 +64,12 @@ function BookingFormInner() {
   const [noOfAttendees, setNoOfAttendees] = useState('1');
   const [internalAttendees, setInternalAttendees] = useState<string[]>([]);
   const [externalAttendees, setExternalAttendees] = useState<string[]>([]);
-  // BOTH modules book a discrete slot: a date + a start minute (slot length = slotGranularity).
-  // The space form's free start/end datetime inputs were replaced by this on request.
+  // ROOMS book a discrete slot (HARDCODED 2h, per request); desks book a free start/end time
+  // window instead — no slots there. Parking/facility keep the configured slot length.
   const [slotDate, setSlotDate] = useState(target.date);
   const [slotStart, setSlotStart] = useState<number | null>(target.start);
+  const [startMin, setStartMin] = useState(target.start);
+  const [endMin, setEndMin] = useState(Math.max(target.end, target.start + 15));
   const [submitting, setSubmitting] = useState(false);
   // Values of org-form fields the app doesn't model natively, keyed by field name.
   const [extras, setExtras] = useState<Record<string, string>>({});
@@ -124,9 +126,14 @@ function BookingFormInner() {
   const fallbackFormName = isFacility ? FACILITY_FORM_NAME[unit.type] : SPACE_FORM_NAME[unit.type];
   const reserverLabel = isFacility ? 'Reserved For' : 'Reserved By';
 
-  const slotLen = state.slotGranularity;
+  // Rooms: HARDCODED 2-hour slots. Desks: no slots at all (start/end selects below). Others
+  // keep the configured Settings slot length.
+  const slotLen = isRoom ? 120 : state.slotGranularity;
+  const useSlots = unit.type !== 'workstation';
   // Full-day slot chips (00:00–24:00), not the old 08:00–18:00 office window.
-  const slots = Array.from({ length: (24 * 60) / slotLen }, (_, i) => i * slotLen);
+  const slots = Array.from({ length: Math.floor((24 * 60) / slotLen) }, (_, i) => i * slotLen);
+  // Desk start/end options — full day, half-hour steps, cross-filtered so end stays after start.
+  const TIME_OPTIONS = Array.from({ length: 1440 / 30 + 1 }, (_, i) => i * 30).map((m) => ({ value: String(m), label: fmtTime(m) }));
 
   // Booking-date window: ROOMS are same-day only; desks/parking book at most ONE WEEK ahead.
   const toLocalISO = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -200,23 +207,38 @@ function BookingFormInner() {
   }
 
   async function onSubmit() {
-    // Slot-based for BOTH modules: the booking window is date + slot (start, start + duration).
-    if (slotStart == null) {
-      actions.showToast('Pick a time slot');
-      return;
-    }
     // ISO strings compare lexicographically — the min/max attributes hint, this enforces.
     if (slotDate < minDate || slotDate > maxDate) {
       actions.showToast(isRoom ? 'Rooms can only be booked for today' : 'Bookings can be made at most one week ahead');
       return;
     }
-    if (!slotSelectable(slotStart)) {
-      actions.showToast('That slot has already started — pick an upcoming one');
-      return;
+    let start: number;
+    let end: number;
+    if (useSlots) {
+      if (slotStart == null) {
+        actions.showToast('Pick a time slot');
+        return;
+      }
+      if (!slotSelectable(slotStart)) {
+        actions.showToast('That slot has already started — pick an upcoming one');
+        return;
+      }
+      start = slotStart;
+      end = slotStart + slotLen;
+    } else {
+      // Desk path: free start/end window (no slots).
+      if (endMin <= startMin) {
+        actions.showToast('End time must be after the start time');
+        return;
+      }
+      if (!slotSelectable(startMin)) {
+        actions.showToast('That start time has already passed — pick an upcoming one');
+        return;
+      }
+      start = startMin;
+      end = endMin;
     }
     const date = slotDate;
-    const start = slotStart;
-    const end = slotStart + slotLen;
     // Known/built-in fields are rendered with a required indicator (the real org form's own
     // `required` flag when one's loaded, else the hardcoded fallback layout's required set) but
     // were never actually validated before submit — only the generic org-form extras were.
@@ -296,9 +318,38 @@ function BookingFormInner() {
     </Field>
   );
 
-  // ONE slot-based time control for both modules (the space form's start/end datetime inputs
-  // were replaced on request): full-day chips stepped by the configured slot duration.
-  const timeWindow = (
+  // ROOMS: hardcoded 2h slot chips. DESKS: no slots — a plain start/end window on the chosen
+  // date. Parking/facility keep the configured slot chips.
+  const timeWindow = !useSlots ? (
+    <Field key="__time" label="Booking Window" required>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
+        <div>
+          <div className={card.label}>Select Date</div>
+          <input className={card.input} type="date" value={slotDate} min={minDate} max={maxDate} onChange={(e) => setSlotDate(e.target.value)} />
+        </div>
+        <div>
+          <div className={card.label}>Start Time</div>
+          <Select
+            value={String(startMin)}
+            options={TIME_OPTIONS.filter((o) => Number(o.value) < endMin)}
+            onChange={(v) => setStartMin(Number(v))}
+            fullWidth
+            aria-label="Start time"
+          />
+        </div>
+        <div>
+          <div className={card.label}>End Time</div>
+          <Select
+            value={String(endMin)}
+            options={TIME_OPTIONS.filter((o) => Number(o.value) > startMin)}
+            onChange={(v) => setEndMin(Number(v))}
+            fullWidth
+            aria-label="End time"
+          />
+        </div>
+      </div>
+    </Field>
+  ) : (
     <Field key="__time" label="Time Slots" required>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         <div>
@@ -467,37 +518,9 @@ function BookingFormInner() {
         onClose={actions.closeBookingForm}
       />
       <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14, maxHeight: '64vh', overflowY: 'auto' }}>
-        {formList.length > 1 && (
-          <div>
-            <div className={card.label}>Form</div>
-            <div role="tablist" aria-label="Booking form" style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {formList.map((f) => {
-                const active = f.id === formId;
-                return (
-                  <button
-                    key={f.id}
-                    type="button"
-                    role="tab"
-                    aria-selected={active}
-                    title={f.name}
-                    onClick={() => setFormId(f.id)}
-                    style={{
-                      padding: '6px 12px',
-                      borderRadius: 999,
-                      border: `1px solid ${active ? 'var(--blue-500)' : 'var(--ink-200)'}`,
-                      background: active ? 'var(--blue-025)' : '#fff',
-                      color: active ? 'var(--blue-600)' : 'var(--ink-700)',
-                      font: `${active ? 600 : 500} 12px/1 var(--font-sans)`,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {f.displayName || f.name}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
+        {/* NO form switcher (removed on request): the unit type's own form is auto-picked by
+            its LINK NAME (pickDefaultBookingForm) — desk bookings get only the desk form,
+            space bookings only the space form. */}
         {formLoading ? (
           <div style={{ padding: '28px 0', textAlign: 'center', font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--ink-500)' }}>
             Loading the org's booking form…

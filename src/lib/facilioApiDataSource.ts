@@ -2878,8 +2878,11 @@ export interface BookingFormMeta {
 /** Form-name preferences per module + unit type (system form names follow these patterns). */
 const FORM_NAME_PREFERENCE: Record<'spacebooking' | 'facilitybooking', Partial<Record<UnitType | 'default', RegExp[]>>> = {
   spacebooking: {
-    workstation: [/deskbooking/i],
-    parking: [/parkingbooking/i],
+    // Matched on the form's LINK NAME (`f.name`), never the display name — a desk booking gets
+    // ONLY the desk form, a room/space booking only the space form.
+    workstation: [/desk/i],
+    parking: [/parking/i],
+    room: [/^space_/i, /spacebooking/i],
     default: [/default_spacebooking/i, /spacebooking/i],
   },
   facilitybooking: {
