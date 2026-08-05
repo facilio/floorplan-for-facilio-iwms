@@ -109,9 +109,10 @@ export function MobileMyBookings({ open, onClose }: { open: boolean; onClose: ()
                       actions.setMobSel(b.unitId);
                     }}
                   >
+                    {/* ONE range on ONE line, org clock — the stacked start/end read as two
+                        separate times (reported). */}
                     <span className={styles.time}>
-                      {fmtTime(b.start)}
-                      <span className={styles.timeEnd}>{fmtTime(b.end)}</span>
+                      {fmtTime(b.start)} – {fmtTime(b.end)}
                     </span>
                     <span className={styles.rowText}>
                       <span className={styles.rowLabel}>{unit?.label ?? b.name ?? 'Space'}</span>

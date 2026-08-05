@@ -14,6 +14,10 @@ export function DatePicker({
   min,
   max,
   fullWidth,
+  minutes,
+  onMinutesChange,
+  minuteStep = 1,
+  minMinutes,
   'aria-label': ariaLabel,
 }: {
   /** ISO yyyy-mm-dd */
@@ -22,8 +26,20 @@ export function DatePicker({
   min?: string;
   max?: string;
   fullWidth?: boolean;
+  /**
+   * DATETIME mode (the org's own start/end fields are datetime): pass minutes-from-midnight and
+   * a setter to get HH / MM columns beside the calendar, like the native picker. Omit for a
+   * plain date picker.
+   */
+  minutes?: number;
+  onMinutesChange?: (m: number) => void;
+  /** MM column step (1 = every minute, like the native picker). */
+  minuteStep?: number;
+  /** Earliest selectable minute ON the min date (org clock) — past times can't be picked. */
+  minMinutes?: number;
   'aria-label'?: string;
 }) {
+  const isDateTime = minutes != null && !!onMinutesChange;
   const [open, setOpen] = useState(false);
   const selected = parseISO(value) ?? new Date();
   const [viewYear, setViewYear] = useState(selected.getFullYear());
@@ -97,8 +113,10 @@ export function DatePicker({
   const nextOk = !max || toISO(new Date(viewYear, viewMonth + 1, 1)) <= max;
 
   const display = parseISO(value)
-    ? parseISO(value)!.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+    ? `${parseISO(value)!.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}${isDateTime ? ` · ${fmt12(minutes!)}` : ''}`
     : 'Pick a date';
+  // On the earliest allowed date, times before `minMinutes` (org clock "now") are disabled.
+  const minuteAllowed = (m: number) => !(minMinutes != null && value === min && m < minMinutes);
 
   return (
     <div ref={rootRef} style={{ position: 'relative', ...(fullWidth ? { width: '100%' } : {}) }}>
@@ -158,6 +176,7 @@ export function DatePicker({
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6" /></svg>
             </button>
           </div>
+          <div style={{ display: 'flex', gap: 10 }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 32px)', gap: 2, justifyContent: 'center' }}>
             {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
               <div key={i} style={{ textAlign: 'center', font: '600 10.5px var(--font-sans)', color: 'var(--ink-400)', padding: '2px 0' }}>
@@ -176,7 +195,7 @@ export function DatePicker({
                   disabled={!ok}
                   onClick={() => {
                     onChange(iso);
-                    setOpen(false);
+                    if (!isDateTime) setOpen(false);
                   }}
                   style={{
                     width: 32,
@@ -194,6 +213,71 @@ export function DatePicker({
               );
             })}
           </div>
+          {isDateTime && (
+            // HH / MM columns, same shape as the org's native datetime picker.
+            <div style={{ display: 'flex', gap: 6, borderLeft: '1px solid var(--ink-100)', paddingLeft: 10 }}>
+              {(
+                [
+                  { key: 'HH', values: Array.from({ length: 24 }, (_, h) => h), current: Math.floor(minutes! / 60), set: (h: number) => onMinutesChange!(h * 60 + (minutes! % 60)) },
+                  { key: 'MM', values: Array.from({ length: Math.ceil(60 / minuteStep) }, (_, i) => i * minuteStep), current: minutes! % 60, set: (mm: number) => onMinutesChange!(Math.floor(minutes! / 60) * 60 + mm) },
+                ] as const
+              ).map((col) => (
+                <div key={col.key} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <div style={{ font: '600 10.5px var(--font-sans)', color: 'var(--ink-400)', padding: '2px 0 4px' }}>{col.key}</div>
+                  <div style={{ maxHeight: 176, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2, paddingRight: 2 }}>
+                    {col.values.map((v) => {
+                      const cand = col.key === 'HH' ? v * 60 + (minutes! % 60) : Math.floor(minutes! / 60) * 60 + v;
+                      const ok = minuteAllowed(cand);
+                      const sel = col.current === v;
+                      return (
+                        <button
+                          key={v}
+                          type="button"
+                          disabled={!ok}
+                          onClick={() => col.set(v)}
+                          style={{
+                            width: 40,
+                            padding: '4px 0',
+                            borderRadius: 6,
+                            border: '1px solid transparent',
+                            background: sel ? 'var(--blue-025, #eef4fd)' : 'transparent',
+                            color: sel ? 'var(--blue-600)' : ok ? 'var(--ink-800)' : 'var(--ink-300)',
+                            font: `${sel ? 600 : 500} 12.5px var(--font-sans)`,
+                            cursor: ok ? 'pointer' : 'not-allowed',
+                          }}
+                        >
+                          {String(v).padStart(2, '0')}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          </div>
+          {isDateTime && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid var(--ink-100)', marginTop: 8, paddingTop: 8 }}>
+              <button
+                type="button"
+                onClick={() => {
+                  const now = orgNow();
+                  if (inRange(now.dateISO)) onChange(now.dateISO);
+                  onMinutesChange!(now.minutes);
+                }}
+                style={{ border: 'none', background: 'none', color: 'var(--blue-600)', font: '600 12.5px var(--font-sans)', cursor: 'pointer', padding: 0 }}
+              >
+                Now
+              </button>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                style={{ border: 'none', background: 'var(--blue-500)', color: '#fff', borderRadius: 7, padding: '6px 14px', font: '600 12.5px var(--font-sans)', cursor: 'pointer' }}
+              >
+                Done
+              </button>
+            </div>
+          )}
           {(min || max) && (
             <div style={{ marginTop: 8, font: '500 11px var(--font-sans)', color: 'var(--ink-500)', textAlign: 'center' }}>
               {min === max ? 'Today only' : `Bookable ${min ? fmtShort(min) : '…'} – ${max ? fmtShort(max) : '…'}`}
@@ -227,6 +311,13 @@ function toISO(d: Date): string {
 function parseISO(iso: string): Date | null {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso ?? '');
   return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null;
+}
+/** 12-hour label for the trigger — AM/PM everywhere, never railway time. */
+function fmt12(m: number): string {
+  const h = Math.floor(m / 60);
+  const mm = String(m % 60).padStart(2, '0');
+  const ampm = h < 12 ? 'AM' : 'PM';
+  return `${String(h % 12 || 12)}:${mm} ${ampm}`;
 }
 function fmtShort(iso: string): string {
   const d = parseISO(iso);

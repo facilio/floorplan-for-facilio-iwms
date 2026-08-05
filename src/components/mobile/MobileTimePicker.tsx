@@ -29,8 +29,10 @@ export function MobileTimePicker() {
       // slot pickers enforce.
       const now = orgNow();
       if (state.date === now.dateISO) next = Math.max(next, Math.floor(now.minutes / step) * step);
+      // START isn't restricted by the end (requested): it moves freely and drags the END to the
+      // next step after it, keeping the window's duration.
       const dur = Math.max(step, state.end - state.start);
-      actions.setTimeRange(next, Math.min(1439, next + dur));
+      actions.setTimeRange(next, Math.min(1440, next + dur));
     } else {
       actions.setTimeRange(state.start, Math.max(state.start + step, next));
     }

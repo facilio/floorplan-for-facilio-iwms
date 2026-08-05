@@ -62,8 +62,15 @@ export function BookPanel() {
               <label className={card.label}>Start</label>
               <Select
                 value={String(state.start)}
-                options={TIME_OPTIONS.filter((o) => Number(o.value) < state.end && startSelectable(Number(o.value)))}
-                onChange={(v) => actions.setTimeRange(Number(v), Math.max(Number(v) + 15, state.end))}
+                // START isn't restricted by the end (requested): every slot is LISTED, past ones
+                // on today are shown DISABLED (org clock) rather than hidden, and picking a start
+                // drags the end along to keep the window's duration.
+                options={TIME_OPTIONS.map((o) => ({ ...o, disabled: !startSelectable(Number(o.value)) }))}
+                onChange={(v) => {
+                  const next = Number(v);
+                  const dur = Math.max(state.slotGranularity, state.end - state.start);
+                  actions.setTimeRange(next, Math.min(1440, next + dur));
+                }}
                 fullWidth
                 searchable={false}
                 aria-label="Start time"
@@ -73,8 +80,9 @@ export function BookPanel() {
               <label className={card.label}>End</label>
               <Select
                 value={String(state.end)}
-                options={TIME_OPTIONS.filter((o) => Number(o.value) > state.start)}
-                onChange={(v) => actions.setTimeRange(Math.min(state.start, Number(v) - 15), Number(v))}
+                // END lists everything too; anything at/below the start is disabled, not hidden.
+                options={TIME_OPTIONS.map((o) => ({ ...o, disabled: Number(o.value) <= state.start }))}
+                onChange={(v) => actions.setTimeRange(state.start, Number(v))}
                 fullWidth
                 searchable={false}
                 aria-label="End time"

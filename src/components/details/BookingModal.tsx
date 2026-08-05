@@ -5,7 +5,7 @@ import { isBookable, unitById } from '../../state/selectors';
 import { fmtTime } from '../../lib/geometry';
 import { epochAtInTz, orgNow, orgTimezone, wallClockInTz } from '../../lib/orgTime';
 import { isFacilioApiConfigured } from '../../lib/facilioApi';
-import { bookingFormsForType, fetchBookingFormById, fetchBookingFormList, fetchOrgBookableResources, pickDefaultBookingForm } from '../../lib/facilioApiDataSource';
+import { bookingFormsForType, fetchBookingFormById, fetchBookingFormList, fetchOrgBookableResources, fetchOrgBookingsForRange, pickDefaultBookingForm } from '../../lib/facilioApiDataSource';
 import type { BookingFormFieldMeta, BookingFormMeta, BookingFormSummary } from '../../lib/facilioApiDataSource';
 import type { ClientContact, Unit, UnitType } from '../../lib/types';
 import { Modal, ModalFooter, ModalHeader } from '../primitives/Modal';
@@ -159,10 +159,24 @@ function BookingFormInner() {
 
   // Forms the header offers for what's being booked — every booking-enabled form matching this
   // type's link-name key (deskbooking for desks, spacebooking for rooms/spaces).
-  const formsForCurrentType = useMemo(
-    () => (unit ? bookingFormsForType(formList, module, effType) : []),
-    [formList, module, effType, unit]
-  );
+  const formsForCurrentType = useMemo(() => {
+    if (!unit) return [];
+    // ALL SPACES mixes desks and rooms, so EVERY form for both keys is offered (requested — only
+    // the space form was showing); a context view offers just its own key's forms.
+    if (target.allowTypeSwitch) {
+      const both = [...bookingFormsForType(formList, module, 'workstation'), ...bookingFormsForType(formList, module, 'room')];
+      const seen = new Set<number>();
+      return both.filter((f) => (seen.has(f.id) ? false : (seen.add(f.id), true)));
+    }
+    return bookingFormsForType(formList, module, effType);
+  }, [formList, module, effType, unit, target.allowTypeSwitch]);
+
+  /** Which resource type a form belongs to — picking a form in All spaces switches to it. */
+  const typeOfForm = (id: number): UnitType | null => {
+    if (bookingFormsForType(formList, module, 'workstation').some((f) => f.id === id)) return 'workstation';
+    if (bookingFormsForType(formList, module, 'room').some((f) => f.id === id)) return 'room';
+    return null;
+  };
 
   // The All-spaces switch flips the resource TYPE — re-pick that type's own form (by link
   // name) from the already-fetched list.
@@ -432,34 +446,91 @@ function BookingFormInner() {
     </Field>
   );
 
+  // EXISTING BOOKINGS for the selected resource on the chosen date (requested): fetched with the
+  // resource-scoped filter as the range is picked, so a clash is visible BEFORE submitting.
+  const [conflicts, setConflicts] = useState<{ start: number; end: number; name?: string }[]>([]);
+  useEffect(() => {
+    if (!isFacilioApiConfigured || !unit || !resourceId) {
+      setConflicts([]);
+      return;
+    }
+    let alive = true;
+    const timer = window.setTimeout(() => {
+      fetchOrgBookingsForRange(slotDate, slotDate, { resourceField: effType === 'room' ? 'space' : 'desk' })
+        .then((rows) => {
+          if (!alive) return;
+          setConflicts(
+            rows
+              .filter((b) => b.unitId === unit.id && b.date === slotDate && b.start < endMin && b.end > startMin)
+              .map((b) => ({ start: b.start, end: b.end, name: b.name }))
+          );
+        })
+        .catch(() => alive && setConflicts([]));
+    }, 350);
+    return () => {
+      alive = false;
+      window.clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unit?.id, resourceId, slotDate, startMin, endMin, effType, state.bookingsNonce]);
+
+  const conflictNote =
+    conflicts.length > 0 ? (
+      <div
+        key="__conflict"
+        style={{ border: '1px solid #f3c9c9', background: '#fdf2f2', color: '#8f2323', borderRadius: 8, padding: '8px 10px', font: '500 12.5px/1.45 var(--font-sans)' }}
+      >
+        Already booked on this {effType === 'room' ? 'space' : 'desk'}:{' '}
+        {conflicts.map((c, i) => (
+          <span key={i}>
+            {i > 0 ? ', ' : ''}
+            {fmtTime(c.start)}–{fmtTime(c.end)}
+          </span>
+        ))}
+        . Pick another time.
+      </div>
+    ) : null;
+
   // ROOMS: hardcoded 2h slot chips. Everything else: no slots — a plain start/end window on
   // the chosen date.
   const timeWindow = !useSlots ? (
     <Field key="__time" label="Booking Window" required>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
-        <div>
-          <div className={card.label}>Select Date</div>
-          <DatePicker value={slotDate} min={minDate} max={maxDate} onChange={setSlotDate} fullWidth aria-label="Booking date" />
-        </div>
+      {conflictNote}
+      {/* The org declares start/end as DATETIME fields, so each is one datetime control here
+          (calendar + HH/MM columns, like the native picker) instead of a date plus two dropdowns.
+          START is never restricted by the end — moving it drags the end to keep the duration. */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         <div>
           <div className={card.label}>Start Time</div>
-          <Select
-            value={String(startMin)}
-            options={TIME_OPTIONS.filter((o) => Number(o.value) < endMin)}
-            onChange={(v) => setStartMin(Number(v))}
+          <DatePicker
+            value={slotDate}
+            min={minDate}
+            max={maxDate}
+            minutes={startMin}
+            minuteStep={5}
+            minMinutes={nowOrg.minutes}
+            onChange={(iso) => setSlotDate(iso)}
+            onMinutesChange={(m) => {
+              const dur = Math.max(state.slotGranularity, endMin - startMin);
+              setStartMin(m);
+              setEndMin(Math.min(1440, m + dur));
+            }}
             fullWidth
-            searchable={false}
             aria-label="Start time"
           />
         </div>
         <div>
           <div className={card.label}>End Time</div>
-          <Select
-            value={String(endMin)}
-            options={TIME_OPTIONS.filter((o) => Number(o.value) > startMin)}
-            onChange={(v) => setEndMin(Number(v))}
+          <DatePicker
+            value={slotDate}
+            min={minDate}
+            max={maxDate}
+            minutes={endMin}
+            minuteStep={5}
+            minMinutes={startMin + 5}
+            onChange={(iso) => setSlotDate(iso)}
+            onMinutesChange={(m) => setEndMin(Math.max(startMin + 5, m))}
             fullWidth
-            searchable={false}
             aria-label="End time"
           />
         </div>
@@ -467,6 +538,7 @@ function BookingFormInner() {
     </Field>
   ) : (
     <Field key="__time" label="Time Slots" required>
+      {conflictNote}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         <div>
           <div className={card.label}>Select Date</div>
@@ -656,7 +728,15 @@ function BookingFormInner() {
               value={formId != null ? String(formId) : ''}
               options={formsForCurrentType.map((f) => ({ value: String(f.id), label: f.displayName || f.name }))}
               placeholder="Choose a form"
-              onChange={(v) => setFormId(Number(v))}
+              onChange={(v) => {
+                const id = Number(v);
+                setFormId(id);
+                // In All spaces the chosen FORM decides what's being booked.
+                if (target.allowTypeSwitch) {
+                  const t = typeOfForm(id);
+                  if (t && t !== effType) setTypeOverride(t);
+                }
+              }}
               size="sm"
               aria-label="Booking form"
             />
