@@ -3367,6 +3367,11 @@ export interface RealBookingInput {
    * itself always writes the module's own lookup name (`space`/`desk`).
    */
   resourceField?: string;
+  /**
+   * END DATE for a window that SPANS DAYS (desks/parking may run up to 7 days — requested).
+   * Omitted means the booking ends on `dateISO`, which is every room booking and most desks.
+   */
+  endDateISO?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -3617,7 +3622,7 @@ export async function createRealBooking(unit: Unit, dateISO: string, start: numb
       [lookupField]: { id: ref.recordId },
       parentModuleId,
       bookingStartTime,
-      bookingEndTime: epochAtInTz(dateISO, end, tz),
+      bookingEndTime: epochAtInTz(input.endDateISO || dateISO, end, tz),
       // Breach marker = start + 30min (requested): sent EXPLICITLY on every create, desk and
       // space alike — the backend doesn't derive it on this path.
       bookingbreachtime: bookingStartTime + 1800000,

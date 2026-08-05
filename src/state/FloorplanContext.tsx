@@ -1277,6 +1277,8 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       extras?: Record<string, unknown>;
       /** The form's own resource lookup field name (from its response) — filled on create too. */
       resourceField?: string;
+      /** Multi-day desk windows end on their OWN date (omitted = same day as `date`). */
+      endDate?: string;
     }): Promise<boolean> => {
       const unit = unitById(state, form.unitId);
       if (!unit || form.end <= form.start) {
@@ -1331,6 +1333,7 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
             formId: form.formId,
             extras: form.extras,
             resourceField: form.resourceField,
+            endDateISO: form.endDate,
           });
           if (!res.ok) failureReason = res.reason ?? 'unknown error';
         } catch (err) {

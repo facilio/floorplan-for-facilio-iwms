@@ -43,6 +43,19 @@ const KNOWN_FIELDS = new Set(['name', 'description', 'host', 'reservedBy', 'noOf
  * picker arrives as `meeting_rooms_spacebooking` with lookupModule `rooms`; only this map needs to
  * know which unit type a lookup module represents.
  */
+/** "2h", "10h 30m", "3d 4h" — the window's length, shown under the start/end pickers. */
+function fmtSpan(mins: number): string {
+  const d = Math.floor(mins / 1440);
+  const h = Math.floor((mins % 1440) / 60);
+  const m = mins % 60;
+  return [d ? `${d}d` : '', h ? `${h}h` : '', m ? `${m}m` : ''].filter(Boolean).join(' ') || '0m';
+}
+function addDaysIso(iso: string, n: number): string {
+  const d = new Date(`${iso}T00:00:00`);
+  d.setDate(d.getDate() + n);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function baseFieldName(name: string): string {
   return name.toLowerCase().replace(/_(space|facility)booking$/, '');
 }
@@ -126,6 +139,9 @@ function BookingFormInner() {
   const [slotStart, setSlotStart] = useState<number | null>(target.start);
   const [startMin, setStartMin] = useState(target.start);
   const [endMin, setEndMin] = useState(Math.max(target.end, target.start + 15));
+  // Desk/parking windows can SPAN DAYS (requested: any duration up to 7 days), so the end carries
+  // its own date. Rooms keep the single slotDate + 2h slot.
+  const [endDate, setEndDate] = useState(target.date);
   const [submitting, setSubmitting] = useState(false);
   // Values of org-form fields the app doesn't model natively, keyed by field name.
   const [extras, setExtras] = useState<Record<string, string>>({});
@@ -290,12 +306,17 @@ function BookingFormInner() {
   // Booking-date window: ROOMS are same-day only; desks/parking book at most ONE WEEK ahead.
   // All of it on the ORG clock — "today" is the facility's today, not the browser's.
   const minDate = nowOrg.dateISO;
-  const maxDate = isRoom ? minDate : wallClockInTz(Date.now() + 7 * 86400000, orgTimezone()).dateISO;
-  // The window is NOW .. NOW + 7 DAYS (a datetime, not a whole day): on the LAST day only times
-  // up to the current wall time are bookable, for the start AND the end (requested — "if the start
-  // is 7 days out, nothing later can be chosen").
-  const capMinutes = isRoom ? 1440 : wallClockInTz(Date.now() + 7 * 86400000, orgTimezone()).minutes;
-  const withinWindow = (m: number) => slotDate !== maxDate || m <= capMinutes;
+  // ROOMS: same day only. DESKS/parking: the START is unrestricted (any upcoming time), and the
+  // DURATION is what's capped — the end may be up to 7 DAYS after the start, so 2h, 5h, 10h30 or
+  // 6 days are all bookable (requested). Times themselves step by 30m (:00/:30).
+  const maxDate = isRoom ? minDate : addDaysIso(slotDate, 365);
+  const endMinDate = isRoom ? minDate : slotDate;
+  const endMaxDate = isRoom ? minDate : addDaysIso(slotDate, 7);
+  /** Minutes-from-midnight of a date+time pair, for comparing across days. */
+  const absMin = (dateISO: string, m: number) => Math.round(new Date(`${dateISO}T00:00:00`).getTime() / 60000) + m;
+  const startAbs = absMin(slotDate, startMin);
+  const endAbs = absMin(endDate, endMin);
+  const MAX_SPAN_MIN = 7 * 24 * 60;
   // For TODAY, slots that already started are off the table — the backend silently bumps a
   // past start to "now" (a 05:15 booking made at 08:16 came back as 08:19), so what you pick
   // must be what you get.
@@ -374,16 +395,19 @@ function BookingFormInner() {
       actions.showToast(`Pick a ${resourceFieldLabel.toLowerCase()} first`);
       return;
     }
-    // ISO strings compare lexicographically — the min/max attributes hint, this enforces.
-    if (slotDate < minDate || slotDate > maxDate) {
-      actions.showToast(isRoom ? 'Rooms can only be booked for today' : 'Bookings can be made at most one week ahead');
+    if (slotDate < minDate) {
+      actions.showToast(isRoom ? 'Rooms can only be booked for today' : "That start time is in the past");
+      return;
+    }
+    if (isRoom && slotDate !== minDate) {
+      actions.showToast('Rooms can only be booked for today');
       return;
     }
     let start: number;
     let end: number;
-    // The end must also sit inside the 7-day window — the last day is capped mid-day.
-    if (!isRoom && !withinWindow(endMin)) {
-      actions.showToast('Bookings can be made at most one week ahead');
+    // DURATION cap: the end may be up to 7 days after the start (any length inside that).
+    if (!isRoom && endAbs - startAbs > MAX_SPAN_MIN) {
+      actions.showToast('A booking can span at most 7 days');
       return;
     }
     if (useSlots) {
@@ -398,8 +422,8 @@ function BookingFormInner() {
       start = slotStart;
       end = slotStart + slotLen;
     } else {
-      // Desk path: free start/end window (no slots).
-      if (endMin <= startMin) {
+      // Desk path: free start/end window (no slots), possibly spanning days.
+      if (endAbs <= startAbs) {
         actions.showToast('End time must be after the start time');
         return;
       }
@@ -460,6 +484,8 @@ function BookingFormInner() {
       noOfAttendees: Number(noOfAttendees) || 1,
       internalAttendees,
       externalAttendees,
+      // A multi-day desk window ends on its OWN date (rooms always end same-day).
+      ...(isRoom || endDate === date ? {} : { endDate }),
       formId: formMeta?.id,
       extras: extraValues,
       // The form's own resource lookup name (from its response) so the create fills it too.
@@ -538,19 +564,22 @@ function BookingFormInner() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         <div>
           <div className={card.label}>Start Time</div>
+          {/* Picking a start NEVER rewrites the end (requested) — it only nudges it when the end
+              would land before the start, or outside the 7-day span. */}
           <DatePicker
             value={slotDate}
             min={minDate}
             max={maxDate}
             minutes={startMin}
-            minuteStep={state.slotGranularity}
-            minMinutes={nowOrg.minutes}
-            maxMinutes={capMinutes}
-            onChange={(iso) => setSlotDate(iso)}
+            minuteStep={30}
+            minMinutes={slotDate === minDate ? nowOrg.minutes : undefined}
+            onChange={(iso) => {
+              setSlotDate(iso);
+              if (endDate < iso) setEndDate(iso);
+            }}
             onMinutesChange={(m) => {
-              const dur = Math.max(state.slotGranularity, endMin - startMin);
               setStartMin(m);
-              setEndMin(Math.min(1440, m + dur));
+              if (endDate === slotDate && endMin <= m) setEndMin(Math.min(1440, m + 30));
             }}
             fullWidth
             aria-label="Start time"
@@ -559,20 +588,22 @@ function BookingFormInner() {
         <div>
           <div className={card.label}>End Time</div>
           <DatePicker
-            value={slotDate}
-            min={minDate}
-            max={maxDate}
+            value={endDate}
+            min={endMinDate}
+            max={endMaxDate}
             minutes={endMin}
-            minuteStep={state.slotGranularity}
-            minMinutes={startMin + state.slotGranularity}
-            maxMinutes={capMinutes}
-            onChange={(iso) => setSlotDate(iso)}
-            onMinutesChange={(m) => setEndMin(Math.max(startMin + state.slotGranularity, m))}
+            minuteStep={30}
+            minMinutes={endDate === slotDate ? startMin + 30 : undefined}
+            onChange={setEndDate}
+            onMinutesChange={setEndMin}
             fullWidth
             aria-label="End time"
           />
         </div>
       </div>
+      <p className={card.helper} style={{ marginTop: 6 }}>
+        {endAbs > startAbs ? `Duration ${fmtSpan(endAbs - startAbs)}` : 'The end must be after the start'} · up to 7 days
+      </p>
     </Field>
   ) : (
     <Field key="__time" label="Time Slots" required>
