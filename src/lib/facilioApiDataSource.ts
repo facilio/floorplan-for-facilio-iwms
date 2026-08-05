@@ -3296,10 +3296,9 @@ export interface RealBookingInput {
   /** Values of org-form fields this app doesn't model natively — passed through verbatim. */
   extras?: Record<string, unknown>;
   /**
-   * The RESOURCE lookup field name taken from the org form's own response (e.g.
-   * `meeting_rooms_spacebooking`, lookupModule `rooms`). Sent in addition to the module's
-   * standard lookup so a form whose resource field is custom-named still gets it filled —
-   * nothing about the field is hardcoded app-side.
+   * The resource lookup field the ORG FORM used for selection (e.g.
+   * `meeting_rooms_spacebooking`, lookupModule `rooms`) — logged for traceability; the payload
+   * itself always writes the module's own lookup name (`space`/`desk`).
    */
   resourceField?: string;
 }
@@ -3531,6 +3530,10 @@ export async function createRealBooking(unit: Unit, dateISO: string, start: numb
   // form left it empty (matches how the real form auto-adds the reserver).
   if (Number.isFinite(reservedBy) && !internal.some((a) => a.id === reservedBy)) internal.unshift({ id: reservedBy });
 
+  if (input.resourceField && input.resourceField !== lookupField) {
+    // eslint-disable-next-line no-console
+    console.info(`[facilio-api] form resource field '${input.resourceField}' -> payload field '${lookupField}' (record ${ref.recordId})`);
+  }
   const tz = await fetchOrgTimezone().catch(() => null);
   const bookingStartTime = epochAtInTz(dateISO, start, tz);
   const res = await facilioApi.createRecord<any>('spacebooking', {
@@ -3542,10 +3545,10 @@ export async function createRealBooking(unit: Unit, dateISO: string, start: numb
       // create payload for a different module (desks) — not independently confirmed for
       // spacebooking specifically, included since it's a plausible low-risk match.
       ...(input.formId ? { formId: input.formId, actionFormId: input.formId } : {}),
+      // The record picked in the form's own resource lookup (e.g. the org's `meeting_rooms`
+      // field for spaces) is sent under the MODULE's field name — `space` for rooms, `desk` for
+      // desks (requested): that's the field the record and the booking filters read.
       [lookupField]: { id: ref.recordId },
-      // The form's OWN resource lookup (read from its field metadata each fetch) — filled with
-      // the same record so a required custom-named lookup passes the backend's form rules.
-      ...(input.resourceField && input.resourceField !== lookupField ? { [input.resourceField]: { id: ref.recordId } } : {}),
       parentModuleId,
       bookingStartTime,
       bookingEndTime: epochAtInTz(dateISO, end, tz),
