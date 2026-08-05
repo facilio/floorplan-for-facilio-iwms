@@ -244,6 +244,8 @@ function BookingFormInner() {
 
   // ONLY rooms book by slots (HARDCODED 2-hour). Everything else — desks, parking, lockers —
   // books a plain start/end window.
+  // ROOMS: 2h slots, HARDCODED in the form (never the settings granularity) — a room can only be
+  // booked in whole slots. Everything else books a start/end window stepping by the granularity.
   const slotLen = 120;
   const useSlots = effType === 'room';
   // Full-day slot chips (00:00–24:00), not the old 08:00–18:00 office window.
@@ -525,7 +527,7 @@ function BookingFormInner() {
             min={minDate}
             max={maxDate}
             minutes={startMin}
-            minuteStep={5}
+            minuteStep={state.slotGranularity}
             minMinutes={nowOrg.minutes}
             onChange={(iso) => setSlotDate(iso)}
             onMinutesChange={(m) => {
@@ -544,10 +546,10 @@ function BookingFormInner() {
             min={minDate}
             max={maxDate}
             minutes={endMin}
-            minuteStep={5}
-            minMinutes={startMin + 5}
+            minuteStep={state.slotGranularity}
+            minMinutes={startMin + state.slotGranularity}
             onChange={(iso) => setSlotDate(iso)}
-            onMinutesChange={(m) => setEndMin(Math.max(startMin + 5, m))}
+            onMinutesChange={(m) => setEndMin(Math.max(startMin + state.slotGranularity, m))}
             fullWidth
             aria-label="End time"
           />

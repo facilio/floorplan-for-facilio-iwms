@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { Unit } from '../../lib/types';
 import { useFloorplan } from '../../state/FloorplanContext';
-import { contactName, initials, isAssignable, isBookable, unitById } from '../../state/selectors';
+import { notBookableReason, contactName, initials, isAssignable, isBookable, unitById } from '../../state/selectors';
 import { unitStatus } from '../../lib/unitStatus';
 import { fmtTime } from '../../lib/geometry';
 import { resolveMarkerDef, TYPE_META } from '../../lib/types';
@@ -167,20 +167,4 @@ export function MobileUnitSheet() {
       </div>
     </>
   );
-}
-
-/** Why `unit` isn't bookable — one accurate line per type (see selectors.isBookable). */
-function notBookableReason(unit: Unit): string {
-  switch (unit.type) {
-    case 'workstation':
-      return 'This desk is assigned to a person, so it can\'t be booked. Pick a free (hot) desk instead.';
-    case 'room':
-      return 'Meeting Rooms can only be booked, not assigned — this one is set up for assignment.';
-    case 'locker':
-      return 'Lockers are assigned via the Assign tab, not booked.';
-    case 'parking':
-      return 'This parking stall is assigned, so it can\'t be booked.';
-    default:
-      return 'This space isn\'t bookable.';
-  }
 }

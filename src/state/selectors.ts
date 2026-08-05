@@ -61,6 +61,26 @@ export function isBookable(u: Unit): boolean {
   return true;
 }
 
+/**
+ * Why `unit` can't be booked — accurate per TYPE (see isBookable). Shared by the web Book panel
+ * and the mobile unit sheet, which both hardcoded the LOCKER sentence and so told users a room or
+ * an assigned desk was a locker (reported).
+ */
+export function notBookableReason(u: Unit): string {
+  switch (u.type) {
+    case 'workstation':
+      return "This desk is assigned to a person, so it can't be booked — pick a free (hot) desk instead.";
+    case 'room':
+      return 'This room is set up for assignment, not booking.';
+    case 'locker':
+      return 'Lockers are assigned, not booked.';
+    case 'parking':
+      return "This parking stall is assigned, so it can't be booked.";
+    default:
+      return "This space isn't bookable.";
+  }
+}
+
 export function isAssignable(u: Unit): boolean {
   if (u.type === 'workstation') return (u.deskType ?? 'ASSIGNED') === 'ASSIGNED';
   if (u.type === 'room') {

@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useOrgClock } from '../../hooks/useOrgClock';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
-import { bookedUnitIds, conflictsFor, contactName, isBookable, unitById } from '../../state/selectors';
+import { notBookableReason, bookedUnitIds, conflictsFor, contactName, isBookable, unitById } from '../../state/selectors';
 import { fmtTime } from '../../lib/geometry';
 import { orgNow, orgTimezone, wallClockInTz } from '../../lib/orgTime';
 import { Select } from '../primitives/Select';
@@ -16,7 +16,15 @@ import styles from './BookPanel.module.css';
 
 // FULL day (00:00–24:00), not the old 07:00–20:00 office window — per-select filtering keeps
 // start strictly before end and vice versa.
-const TIME_OPTIONS = Array.from({ length: 1440 / 30 + 1 }, (_, i) => i * 30).map((m) => ({ value: String(m), label: fmtTime(m) }));
+/**
+ * Time options STEP BY THE SELECTED RESOURCE'S SLOT LENGTH (state.slotGranularity, set when a
+ * unit is selected: rooms 2h, desks/parking 30m) — a room's window must land on its slots, and a
+ * desk's on half-hours, in the panel exactly as in the form.
+ */
+function timeOptions(step: number) {
+  const n = Math.max(1, Math.floor(1440 / step));
+  return Array.from({ length: n + 1 }, (_, i) => Math.min(1440, i * step)).map((m) => ({ value: String(m), label: fmtTime(m) }));
+}
 /** How many already-past options stay visible above the first selectable one (requested: a few, not the whole day). */
 const PAST_OPTIONS_SHOWN = 5;
 /**
@@ -77,7 +85,7 @@ export function BookPanel() {
                 // START isn't restricted by the end (requested): every slot is LISTED, past ones
                 // on today are shown DISABLED (org clock) rather than hidden, and picking a start
                 // drags the end along to keep the window's duration.
-                options={trimPast(TIME_OPTIONS, (m) => startSelectable(m)).map((o) => ({ ...o, disabled: !startSelectable(Number(o.value)) }))}
+                options={trimPast(timeOptions(state.slotGranularity), (m) => startSelectable(m)).map((o) => ({ ...o, disabled: !startSelectable(Number(o.value)) }))}
                 onChange={(v) => {
                   const next = Number(v);
                   const dur = Math.max(state.slotGranularity, state.end - state.start);
@@ -93,7 +101,7 @@ export function BookPanel() {
               <Select
                 value={String(state.end)}
                 // END lists everything too; anything at/below the start is disabled, not hidden.
-                options={trimPast(TIME_OPTIONS, (m) => m > state.start).map((o) => ({ ...o, disabled: Number(o.value) <= state.start }))}
+                options={trimPast(timeOptions(state.slotGranularity), (m) => m > state.start).map((o) => ({ ...o, disabled: Number(o.value) <= state.start }))}
                 onChange={(v) => actions.setTimeRange(state.start, Number(v))}
                 fullWidth
                 searchable={false}
@@ -145,7 +153,7 @@ export function BookPanel() {
       {sel && !isBookable(sel) && (
         <div className={card.card}>
           <div className={card.cardBody}>
-            <p className={card.helper}>Lockers are assigned via Assignment mode, not booked.</p>
+            <p className={card.helper}>{notBookableReason(sel)}</p>
           </div>
         </div>
       )}
