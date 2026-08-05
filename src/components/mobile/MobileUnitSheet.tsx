@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import type { Unit } from '../../lib/types';
 import { useFloorplan } from '../../state/FloorplanContext';
 import { contactName, initials, isAssignable, isBookable, unitById } from '../../state/selectors';
 import { unitStatus } from '../../lib/unitStatus';
@@ -91,7 +92,9 @@ export function MobileUnitSheet() {
           </button>
         )}
         {!isAmenity && showBookTab && bookable && status.key === 'booked' && <div className={styles.infoBox}>This space is currently booked for the selected time window.</div>}
-        {!isAmenity && showBookTab && !bookable && <div className={styles.infoBox}>Lockers are assigned via the Assign tab, not booked.</div>}
+        {/* WHY this space can't be booked, per TYPE — the copy was hardcoded to lockers and read
+            wrong on an assigned desk (reported). Mirrors isBookable's actual rules. */}
+        {!isAmenity && showBookTab && !bookable && <div className={styles.infoBox}>{notBookableReason(unit)}</div>}
         {!isAmenity && !showBookTab && !assignable && unit.type === 'room' && (
           <div className={styles.infoBox}>Meeting Rooms can only be booked, not assigned</div>
         )}
@@ -164,4 +167,20 @@ export function MobileUnitSheet() {
       </div>
     </>
   );
+}
+
+/** Why `unit` isn't bookable — one accurate line per type (see selectors.isBookable). */
+function notBookableReason(unit: Unit): string {
+  switch (unit.type) {
+    case 'workstation':
+      return 'This desk is assigned to a person, so it can\'t be booked. Pick a free (hot) desk instead.';
+    case 'room':
+      return 'Meeting Rooms can only be booked, not assigned — this one is set up for assignment.';
+    case 'locker':
+      return 'Lockers are assigned via the Assign tab, not booked.';
+    case 'parking':
+      return 'This parking stall is assigned, so it can\'t be booked.';
+    default:
+      return 'This space isn\'t bookable.';
+  }
 }

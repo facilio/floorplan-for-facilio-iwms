@@ -82,8 +82,20 @@ export function wallClockInTz(epoch: number, tz: string | null): { dateISO: stri
 // the ORG clock — the browser zone only ever serves as the unresolved/local-mode fallback.
 // ---------------------------------------------------------------------------
 let resolvedTz: string | null = null;
+/**
+ * Subscribers re-render when the zone RESOLVES. Without this, anything that read the clock
+ * before the async fetch landed kept showing BROWSER time for the rest of the session (reported:
+ * disabled slots cut at the device's "now", not the facility's).
+ */
+const tzListeners = new Set<() => void>();
 export function setOrgTimezone(tz: string | null): void {
+  const changed = resolvedTz !== tz;
   resolvedTz = tz;
+  if (changed) for (const l of Array.from(tzListeners)) l();
+}
+export function subscribeOrgTimezone(fn: () => void): () => void {
+  tzListeners.add(fn);
+  return () => tzListeners.delete(fn);
 }
 export function orgTimezone(): string | null {
   return resolvedTz;

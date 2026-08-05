@@ -3,7 +3,8 @@ import type { ReactNode } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
 import { isBookable, unitById } from '../../state/selectors';
 import { fmtTime } from '../../lib/geometry';
-import { epochAtInTz, orgNow, orgTimezone, wallClockInTz } from '../../lib/orgTime';
+import { epochAtInTz, orgTimezone, wallClockInTz } from '../../lib/orgTime';
+import { useOrgClock } from '../../hooks/useOrgClock';
 import { isFacilioApiConfigured } from '../../lib/facilioApi';
 import { bookingFormsForType, fetchBookingFormById, fetchBookingFormList, fetchOrgBookableResources, fetchOrgBookingsForRange, pickDefaultBookingForm } from '../../lib/facilioApiDataSource';
 import type { BookingFormFieldMeta, BookingFormMeta, BookingFormSummary } from '../../lib/facilioApiDataSource';
@@ -252,7 +253,7 @@ function BookingFormInner() {
 
   // Booking-date window: ROOMS are same-day only; desks/parking book at most ONE WEEK ahead.
   // All of it on the ORG clock — "today" is the facility's today, not the browser's.
-  const nowOrg = orgNow();
+  const nowOrg = useOrgClock(); // reactive: re-renders when the ORG zone resolves
   const minDate = nowOrg.dateISO;
   const maxDate = isRoom ? minDate : wallClockInTz(Date.now() + 7 * 86400000, orgTimezone()).dateISO;
   // For TODAY, slots that already started are off the table — the backend silently bumps a
@@ -478,16 +479,34 @@ function BookingFormInner() {
     conflicts.length > 0 ? (
       <div
         key="__conflict"
-        style={{ border: '1px solid #f3c9c9', background: '#fdf2f2', color: '#8f2323', borderRadius: 8, padding: '8px 10px', font: '500 12.5px/1.45 var(--font-sans)' }}
+        role="alert"
+        style={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: 8,
+          border: '1px solid #f0bcbc',
+          borderLeft: '3px solid #c62828',
+          background: '#fdf2f2',
+          color: '#8f2323',
+          borderRadius: 8,
+          padding: '10px 12px',
+          font: '500 12.5px/1.45 var(--font-sans)',
+        }}
       >
-        Already booked on this {effType === 'room' ? 'space' : 'desk'}:{' '}
-        {conflicts.map((c, i) => (
-          <span key={i}>
-            {i > 0 ? ', ' : ''}
-            {fmtTime(c.start)}–{fmtTime(c.end)}
-          </span>
-        ))}
-        . Pick another time.
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" style={{ flex: 'none', marginTop: 1 }}>
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 8v5M12 16h.01" />
+        </svg>
+        <span>
+          This {effType === 'room' ? 'space' : 'desk'} is already booked{' '}
+          {conflicts.map((c, i) => (
+            <b key={i} style={{ fontWeight: 600 }}>
+              {i > 0 ? ', ' : ''}
+              {fmtTime(c.start)}–{fmtTime(c.end)}
+            </b>
+          ))}{' '}
+          on {slotDate}. Pick another time or another {effType === 'room' ? 'space' : 'desk'}.
+        </span>
       </div>
     ) : null;
 
@@ -495,7 +514,6 @@ function BookingFormInner() {
   // the chosen date.
   const timeWindow = !useSlots ? (
     <Field key="__time" label="Booking Window" required>
-      {conflictNote}
       {/* The org declares start/end as DATETIME fields, so each is one datetime control here
           (calendar + HH/MM columns, like the native picker) instead of a date plus two dropdowns.
           START is never restricted by the end — moving it drags the end to keep the duration. */}
@@ -538,7 +556,6 @@ function BookingFormInner() {
     </Field>
   ) : (
     <Field key="__time" label="Time Slots" required>
-      {conflictNote}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         <div>
           <div className={card.label}>Select Date</div>
@@ -785,6 +802,9 @@ function BookingFormInner() {
             })}
           </div>
         )}
+        {/* CLASH BANNER at the top of the form (requested): the selected desk/space already has a
+            booking in this window — fetched with the resource-scoped filter as the range changes. */}
+        {conflictNote}
         {formsForCurrentType.length > 1 && formId == null ? (
           <div style={{ padding: '28px 0', textAlign: 'center', font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--ink-500)' }}>
             Choose a booking form above to continue.

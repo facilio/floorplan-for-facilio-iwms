@@ -258,6 +258,22 @@ function resetSelectionState(_s: AppState): Partial<AppState> {
   return { selected: null, multiSelected: [], placingUnitId: null, draft: [], calib: [], calibLen: '', dragOverId: null, webReassign: null };
 }
 
+
+/**
+ * Selecting a resource re-frames the booking window to ITS slot length (requested): a ROOM books
+ * hardcoded 2h slots, everything else (desks/parking, and the default) half-hour steps. The start
+ * snaps DOWN to a multiple of that length so the window lines up with the grid; nothing changes
+ * when the selection isn't a bookable resource.
+ */
+function windowForSelection(state: AppState, unitId: string | null): Partial<AppState> {
+  if (!unitId) return {};
+  const unit = state.units.find((u) => u.id === unitId);
+  if (!unit || (unit.type !== 'room' && unit.type !== 'workstation' && unit.type !== 'parking')) return {};
+  const len = unit.type === 'room' ? 120 : 30;
+  const start = Math.min(1440 - len, Math.floor(state.start / len) * len);
+  return { slotGranularity: len, start, end: start + len };
+}
+
 export function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'SET_MODE':
@@ -370,7 +386,14 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, clientContacts: [...state.clientContacts.filter((c) => c.id !== action.contact.id), action.contact] };
 
     case 'SELECT_UNIT':
-      return { ...state, selected: action.id, webReassign: null, ...(action.id ? { multiSelected: [] } : {}) };
+      return {
+        ...state,
+        selected: action.id,
+        webReassign: null,
+        ...(action.id ? { multiSelected: [] } : {}),
+        // Book mode only: picking a room/desk re-frames the window to its slot length.
+        ...(state.mode === 'book' ? windowForSelection(state, action.id) : {}),
+      };
     case 'HIGHLIGHT_UNIT':
       return { ...state, highlightUnitId: action.id };
     case 'ADD_UNIT': {
@@ -603,7 +626,13 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'SET_MOBILE_TAB':
       return { ...state, mobileTab: action.tab, mobSel: null };
     case 'SET_MOB_SEL':
-      return { ...state, mobSel: action.id, mobAssignEdit: action.id ? state.mobAssignEdit : false };
+      return {
+        ...state,
+        mobSel: action.id,
+        mobAssignEdit: action.id ? state.mobAssignEdit : false,
+        // Same re-framing on mobile (Book tab): rooms 2h, desks/parking 30m.
+        ...(state.mobileTab === 'book' ? windowForSelection(state, action.id) : {}),
+      };
     case 'SET_MOB_FLOOR_OPEN':
       return action.open
         ? { ...state, mobFloorOpen: true, mobPickSite: null, mobPickBuilding: null, mobSel: null }

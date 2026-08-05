@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { useOrgClock } from '../../hooks/useOrgClock';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
 import { bookedUnitIds, conflictsFor, contactName, isBookable, unitById } from '../../state/selectors';
@@ -16,6 +17,17 @@ import styles from './BookPanel.module.css';
 // FULL day (00:00–24:00), not the old 07:00–20:00 office window — per-select filtering keeps
 // start strictly before end and vice versa.
 const TIME_OPTIONS = Array.from({ length: 1440 / 30 + 1 }, (_, i) => i * 30).map((m) => ({ value: String(m), label: fmtTime(m) }));
+/** How many already-past options stay visible above the first selectable one (requested: a few, not the whole day). */
+const PAST_OPTIONS_SHOWN = 5;
+/**
+ * Drops all-but-the-last few unselectable options from the head of the list: the disabled ones
+ * give context ("earlier today is gone") without scrolling past a full day of dead rows.
+ */
+function trimPast<T extends { value: string }>(options: T[], selectable: (m: number) => boolean): T[] {
+  const firstOk = options.findIndex((o) => selectable(Number(o.value)));
+  if (firstOk <= PAST_OPTIONS_SHOWN) return options;
+  return options.slice(firstOk - PAST_OPTIONS_SHOWN);
+}
 
 const WIN_S = 0;
 const WIN_E = 1440;
@@ -31,7 +43,7 @@ export function BookPanel() {
   // Same client rules as the booking form: today .. one week ahead, and no past start times
   // for today (the backend bumps a past start to "now", so offering them only misleads).
   // All on the ORG clock.
-  const nowOrg = orgNow();
+  const nowOrg = useOrgClock(); // reactive: re-renders when the ORG zone resolves
   const minDate = nowOrg.dateISO;
   const maxDate = wallClockInTz(Date.now() + 7 * 86400000, orgTimezone()).dateISO;
   const nowSlot = Math.floor(nowOrg.minutes / 30) * 30;
@@ -65,7 +77,7 @@ export function BookPanel() {
                 // START isn't restricted by the end (requested): every slot is LISTED, past ones
                 // on today are shown DISABLED (org clock) rather than hidden, and picking a start
                 // drags the end along to keep the window's duration.
-                options={TIME_OPTIONS.map((o) => ({ ...o, disabled: !startSelectable(Number(o.value)) }))}
+                options={trimPast(TIME_OPTIONS, (m) => startSelectable(m)).map((o) => ({ ...o, disabled: !startSelectable(Number(o.value)) }))}
                 onChange={(v) => {
                   const next = Number(v);
                   const dur = Math.max(state.slotGranularity, state.end - state.start);
@@ -81,7 +93,7 @@ export function BookPanel() {
               <Select
                 value={String(state.end)}
                 // END lists everything too; anything at/below the start is disabled, not hidden.
-                options={TIME_OPTIONS.map((o) => ({ ...o, disabled: Number(o.value) <= state.start }))}
+                options={trimPast(TIME_OPTIONS, (m) => m > state.start).map((o) => ({ ...o, disabled: Number(o.value) <= state.start }))}
                 onChange={(v) => actions.setTimeRange(state.start, Number(v))}
                 fullWidth
                 searchable={false}

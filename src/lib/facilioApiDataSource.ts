@@ -3249,13 +3249,27 @@ export function fetchOrgTimezone(): Promise<string | null> {
           candidates.push(p?.org?.timezone, p?.account?.org?.timezone, p?.timezone, p?.user?.timezone);
         }
       }
-      const body = await customGet('v2/account').catch(() => null);
-      const account = body?.result?.account ?? body?.account ?? body?.data?.account ?? null;
-      candidates.push(account?.org?.timezone, account?.org?.timeZone, account?.organisation?.timezone, account?.user?.timezone);
+      // `v2/fetchAccount?optimized=true` is what the real v2 client uses (confirmed) — it reads
+      // the FLATTENED `account.timezone` first, with `account.org.timezone` as the field most
+      // modules read directly. `v2/account` stays as a fallback for older backends.
+      const body =
+        (await customGet('v2/fetchAccount', { optimized: true }).catch(() => null)) ??
+        (await customGet('v2/account').catch(() => null));
+      const account = body?.result?.account ?? body?.account ?? body?.data?.account ?? body?.result ?? null;
+      candidates.push(
+        account?.timezone,
+        account?.timeZone,
+        account?.org?.timezone,
+        account?.org?.timeZone,
+        account?.organisation?.timezone,
+        account?.user?.timezone
+      );
       const tz = candidates.find(isValidTimezone) ?? null;
       setOrgTimezone(tz); // register for the SYNC org-clock helpers (orgNow/orgTimezone)
       // eslint-disable-next-line no-console
-      console.info('[facilio-api] org timezone', tz ?? '(none — browser zone)');
+      console.info(`[facilio-api] org timezone ${tz ?? '(none — falling back to the browser zone)'}`, {
+        fromAccount: account?.timezone ?? account?.org?.timezone ?? null,
+      });
       return tz;
     })();
     orgTimezoneCache.catch(() => {
