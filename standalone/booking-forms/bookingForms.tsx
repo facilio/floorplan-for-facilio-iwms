@@ -335,6 +335,8 @@ export async function createSpaceBooking(input: CreateBookingInput): Promise<{ o
       [lookupField]: { id: input.resourceId },
       parentModuleId,
       bookingStartTime: epochAt(input.dateISO, input.startMinutes, tz),
+      // Breach marker = start + 30min, sent explicitly on create (mirrors the main app).
+      bookingbreachtime: epochAt(input.dateISO, input.startMinutes, tz) + 1800000,
       bookingEndTime: epochAt(input.dateISO, input.endMinutes, tz),
       noOfAttendees: input.noOfAttendees && input.noOfAttendees > 0 ? input.noOfAttendees : Math.max(1, internal.length),
       name: input.name || `${input.resourceLabel} booking`,
@@ -361,7 +363,7 @@ const fmtTime = (m: number) => {
 };
 
 const ROOM_SLOT_MINUTES = 120; // rooms book HARDCODED 2h slots
-const KNOWN_FIELDS = new Set(['name', 'description', 'host', 'reservedBy', 'noOfAttendees', 'bookingStartTime', 'bookingEndTime', 'internalAttendees', 'externalAttendees']);
+const KNOWN_FIELDS = new Set(['name', 'description', 'host', 'reservedBy', 'noOfAttendees', 'bookingStartTime', 'bookingEndTime', 'bookingbreachtime', 'internalAttendees', 'externalAttendees']);
 const RESOURCE_LOOKUPS = new Set(['desks', 'space', 'basespace', 'parkingstall', 'facility', 'parkinglot', 'lockers']);
 const PEOPLE_LOOKUPS = new Set(['people', 'employee', 'clientcontact', 'users']);
 

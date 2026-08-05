@@ -231,6 +231,8 @@
       data[RESOURCE_LOOKUP_FIELD[input.unitType]] = { id: input.resourceId };
       data.parentModuleId = parentModuleId;
       data.bookingStartTime = epochAt(input.dateISO, input.startMinutes, tz);
+      // Breach marker = start + 30min, sent explicitly on create (mirrors the main app).
+      data.bookingbreachtime = data.bookingStartTime + 1800000;
       data.bookingEndTime = epochAt(input.dateISO, input.endMinutes, tz);
       data.noOfAttendees = input.noOfAttendees > 0 ? input.noOfAttendees : Math.max(1, internal.length);
       data.name = input.name || input.resourceLabel + ' booking';
@@ -247,7 +249,7 @@
   }
 
   // ---- UI -------------------------------------------------------------------
-  var KNOWN = { name: 1, description: 1, host: 1, reservedBy: 1, noOfAttendees: 1, bookingStartTime: 1, bookingEndTime: 1, internalAttendees: 1, externalAttendees: 1 };
+  var KNOWN = { name: 1, description: 1, host: 1, reservedBy: 1, noOfAttendees: 1, bookingStartTime: 1, bookingEndTime: 1, bookingbreachtime: 1, internalAttendees: 1, externalAttendees: 1 };
   var RESOURCE_LOOKUPS = { desks: 1, space: 1, basespace: 1, parkingstall: 1, facility: 1, parkinglot: 1, lockers: 1 };
   var PEOPLE_LOOKUPS = { people: 1, employee: 1, clientcontact: 1, users: 1 };
 

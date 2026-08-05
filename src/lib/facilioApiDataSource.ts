@@ -3463,6 +3463,8 @@ export async function createRealBooking(unit: Unit, dateISO: string, start: numb
   // form left it empty (matches how the real form auto-adds the reserver).
   if (Number.isFinite(reservedBy) && !internal.some((a) => a.id === reservedBy)) internal.unshift({ id: reservedBy });
 
+  const tz = await fetchOrgTimezone().catch(() => null);
+  const bookingStartTime = epochAtInTz(dateISO, start, tz);
   const res = await facilioApi.createRecord<any>('spacebooking', {
     data: {
       // Unknown org-form fields first, so the mapped fields below always win on collision.
@@ -3474,8 +3476,11 @@ export async function createRealBooking(unit: Unit, dateISO: string, start: numb
       ...(input.formId ? { formId: input.formId, actionFormId: input.formId } : {}),
       [lookupField]: { id: ref.recordId },
       parentModuleId,
-      bookingStartTime: epochAtInTz(dateISO, start, await fetchOrgTimezone().catch(() => null)),
-      bookingEndTime: epochAtInTz(dateISO, end, await fetchOrgTimezone().catch(() => null)),
+      bookingStartTime,
+      bookingEndTime: epochAtInTz(dateISO, end, tz),
+      // Breach marker = start + 30min (requested): sent EXPLICITLY on every create, desk and
+      // space alike — the backend doesn't derive it on this path.
+      bookingbreachtime: bookingStartTime + 1800000,
       noOfAttendees: input.noOfAttendees && input.noOfAttendees > 0 ? input.noOfAttendees : Math.max(1, internal.length),
       name: input.name || `${unit.label} booking`,
       ...(input.description ? { description: input.description } : {}),
