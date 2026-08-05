@@ -291,6 +291,11 @@ function BookingFormInner() {
   // All of it on the ORG clock — "today" is the facility's today, not the browser's.
   const minDate = nowOrg.dateISO;
   const maxDate = isRoom ? minDate : wallClockInTz(Date.now() + 7 * 86400000, orgTimezone()).dateISO;
+  // The window is NOW .. NOW + 7 DAYS (a datetime, not a whole day): on the LAST day only times
+  // up to the current wall time are bookable, for the start AND the end (requested — "if the start
+  // is 7 days out, nothing later can be chosen").
+  const capMinutes = isRoom ? 1440 : wallClockInTz(Date.now() + 7 * 86400000, orgTimezone()).minutes;
+  const withinWindow = (m: number) => slotDate !== maxDate || m <= capMinutes;
   // For TODAY, slots that already started are off the table — the backend silently bumps a
   // past start to "now" (a 05:15 booking made at 08:16 came back as 08:19), so what you pick
   // must be what you get.
@@ -376,6 +381,11 @@ function BookingFormInner() {
     }
     let start: number;
     let end: number;
+    // The end must also sit inside the 7-day window — the last day is capped mid-day.
+    if (!isRoom && !withinWindow(endMin)) {
+      actions.showToast('Bookings can be made at most one week ahead');
+      return;
+    }
     if (useSlots) {
       if (slotStart == null) {
         actions.showToast('Pick a time slot');
@@ -535,6 +545,7 @@ function BookingFormInner() {
             minutes={startMin}
             minuteStep={state.slotGranularity}
             minMinutes={nowOrg.minutes}
+            maxMinutes={capMinutes}
             onChange={(iso) => setSlotDate(iso)}
             onMinutesChange={(m) => {
               const dur = Math.max(state.slotGranularity, endMin - startMin);
@@ -554,6 +565,7 @@ function BookingFormInner() {
             minutes={endMin}
             minuteStep={state.slotGranularity}
             minMinutes={startMin + state.slotGranularity}
+            maxMinutes={capMinutes}
             onChange={(iso) => setSlotDate(iso)}
             onMinutesChange={(m) => setEndMin(Math.max(startMin + state.slotGranularity, m))}
             fullWidth

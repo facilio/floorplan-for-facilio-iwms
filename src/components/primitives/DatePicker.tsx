@@ -18,6 +18,7 @@ export function DatePicker({
   onMinutesChange,
   minuteStep = 1,
   minMinutes,
+  maxMinutes,
   'aria-label': ariaLabel,
 }: {
   /** ISO yyyy-mm-dd */
@@ -37,6 +38,7 @@ export function DatePicker({
   minuteStep?: number;
   /** Earliest selectable minute ON the min date (org clock) — past times can't be picked. */
   minMinutes?: number;
+  maxMinutes?: number;
   'aria-label'?: string;
 }) {
   const isDateTime = minutes != null && !!onMinutesChange;
@@ -116,7 +118,8 @@ export function DatePicker({
     ? `${parseISO(value)!.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}${isDateTime ? ` · ${fmt12(minutes!)}` : ''}`
     : 'Pick a date';
   // On the earliest allowed date, times before `minMinutes` (org clock "now") are disabled.
-  const minuteAllowed = (m: number) => !(minMinutes != null && value === min && m < minMinutes);
+  const minuteAllowed = (m: number) =>
+    !(minMinutes != null && value === min && m < minMinutes) && !(maxMinutes != null && value === max && m > maxMinutes);
 
   return (
     <div ref={rootRef} style={{ position: 'relative', ...(fullWidth ? { width: '100%' } : {}) }}>

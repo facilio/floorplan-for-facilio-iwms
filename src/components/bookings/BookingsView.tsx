@@ -82,7 +82,6 @@ export function BookingsView() {
   const { state, actions } = useFloorplan();
   const meta = floorMeta(state, state.floorId);
 
-  const [layout, setLayout] = useState<'calendar' | 'grid'>('calendar');
   const [calView, setCalView] = useState<CalView>('week');
   const [focusDate, setFocusDate] = useState(state.date);
   const [category, setCategory] = useState<CategoryId>('all');
@@ -292,14 +291,6 @@ export function BookingsView() {
             <p className={styles.sub}>Calendar and resource view across bookable spaces</p>
           </div>
           <div className={styles.headerActions}>
-            <button className={[styles.myBookings, myBookingsInRange.length ? styles.myBookingsActive : ''].join(' ')} onClick={() => setMyOpen(true)}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="4" width="18" height="17" rx="2" />
-                <path d="M16 2v4M8 2v4M3 10h18" />
-              </svg>
-              My bookings
-              <span className={styles.myBadge}>{myBookingsInRange.length}</span>
-            </button>
             <PortfolioFilter applied={floorFilter} onApply={setFloorFilter} />
           </div>
         </div>
@@ -332,14 +323,16 @@ export function BookingsView() {
         ) : (
           <>
             <div className={styles.calToolbar}>
-              <div className={styles.viewSeg}>
-                <button className={[styles.viewBtn, layout === 'calendar' ? styles.viewBtnActive : ''].join(' ')} onClick={() => setLayout('calendar')}>
-                  Calendar
-                </button>
-                <button className={[styles.viewBtn, layout === 'grid' ? styles.viewBtnActive : ''].join(' ')} onClick={() => setLayout('grid')}>
-                  Resource grid
-                </button>
-              </div>
+              {/* The Calendar / Resource-grid switch is GONE (requested): the calendar is the only
+                  layout, and MY BOOKINGS sits here in its place instead of up in the header. */}
+              <button className={[styles.myBookings, myBookingsInRange.length ? styles.myBookingsActive : ''].join(' ')} onClick={() => setMyOpen(true)}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="4" width="18" height="17" rx="2" />
+                  <path d="M16 2v4M8 2v4M3 10h18" />
+                </svg>
+                My bookings
+                <span className={styles.myBadge}>{myBookingsInRange.length}</span>
+              </button>
               <div className={styles.viewSeg}>
                 {(['day', 'week', 'month'] as CalView[]).map((v) => (
                   <button key={v} className={[styles.viewBtn, calView === v ? styles.viewBtnActive : ''].join(' ')} onClick={() => setCalView(v)}>
@@ -366,21 +359,7 @@ export function BookingsView() {
                   Loading bookings…
                 </div>
               )}
-            {layout === 'grid' && !resources.length ? (
-              <EmptyState category={catDef.label} floorName={meta?.floor.name} />
-            ) : layout === 'grid' ? (
-              <ResourceGrid
-                resources={resources}
-                dates={calView === 'day' ? [focusDate] : Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(focusDate), i))}
-                bookingsByDate={bookingsByDate}
-                onPick={(rid, date) => {
-                  setResourceId(rid);
-                  setFocusDate(date);
-                  setLayout('calendar');
-                  setCalView('day');
-                }}
-              />
-            ) : calView === 'month' ? (
+            {calView === 'month' ? (
               <MonthGrid
                 dates={visibleDates}
                 monthIso={focusDate}
