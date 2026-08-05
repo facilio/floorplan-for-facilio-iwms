@@ -188,9 +188,17 @@ export function BookingsView() {
 
   const myBookingsInRange = useMemo(() => {
     const mine: Booking[] = [];
-    for (const d of visibleDates) for (const b of bookingsByDate[d] ?? []) if (b.by === state.bookBy) mine.push(b);
+    for (const d of visibleDates) {
+      for (const b of bookingsByDate[d] ?? []) {
+        // PORTALS: the range fetch is already scoped SERVER-SIDE to this client contact
+        // (reservedBy = the session's people id), so every fetched row is theirs — matching on
+        // `by` again would drop rows whose reservedBy the list projection didn't return.
+        // MAINTENANCE sees the whole org, so there the id match is what makes them "mine".
+        if (isPortal || b.by === state.bookBy) mine.push(b);
+      }
+    }
     return mine;
-  }, [bookingsByDate, visibleDates, state.bookBy]);
+  }, [bookingsByDate, visibleDates, state.bookBy, isPortal]);
 
   // The calendar shows EVERY booking on the floor for the date — no per-resource filter. The
   // resource picker only targets where drag-to-book CREATES a booking.
@@ -399,7 +407,11 @@ export function BookingsView() {
           <Modal onClose={() => setMyOpen(false)} width={520}>
             <ModalHeader
               title="My bookings"
-              subtitle={`${myBookingsInRange.length} booking(s) in the visible range`}
+              subtitle={
+                isPortal
+                  ? `Your bookings · ${myBookingsInRange.length} in the visible range`
+                  : `${myBookingsInRange.length} booking(s) in the visible range`
+              }
               onClose={() => setMyOpen(false)}
             />
             <div style={{ padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: 12, maxHeight: '58vh', overflowY: 'auto' }}>
@@ -411,7 +423,9 @@ export function BookingsView() {
               {[...myBookingsInRange]
                 .sort((a, b) => (a.date === b.date ? a.start - b.start : a.date.localeCompare(b.date)))
                 .map((b) => {
-                  const unit = state.units.find((u) => u.id === b.unitId);
+                  // Org-wide rows can reference a resource that isn't on the current floor —
+                  // fall back to the org resource pool so the row still names its space.
+                  const unit = state.units.find((u) => u.id === b.unitId) ?? orgUnits.find((u) => u.id === b.unitId);
                   return (
                     <div key={b.id} style={{ border: '1px solid var(--ink-200)', borderRadius: 10, padding: '10px 12px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
@@ -454,7 +468,9 @@ export function BookingsView() {
               {(bookingsByDate[preview.date] ?? [])
                 .filter((b) => preview.ids.includes(b.id))
                 .map((b) => {
-                  const unit = state.units.find((u) => u.id === b.unitId);
+                  // Org-wide rows can reference a resource that isn't on the current floor —
+                  // fall back to the org resource pool so the row still names its space.
+                  const unit = state.units.find((u) => u.id === b.unitId) ?? orgUnits.find((u) => u.id === b.unitId);
                   return (
                     <div key={b.id} style={{ border: '1px solid var(--ink-200)', borderRadius: 10, padding: '10px 12px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
