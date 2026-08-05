@@ -1,12 +1,15 @@
 /* Facilio DS "Feedback / Toast" — 400px card, semantic hairline + icon + drain timer. */
 .host {
+  /* TOP-CENTRE (requested) — was bottom-right. Centring via left/transform rather than
+     `margin: auto` so the stack keeps hugging its own width at any viewport size. */
   position: fixed;
-  right: 24px;
-  bottom: 24px;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 500;
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
+  align-items: center;
   gap: 10px;
   pointer-events: none;
 }
@@ -30,7 +33,7 @@
 }
 
 @keyframes fds-toast-in {
-  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  from { opacity: 0; transform: translateY(-10px) scale(0.98); }
   to { opacity: 1; transform: none; }
 }
 
