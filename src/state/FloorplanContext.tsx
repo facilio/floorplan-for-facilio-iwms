@@ -173,7 +173,10 @@ async function toStorableDataUrl(url: string): Promise<string | null> {
  */
 async function loadFloorPlanTypesAndImage(dispatch: Dispatch<Action>, floorId: string, currentPlanId: PlanId, allowLocalFallback: boolean) {
   dispatch({ type: 'SET_FLOOR_IMAGE_LOADING', value: true });
-  const useLocalCache = !(isFacilioApiConfigured && !allowLocalFallback);
+  // A real backend never serves the local plan cache (customer accounts show no local data) —
+  // the `allowLocalFallback` setting can't override this; a failed fetch surfaces as an error.
+  void allowLocalFallback;
+  const useLocalCache = !isFacilioApiConfigured;
   try {
     let resolvedPlanId = currentPlanId;
     if (isFacilioApiConfigured) {
@@ -200,10 +203,12 @@ async function loadFloorPlanTypesAndImage(dispatch: Dispatch<Action>, floorId: s
             void persistFloorplanFile(floorId, resolvedPlanId, { dataUrl: storable }).catch(() => {});
           }
         }
-      } else if (cached?.dataUrl) {
-        // The cache painted but the SOURCE refresh failed — say so instead of silently letting
-        // this device believe a possibly-outdated plan (other devices may see something else).
-        showToastVia(dispatch, 'Showing a locally cached floor plan — refresh from Facilio failed', { variant: 'warning' });
+      } else {
+        // No image from Facilio: SHOW THE ERROR (requested) instead of falling back to any local
+        // copy — the canvas keeps its empty state, and this says why it's empty.
+        // eslint-disable-next-line no-console
+        console.warn(`[floorplan] plan image fetch failed for ${floorId}:${resolvedPlanId}`);
+        showToastVia(dispatch, "Couldn't load this floor plan from Facilio", { variant: 'error' });
       }
       const customization = await fetchFloorplanCustomization(floorId, resolvedPlanId).catch(() => null);
       if (customization) dispatch({ type: 'SET_FLOOR_CUSTOMIZATION', floorId, planId: resolvedPlanId, customization });
@@ -222,15 +227,16 @@ async function ensureFloorplanImage(dispatch: Dispatch<Action>, floorId: string,
   dispatch({ type: 'SET_FLOOR_IMAGE_LOADING', value: true });
   try {
     let imageUrl = isFacilioApiConfigured ? await fetchFloorplanImage(floorId, planId).catch(() => null) : null;
-    // Same local-fallback gate as loadFloorPlanTypesAndImage — a real backend configured with
-    // local fallback off means "no image" (error state) beats a stale local copy.
-    if (!imageUrl && !(isFacilioApiConfigured && !allowLocalFallback)) {
-      // Deployed / no real backend for this plan: fall back to the Vibe DB copy (no-op in dev).
+    // Same hard rule as loadFloorPlanTypesAndImage: with a real backend there is NO local
+    // fallback — a failed fetch reports the error and leaves the empty state.
+    void allowLocalFallback;
+    if (!imageUrl && !isFacilioApiConfigured) {
       const stored = await loadFloorplanFile(floorId, planId).catch(() => null);
       imageUrl = stored?.dataUrl ?? null;
-      if (imageUrl && isFacilioApiConfigured) {
-        showToastVia(dispatch, 'Showing a locally cached floor plan — refresh from Facilio failed', { variant: 'warning' });
-      }
+    } else if (!imageUrl) {
+      // eslint-disable-next-line no-console
+      console.warn(`[floorplan] plan image fetch failed for ${floorId}:${planId}`);
+      showToastVia(dispatch, "Couldn't load this floor plan from Facilio", { variant: 'error' });
     }
     if (imageUrl) dispatch({ type: 'SET_FLOOR_IMAGE', floorId, planId, dataUrl: imageUrl });
     if (isFacilioApiConfigured) {
@@ -1233,6 +1239,8 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       formId?: number;
       /** Org-form fields the app doesn't model natively (rendered generically). */
       extras?: Record<string, unknown>;
+      /** The form's own resource lookup field name (from its response) — filled on create too. */
+      resourceField?: string;
     }): Promise<boolean> => {
       const unit = unitById(state, form.unitId);
       if (!unit || form.end <= form.start) {
@@ -1286,6 +1294,7 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
             externalAttendees: form.externalAttendees,
             formId: form.formId,
             extras: form.extras,
+            resourceField: form.resourceField,
           });
           if (!res.ok) failureReason = res.reason ?? 'unknown error';
         } catch (err) {

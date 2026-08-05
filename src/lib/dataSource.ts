@@ -12,9 +12,12 @@ import type { Assignments, Booking, Building, ClientContact, Floor, Site, Unit }
 // Connected mode: NEVER fall back to the local seed by default — the mock portfolio (HQ
 // Berlin/München/Amsterdam) standing in for a failed org fetch reads as real data (reported).
 // Local/dev keeps the seed, and an explicit persisted setting can still re-enable it.
+// CUSTOMER ACCOUNTS SHOW NO LOCAL DATA (hard rule): with a real backend configured, local
+// tiers/caches are never served — an API error surfaces as an error, never as stale local data.
 let allowLocalFallback = !isFacilioApiConfigured;
 export function setAllowLocalFallback(value: boolean): void {
-  allowLocalFallback = value;
+  // Ignored when a real backend is configured — the setting can't re-enable local data there.
+  allowLocalFallback = isFacilioApiConfigured ? false : value;
 }
 
 // Local dev data lives as editable JSON in src/data/*.json — change a file and the app uses it

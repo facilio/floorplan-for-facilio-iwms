@@ -886,8 +886,40 @@ export async function getFloorPlanSummary(floorId: string): Promise<FloorPlanTyp
  * connected-app mode and dev mode, and matches the pattern already used everywhere else in this
  * file (`uploadFloorplanFile`, `syncMarkersForIndoorFloorPlan`, `ensureRealSpaceRecord`).
  */
+/**
+ * SESSION-ONLY plan image cache (requested: session, never localStorage) — an in-memory map of
+ * successful fetches, gone on reload. Nothing is persisted, so a customer account never shows a
+ * stale plan from a previous visit.
+ */
+const sessionImageCache = new Map<string, string>();
+
+/**
+ * Plan image with ONE automatic retry (requested): a transient failure used to leave markers
+ * drawn over a blank sheet, so a miss re-resolves the floor's plan records from scratch (the
+ * per-floor detail cache is dropped first) and fetches the file again before giving up.
+ */
 export async function fetchFloorplanImage(floorId: string, planId: PlanId): Promise<string | null> {
   if (!isFacilioApiConfigured) return null;
+  const key = `${floorId}:${planId}`;
+  const cached = sessionImageCache.get(key);
+  if (cached) return cached;
+  const first = await fetchFloorplanImageOnce(floorId, planId).catch(() => null);
+  if (first) {
+    sessionImageCache.set(key, first);
+    return first;
+  }
+  floorplanDetailsCache.delete(floorId);
+  const retry = await fetchFloorplanImageOnce(floorId, planId).catch(() => null);
+  if (retry) {
+    sessionImageCache.set(key, retry);
+    // eslint-disable-next-line no-console
+    console.info(`[facilio-api] plan image for ${key} loaded on retry`);
+    return retry;
+  }
+  return null;
+}
+
+async function fetchFloorplanImageOnce(floorId: string, planId: PlanId): Promise<string | null> {
   const byType = await getFloorplanDetailsByType(floorId);
   const summary = byType[String(FLOOR_PLAN_TYPE[planId])];
   if (!summary?.id) return null;
@@ -1259,6 +1291,7 @@ export async function uploadFloorplanFile(
     // cached at the last image fetch).
     floorplanDetailsCache.delete(floorId);
     viewerDataCache.clear();
+    sessionImageCache.delete(`${floorId}:${planId}`);
     const cadKey = `${floorId}:${planId}`;
     if (/\.(dwg|dxf)$/i.test(file.name)) cadSourceFileCache.set(cadKey, file);
     else cadSourceFileCache.delete(cadKey);
@@ -3262,6 +3295,13 @@ export interface RealBookingInput {
   formId?: number;
   /** Values of org-form fields this app doesn't model natively — passed through verbatim. */
   extras?: Record<string, unknown>;
+  /**
+   * The RESOURCE lookup field name taken from the org form's own response (e.g.
+   * `meeting_rooms_spacebooking`, lookupModule `rooms`). Sent in addition to the module's
+   * standard lookup so a form whose resource field is custom-named still gets it filled —
+   * nothing about the field is hardcoded app-side.
+   */
+  resourceField?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -3314,6 +3354,31 @@ export interface BookingFormSummary {
   name: string;
   displayName: string;
   hideInList?: boolean | null;
+}
+
+/**
+ * EVERY form on the module that belongs to a unit type — the header's form dropdown lists these
+ * (booking-enabled only: `hideInList` forms are excluded). Matching is on the LINK NAME, same
+ * keys as pickDefaultBookingForm: desks -> deskbooking-ish names, rooms/spaces -> spacebooking.
+ * A form that matches no type keeps showing for its own type only when nothing else claims it.
+ */
+export function bookingFormsForType(forms: BookingFormSummary[], module: 'space' | 'facility', unitType: UnitType): BookingFormSummary[] {
+  const moduleName = module === 'space' ? 'spacebooking' : 'facilitybooking';
+  const prefs = FORM_NAME_PREFERENCE[moduleName];
+  const patterns = [...(prefs[unitType] ?? []), ...(prefs.default ?? [])];
+  const listable = forms.filter((f) => !f.hideInList);
+  const notForType: Partial<Record<UnitType, RegExp>> = {
+    room: /desk|parking|hot/i,
+    workstation: /space|room|parking/i,
+    parking: /desk|space|room|hot/i,
+    locker: /desk|space|room|parking|hot/i,
+  };
+  const avoid = notForType[unitType];
+  const matched = listable.filter((f) => patterns.some((re) => re.test(f.name ?? '')));
+  if (matched.length) return matched;
+  // Nothing matched this type's link-name patterns: offer the forms that at least aren't
+  // another type's (same guard pickDefaultBookingForm uses for its last resort).
+  return avoid ? listable.filter((f) => !avoid.test(f.name ?? '')) : listable;
 }
 
 /** The module's default form for a unit type — what the modal auto-selects before any switching. */
@@ -3478,6 +3543,9 @@ export async function createRealBooking(unit: Unit, dateISO: string, start: numb
       // spacebooking specifically, included since it's a plausible low-risk match.
       ...(input.formId ? { formId: input.formId, actionFormId: input.formId } : {}),
       [lookupField]: { id: ref.recordId },
+      // The form's OWN resource lookup (read from its field metadata each fetch) — filled with
+      // the same record so a required custom-named lookup passes the backend's form rules.
+      ...(input.resourceField && input.resourceField !== lookupField ? { [input.resourceField]: { id: ref.recordId } } : {}),
       parentModuleId,
       bookingStartTime,
       bookingEndTime: epochAtInTz(dateISO, end, tz),

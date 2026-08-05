@@ -5,7 +5,7 @@ import { isBookable, unitById } from '../../state/selectors';
 import { fmtTime } from '../../lib/geometry';
 import { epochAtInTz, orgNow, orgTimezone, wallClockInTz } from '../../lib/orgTime';
 import { isFacilioApiConfigured } from '../../lib/facilioApi';
-import { fetchBookingFormById, fetchBookingFormList, fetchOrgBookableResources, pickDefaultBookingForm } from '../../lib/facilioApiDataSource';
+import { bookingFormsForType, fetchBookingFormById, fetchBookingFormList, fetchOrgBookableResources, pickDefaultBookingForm } from '../../lib/facilioApiDataSource';
 import type { BookingFormFieldMeta, BookingFormMeta, BookingFormSummary } from '../../lib/facilioApiDataSource';
 import type { ClientContact, Unit, UnitType } from '../../lib/types';
 import { Modal, ModalFooter, ModalHeader } from '../primitives/Modal';
@@ -36,7 +36,26 @@ const FACILITY_FORM_NAME: Record<UnitType, string> = {
 /** Org-form fields the modal maps onto its own controls; everything else renders generically. */
 const KNOWN_FIELDS = new Set(['name', 'description', 'host', 'reservedBy', 'noOfAttendees', 'bookingStartTime', 'bookingEndTime', 'internalAttendees', 'externalAttendees']);
 /** Lookup targets that mean "the booked resource" — pre-filled by the map selection, shown read-only. */
-const RESOURCE_LOOKUPS = new Set(['desks', 'space', 'basespace', 'parkingstall', 'facility', 'parkinglot']);
+/**
+ * The form response tells us what a lookup points at (`field.lookupModule.name`), so resource
+ * fields are identified STRUCTURALLY from that — never from hardcoded field names. The org's room
+ * picker arrives as `meeting_rooms_spacebooking` with lookupModule `rooms`; only this map needs to
+ * know which unit type a lookup module represents.
+ */
+function baseFieldName(name: string): string {
+  return name.toLowerCase().replace(/_(space|facility)booking$/, '');
+}
+
+const RESOURCE_LOOKUP_TYPE: Record<string, UnitType> = {
+  desks: 'workstation',
+  desk: 'workstation',
+  rooms: 'room',
+  space: 'room',
+  basespace: 'room',
+  parkingstall: 'parking',
+  parkinglot: 'parking',
+  lockers: 'locker',
+};
 const PEOPLE_LOOKUPS = new Set(['people', 'employee', 'clientcontact', 'users']);
 
 export function BookingModal() {
@@ -67,10 +86,16 @@ function BookingFormInner() {
   }, []);
   const unitPool = useMemo(() => {
     const ids = new Set(state.units.map((u) => u.id));
-    const pool = [...state.units, ...orgUnits.filter((u) => !ids.has(u.id))];
+    // FLOORPLAN VIEW scopes the lookup to the floor being viewed (requested): booking from a plan
+    // means booking something ON that plan, so org-wide records are left out there. The BOOKINGS
+    // calendar stays org-wide (its whole point is booking anything, incl. unplaced records).
+    const onFloorplan = state.activeView === 'map';
+    const pool = onFloorplan
+      ? [...state.units, ...orgUnits.filter((u) => !ids.has(u.id) && u.floor === state.floorId)]
+      : [...state.units, ...orgUnits.filter((u) => !ids.has(u.id))];
     if (snap && !pool.some((u) => u.id === snap.id)) pool.push(snap);
     return pool;
-  }, [state.units, orgUnits, snap]);
+  }, [state.units, orgUnits, snap, state.activeView, state.floorId]);
   const unit = unitById(state, resourceId) ?? unitPool.find((u) => u.id === resourceId) ?? unitById(state, target.unitId) ?? snap ?? null;
   // The FORM SHOWN follows the type switch itself (both pills always render in All spaces —
   // requested), independent of whether a resource of that type is picked/available yet.
@@ -132,10 +157,29 @@ function BookingFormInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Forms the header offers for what's being booked — every booking-enabled form matching this
+  // type's link-name key (deskbooking for desks, spacebooking for rooms/spaces).
+  const formsForCurrentType = useMemo(
+    () => (unit ? bookingFormsForType(formList, module, effType) : []),
+    [formList, module, effType, unit]
+  );
+
   // The All-spaces switch flips the resource TYPE — re-pick that type's own form (by link
   // name) from the already-fetched list.
   useEffect(() => {
     if (!formList.length || !unit) return;
+    // A type with exactly ONE form auto-selects it; with SEVERAL the user picks from the header
+    // dropdown (keep an already-valid choice, else clear so nothing is silently preselected).
+    if (formsForCurrentType.length === 1) {
+      if (formsForCurrentType[0].id !== formId) setFormId(formsForCurrentType[0].id);
+      return;
+    }
+    if (formsForCurrentType.length > 1) {
+      if (formId != null && formsForCurrentType.some((f) => f.id === formId)) return;
+      const def = target.allowTypeSwitch ? null : pickDefaultBookingForm(formsForCurrentType, module, effType);
+      setFormId(def ? def.id : null);
+      return;
+    }
     const def = pickDefaultBookingForm(formList, module, effType);
     if (def && def.id !== formId) setFormId(def.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -143,7 +187,13 @@ function BookingFormInner() {
 
   // Step 2: (re)load the selected form's fields whenever the chosen form changes.
   useEffect(() => {
-    if (formId == null) return;
+    if (formId == null) {
+      // Nothing chosen yet (All-spaces with several forms): drop any previously loaded form so
+      // the body can't show the last form's fields under a blank picker.
+      setFormMeta(null);
+      setFormLoading(false);
+      return;
+    }
     let alive = true;
     setFormLoading(true);
     fetchBookingFormById(module, formId).then((meta) => {
@@ -160,6 +210,18 @@ function BookingFormInner() {
   if (!unit) return null;
 
   const isFacility = module === 'facility';
+
+  /**
+   * The RESOURCE field on the currently loaded form, straight from its response metadata — used
+   * both to render the lookup and to fill it in the create payload. Nothing name-hardcoded.
+   */
+  const formResourceField = useMemo(() => {
+    if (!formMeta || !unit) return null;
+    const hit = formMeta.fields.find((f) => isResourceField(f));
+    return hit?.name ?? null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formMeta, unit?.type, isFacility]);
+
   const isRoom = effType === 'room';
   const resourceFieldLabel = isFacility ? 'Facility' : SPACE_RESOURCE_LABEL[effType];
   const fallbackFormName = isFacility ? FACILITY_FORM_NAME[unit.type] : SPACE_FORM_NAME[unit.type];
@@ -186,9 +248,10 @@ function BookingFormInner() {
 
   const contactOptions = contacts.map((c) => ({ value: c.id, label: c.name, sublabel: c.client }));
 
-  /** Any resource-family field (desk/space/parking/facility lookups), regardless of unit type. */
+  /** Any resource-family field, read from the form's own lookup metadata. */
   function isResourceFamilyField(f: BookingFormFieldMeta): boolean {
-    return (!!f.lookupModule && RESOURCE_LOOKUPS.has(f.lookupModule.toLowerCase())) || ['desk', 'space', 'parking', 'facility', 'location'].includes(f.name.toLowerCase());
+    const lm = (f.lookupModule ?? '').toLowerCase();
+    return lm === 'facility' || lm in RESOURCE_LOOKUP_TYPE;
   }
 
   /**
@@ -198,17 +261,19 @@ function BookingFormInner() {
    */
   function isResourceField(f: BookingFormFieldMeta): boolean {
     const lm = (f.lookupModule ?? '').toLowerCase();
-    const nm = f.name.toLowerCase();
-    if (isFacility) return lm === 'facility' || nm === 'facility';
+    const nm = baseFieldName(f.name);
+    if (isFacility) return lm === 'facility';
+    // The lookup's own target module decides which unit type it books — read per form fetch.
+    if (lm in RESOURCE_LOOKUP_TYPE) return RESOURCE_LOOKUP_TYPE[lm] === unit!.type;
     switch (unit!.type) {
       case 'room':
-        return ['space', 'basespace'].includes(lm) || ['space', 'location'].includes(nm);
+        return ['space', 'location'].includes(nm);
       case 'workstation':
-        return lm === 'desks' || nm === 'desk';
+        return nm === 'desk';
       case 'parking':
-        return ['parkingstall', 'parkinglot'].includes(lm) || nm === 'parking';
+        return nm === 'parking';
       case 'locker':
-        return lm === 'lockers' || nm === 'locker';
+        return nm === 'locker';
       default:
         return isResourceFamilyField(f);
     }
@@ -337,6 +402,8 @@ function BookingFormInner() {
       externalAttendees,
       formId: formMeta?.id,
       extras: extraValues,
+      // The form's own resource lookup name (from its response) so the create fills it too.
+      resourceField: formResourceField ?? undefined,
     });
     setSubmitting(false);
     if (ok) actions.closeBookingForm();
@@ -479,6 +546,19 @@ function BookingFormInner() {
         if (flags.time) return null;
         flags.time = true;
         return timeWindow;
+      default:
+        break;
+    }
+    // The org form's OWN start/end time inputs are always replaced by this app's hardcoded window
+    // controls (requested): desks get date + start/end within a 7-day window, rooms get same-day
+    // 2h slots. Any DATETIME field on a booking form is part of that window, so it collapses into
+    // the single `timeWindow` block instead of rendering a raw datetime input.
+    if (/DATE_?TIME/i.test(f.type)) {
+      if (flags.time) return null;
+      flags.time = true;
+      return timeWindow;
+    }
+    switch (f.name) {
       case 'internalAttendees':
         return (
           <Field key={f.name} label={f.label || 'Internal Attendees'} required={f.required}>
@@ -520,6 +600,14 @@ function BookingFormInner() {
         </Field>
       );
     }
+    // A LOOKUP-typed field the app couldn't resolve must NEVER become a free-text box (typing a
+    // label into a lookup writes garbage) — it's skipped, with one console line naming it so an
+    // unrecognized org lookup can be mapped properly.
+    if (/LOOKUP/i.test(f.type)) {
+      // eslint-disable-next-line no-console
+      console.info(`[booking-form] unmapped lookup field skipped: ${f.name} (type ${f.type}, module ${f.lookupModule ?? '?'})`);
+      return null;
+    }
     // Generic fallback by display type — value travels in `extras`.
     const set = (v: string) => setExtras((x) => ({ ...x, [f.name]: v }));
     const val = extras[f.name] ?? '';
@@ -558,11 +646,25 @@ function BookingFormInner() {
       <ModalHeader
         title={isFacility ? 'Booking' : 'Space Booking'}
         subtitle={
-          // The form NAME identifies what the user is filling; the raw formId is an internal
-          // detail (it still travels on the create payload) and is deliberately not shown.
-          <span style={{ padding: '3px 10px', borderRadius: 6, background: 'var(--ink-050)', border: '1px solid var(--ink-200)', fontSize: 12, color: 'var(--ink-700)' }}>
-            {formMeta ? formMeta.displayName : fallbackFormName}
-          </span>
+          // API-DRIVEN form picker (requested), keyed by what's being booked: desks resolve the
+          // desk form, rooms/single spaces the space form, and All-spaces offers both via the
+          // type switch below. ONE form -> static display-name label, no chevron. SEVERAL ->
+          // a real Select of their DISPLAY names; picking one swaps the body and the submit id.
+          // The raw formId stays internal (it still travels on the create payload).
+          formsForCurrentType.length > 1 ? (
+            <Select
+              value={formId != null ? String(formId) : ''}
+              options={formsForCurrentType.map((f) => ({ value: String(f.id), label: f.displayName || f.name }))}
+              placeholder="Choose a form"
+              onChange={(v) => setFormId(Number(v))}
+              size="sm"
+              aria-label="Booking form"
+            />
+          ) : (
+            <span style={{ padding: '3px 10px', borderRadius: 6, background: 'var(--ink-050)', border: '1px solid var(--ink-200)', fontSize: 12, color: 'var(--ink-700)' }}>
+              {formMeta ? formMeta.displayName : formsForCurrentType[0]?.displayName || fallbackFormName}
+            </span>
+          )
         }
         onClose={actions.closeBookingForm}
       />
@@ -603,7 +705,11 @@ function BookingFormInner() {
             })}
           </div>
         )}
-        {formLoading ? (
+        {formsForCurrentType.length > 1 && formId == null ? (
+          <div style={{ padding: '28px 0', textAlign: 'center', font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--ink-500)' }}>
+            Choose a booking form above to continue.
+          </div>
+        ) : formLoading ? (
           <div style={{ padding: '28px 0', textAlign: 'center', font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--ink-500)' }}>
             Loading the org's booking form…
           </div>

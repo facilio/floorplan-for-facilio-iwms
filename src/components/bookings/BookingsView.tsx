@@ -35,6 +35,8 @@ const PX_PER_HOUR = 52;
 const PX_PER_MIN = PX_PER_HOUR / 60;
 const GRID_HEIGHT = ((DAY_END - DAY_START) / 60) * PX_PER_HOUR;
 const DAY_ABBR = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+/** Inline filter chips shown before collapsing the rest into a +N pill. */
+const CHIP_LIMIT = 2;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 type CalView = 'day' | 'week' | 'month';
@@ -940,19 +942,68 @@ function PortfolioFilter({ applied, onApply }: { applied: { id: string; name: st
         {applied.length > 0 && <span className={styles.myBadge}>{applied.length}</span>}
       </button>
       {applied.length > 0 && (
+        // Only the first TWO active filters render inline (each ellipsized) — twelve chips
+        // overflowed the header row. The rest collapse into a +N pill that opens the panel,
+        // where every active filter can be removed individually. The Filter button's badge
+        // keeps showing the TRUE total.
         <div className={styles.filterChips}>
-          {applied.map((f) => (
-            <span key={f.id} className={styles.filterChip}>
-              {f.name}
+          {applied.slice(0, CHIP_LIMIT).map((f) => (
+            <span key={f.id} className={styles.filterChip} title={f.name}>
+              <span className={styles.chipLabel}>{f.name}</span>
               <button className={styles.chipX} title="Remove" onClick={() => onApply(applied.filter((x) => x.id !== f.id))}>
                 ×
               </button>
             </span>
           ))}
+          {applied.length > CHIP_LIMIT && (
+            <button
+              type="button"
+              className={styles.chipMore}
+              title={`${applied.length - CHIP_LIMIT} more — open the filter to manage them`}
+              onClick={openPopover}
+            >
+              +{applied.length - CHIP_LIMIT}
+            </button>
+          )}
         </div>
       )}
       {open && (
         <div className={styles.filterPop}>
+          {/* Active filters, all of them, each individually removable — the chip bar only shows
+              the first two, so this list is where the rest get managed. Edits go through the
+              SAME draft state the tree writes, so Apply/badge/results stay in sync. */}
+          {draft.size > 0 && (
+            <div className={styles.activeBox}>
+              <div className={styles.activeHead}>
+                <span>
+                  Active filters <b>{draft.size}</b>
+                </span>
+                <button type="button" className={styles.clearAll} onClick={() => setDraft(new Map())}>
+                  Clear all
+                </button>
+              </div>
+              <div className={styles.activeList}>
+                {Array.from(draft, ([id, name]) => (
+                  <span key={id} className={styles.filterChip} title={name}>
+                    <span className={styles.chipLabel}>{name}</span>
+                    <button
+                      className={styles.chipX}
+                      title="Remove"
+                      onClick={() =>
+                        setDraft((d) => {
+                          const n = new Map(d);
+                          n.delete(id);
+                          return n;
+                        })
+                      }
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
           <input className={styles.filterSearch} placeholder="Search sites, buildings, floors…" value={search} onChange={(e) => setSearch(e.target.value)} autoFocus />
           <div className={styles.filterTree}>
             {state.portfolio.filter(siteVisible).map((site) => {

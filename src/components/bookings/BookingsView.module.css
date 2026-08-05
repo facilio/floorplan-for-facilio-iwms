@@ -823,3 +823,59 @@
   cursor: pointer;
   padding: 0;
 }
+
+/* Chip label ellipsizes so a long site·floor name can't blow out the header row. */
+.chipLabel {
+  max-width: 132px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* "+N" overflow pill — not individually removable; opens the filter panel. */
+.chipMore {
+  border: 1px solid var(--ink-200);
+  background: var(--ink-050);
+  color: var(--ink-700);
+  border-radius: 999px;
+  padding: 3px 9px;
+  font: 600 11.5px var(--font-sans);
+  cursor: pointer;
+}
+.chipMore:hover {
+  background: var(--ink-100);
+  color: var(--ink-900);
+}
+/* Active-filter manager inside the popover. */
+.activeBox {
+  border: 1px solid var(--ink-100);
+  border-radius: 8px;
+  padding: 7px 8px 8px;
+  margin-bottom: 8px;
+  background: var(--ink-025, #fafbfc);
+}
+.activeHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font: 500 11.5px var(--font-sans);
+  color: var(--ink-600);
+  margin-bottom: 6px;
+}
+.clearAll {
+  border: none;
+  background: none;
+  color: var(--blue-600);
+  font: 600 11.5px var(--font-sans);
+  cursor: pointer;
+  padding: 0;
+}
+.clearAll:hover {
+  color: #b61919;
+}
+.activeList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  max-height: 92px;
+  overflow-y: auto;
+}
