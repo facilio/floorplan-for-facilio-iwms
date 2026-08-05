@@ -38,10 +38,17 @@ export function Tooltip() {
         ? 'Desk'
         : TYPE_META[unit.type].name;
   const primary = unit.label;
-  const secondaryLabel = isAmenity ? 'Details' : unit.secondary ? 'Seat type' : 'Type';
+  // ROOMS show their ROOM TYPE here (requested) — "Seat type: Room" was both wrong for a room and
+  // a restatement of the eyebrow above it. Desks keep seat type; everything else keeps "Type".
+  const isRoomUnit = unit.type === 'room';
+  const secondaryLabel = isAmenity ? 'Details' : isRoomUnit ? 'Room type' : unit.secondary ? 'Seat type' : 'Type';
   const secondary = isAmenity
     ? unit.secondary || (unit.markerKind || unit.icon ? markerName : 'Marker')
-    : unit.secondary || [TYPE_META[unit.type].name, unit.room].filter(Boolean).join(' · ');
+    : isRoomUnit
+      ? unit.roomType || unit.secondary || ''
+      : unit.secondary || [TYPE_META[unit.type].name, unit.room].filter(Boolean).join(' · ');
+  /** The record summary is still loading — show a shimmer rather than a value that will change. */
+  const detailLoading = state.unitDetailLoading === unit.id;
 
   const bookable = isBookable(unit);
   const assignable = isAssignable(unit);
@@ -65,10 +72,14 @@ export function Tooltip() {
           </svg>
         </button>
       </div>
-      <div className={styles.section}>
-        <div className={styles.eyebrow}>{secondaryLabel}</div>
-        <div className={styles.value}>{secondary}</div>
-      </div>
+      {/* Hidden rather than showing an em dash when the record carries no type (a room whose
+          roomType isn't set) — and a shimmer while the summary that would fill it is in flight. */}
+      {(secondary || detailLoading) && (
+        <div className={styles.section}>
+          <div className={styles.eyebrow}>{secondaryLabel}</div>
+          {!secondary && detailLoading ? <div className={styles.valueSkeleton} /> : <div className={styles.value}>{secondary}</div>}
+        </div>
+      )}
       {(unit.type === 'workstation' || isAmenity) && unit.room && (
         <div className={styles.section}>
           <div className={styles.eyebrow}>Room</div>
@@ -81,17 +92,17 @@ export function Tooltip() {
           <div className={styles.value}>{unit.department}</div>
         </div>
       )}
-      {unit.type === 'room' && unit.roomType && (
-        <div className={styles.section}>
-          <div className={styles.eyebrow}>Room type</div>
-          <div className={styles.value}>{unit.roomType}</div>
-        </div>
-      )}
-      {/* WHO holds the room, right in the popup (requested) — never the raw contact id. */}
+      {/* WHO holds the room, right in the popup (requested) — never the raw contact id. While the
+          record summary is still resolving the name, a SHIMMER stands in: showing "Occupied" and
+          then swapping in the person a moment later read as a glitch. */}
       {unit.type === 'room' && contactId && (
         <div className={styles.section}>
           <div className={styles.eyebrow}>Assigned to</div>
-          <div className={styles.value}>{contactName(state, contactId) || 'Occupied'}</div>
+          {detailLoading && !contactName(state, contactId) ? (
+            <div className={styles.valueSkeleton} />
+          ) : (
+            <div className={styles.value}>{contactName(state, contactId) || 'Occupied'}</div>
+          )}
         </div>
       )}
 

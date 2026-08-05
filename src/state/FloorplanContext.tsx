@@ -1597,13 +1597,20 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
     const contactId = state.assignments[selId];
     if (!contactId || state.clientContacts.some((c) => c.id === contactId)) return;
     let cancelled = false;
+    // Flagged WHILE IN FLIGHT so previews show a loader instead of printing a generic "Occupied"
+    // and swapping in the real person a moment later (reported as a glitch on clicking a desk).
+    dispatch({ type: 'SET_UNIT_DETAIL_LOADING', unitId: selId });
     fetchUnitAssigneeFromSummary(unit)
       .then((c) => {
         if (!cancelled && c) dispatch({ type: 'UPSERT_CLIENT_CONTACT', contact: { id: c.id, name: c.name, client: '' } });
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) dispatch({ type: 'SET_UNIT_DETAIL_LOADING', unitId: null });
+      });
     return () => {
       cancelled = true;
+      dispatch({ type: 'SET_UNIT_DETAIL_LOADING', unitId: null });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.selected, state.mobSel]);

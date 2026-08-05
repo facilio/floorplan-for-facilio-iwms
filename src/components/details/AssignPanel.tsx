@@ -165,7 +165,11 @@ function AssignBody({ unitId }: { unitId: string }) {
   const { state, actions } = useFloorplan();
   const contactId = state.assignments[unitId];
   const reassigning = state.webReassign === unitId;
-  const name = contactId ? contactName(state, contactId) || 'Occupied' : null;
+  const resolved = contactId ? contactName(state, contactId) : null;
+  // While the record summary is still resolving the assignee's name, show a shimmer instead of
+  // "Occupied" — the swap a moment later read as a glitch (reported).
+  const loadingName = !!contactId && !resolved && state.unitDetailLoading === unitId;
+  const name = contactId ? resolved || 'Occupied' : null;
 
   // The CURRENT assignee stays visible in both states — reassigning must never hide who holds
   // the space right now. NO hardcoded Reassign button here (removed on request — it duplicated
@@ -173,8 +177,12 @@ function AssignBody({ unitId }: { unitId: string }) {
   // only a Cancel escape while the picker is open.
   const assignedRow = contactId ? (
     <div className={styles.assignedRow}>
-      <span className={styles.avatar}>{initials(name!)}</span>
-      <span className={styles.assignedName} title={name!}>{name}</span>
+      <span className={styles.avatar}>{loadingName ? '' : initials(name!)}</span>
+      {loadingName ? (
+        <span className={styles.nameSkeleton} />
+      ) : (
+        <span className={styles.assignedName} title={name!}>{name}</span>
+      )}
       {reassigning && (
         <div style={{ marginLeft: 'auto' }}>
           <Button variant="tertiary" onClick={() => actions.setWebReassign(null)}>Cancel</Button>

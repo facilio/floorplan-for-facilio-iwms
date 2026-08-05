@@ -141,6 +141,7 @@ export function buildInitialState(): AppState {
     myDesk: null,
     floorImages: {},
     floorsWithPlans: {},
+    unitDetailLoading: null,
     isPortalApp: false,
     portalPlanFloors: null,
     floorPlanTypes: {},
@@ -245,6 +246,7 @@ export type Action =
   | { type: 'SET_FLOOR_IMAGE'; floorId: string; planId: PlanId; dataUrl: string }
   | { type: 'SET_FLOOR_PLAN_TYPES'; floorId: string; types: AppState['floorPlanTypes'][string] }
   | { type: 'PORTAL_PLAN_FLOORS_LOADED'; isPortal: boolean; map: AppState['portalPlanFloors'] }
+  | { type: 'SET_UNIT_DETAIL_LOADING'; unitId: string | null }
   | { type: 'SET_FLOOR_IMAGE_LOADING'; value: boolean }
   | { type: 'SET_FLOOR_CUSTOMIZATION'; floorId: string; planId: PlanId; customization: FloorplanCustomization | null }
   | { type: 'SET_MY_DESK'; myDesk: AppState['myDesk'] }
@@ -668,6 +670,8 @@ export function reducer(state: AppState, action: Action): AppState {
     }
     case 'SET_FLOOR_PLAN_TYPES':
       return { ...state, floorPlanTypes: { ...state.floorPlanTypes, [action.floorId]: action.types } };
+    case 'SET_UNIT_DETAIL_LOADING':
+      return { ...state, unitDetailLoading: action.unitId };
     case 'PORTAL_PLAN_FLOORS_LOADED':
       return { ...state, isPortalApp: action.isPortal, portalPlanFloors: action.isPortal ? action.map : null };
     case 'SET_FLOOR_IMAGE_LOADING':

@@ -81,3 +81,23 @@
   border-left: 1px solid var(--ink-200);
   border-top: 1px solid var(--ink-200);
 }
+
+/* Loading placeholder for a value still being fetched (the record summary) — a shimmer instead of
+   a value that would visibly change a moment later. */
+.valueSkeleton {
+  display: inline-block;
+  height: 13px;
+  width: 116px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--ink-100) 25%, var(--ink-050) 37%, var(--ink-100) 63%);
+  background-size: 300% 100%;
+  animation: fp-value-shimmer 1.1s ease-in-out infinite;
+}
+@keyframes fp-value-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: 0 0;
+  }
+}

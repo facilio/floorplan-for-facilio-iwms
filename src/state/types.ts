@@ -165,6 +165,8 @@ export interface AppState {
    * so a floor stops reading "no plan" the moment a plan actually exists for it.
    */
   floorsWithPlans: Record<string, true>;
+  /** Unit id whose record summary is being fetched for the preview — drives a loader, not a flicker. */
+  unitDetailLoading: string | null;
   /** True when running inside a non-maintenance (portal) app — resolved from fetchCurrentApp. */
   isPortalApp: boolean;
   /**

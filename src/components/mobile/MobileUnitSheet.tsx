@@ -100,10 +100,19 @@ export function MobileUnitSheet() {
         )}
 
         {!showBookTab && assignable && contactId && !state.mobAssignEdit && (
-          <div className={styles.assignedRow}>
-            <span className={styles.avatar}>{initials(contactName(state, contactId) || 'Occupied')}</span>
-            <span className={styles.assignedName}>{contactName(state, contactId) || 'Occupied'}</span>
-          </div>
+          // Shimmer while the record summary resolves the assignee's name — "Occupied" then the
+          // real person a moment later read as a glitch (reported).
+          state.unitDetailLoading === unit.id && !contactName(state, contactId) ? (
+            <div className={styles.assignedRow}>
+              <span className={styles.avatar} />
+              <span className={styles.nameSkeleton} />
+            </div>
+          ) : (
+            <div className={styles.assignedRow}>
+              <span className={styles.avatar}>{initials(contactName(state, contactId) || 'Occupied')}</span>
+              <span className={styles.assignedName}>{contactName(state, contactId) || 'Occupied'}</span>
+            </div>
+          )
         )}
 
         {/* RECORD ACTIONS COME FROM THE API for every unit, exactly like the web panels
