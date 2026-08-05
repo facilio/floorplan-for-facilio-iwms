@@ -274,7 +274,14 @@ function windowForSelection(state: AppState, unitId: string | null): Partial<App
   if (!unitId) return {};
   const unit = state.units.find((u) => u.id === unitId);
   if (!unit || (unit.type !== 'room' && unit.type !== 'workstation' && unit.type !== 'parking')) return {};
+  // The resource's slot LENGTH (rooms 2h, desks/parking 30m) sets the picker STEP — it must never
+  // shorten a window the user already chose. Clicking desk after desk was collapsing a 2h window
+  // to 30 minutes (reported: "it automatically changes to 30 min"). Rooms are the one case that
+  // must land on a whole slot, and even then only when the current window isn't one already.
   const len = unit.type === 'room' ? 120 : 30;
+  if (unit.type !== 'room') return { slotGranularity: len };
+  const isWholeSlot = state.start % len === 0 && state.end - state.start === len;
+  if (isWholeSlot) return { slotGranularity: len };
   const start = Math.min(1440 - len, Math.floor(state.start / len) * len);
   return { slotGranularity: len, start, end: start + len };
 }

@@ -41,12 +41,22 @@ export function Tooltip() {
   // ROOMS show their ROOM TYPE here (requested) — "Seat type: Room" was both wrong for a room and
   // a restatement of the eyebrow above it. Desks keep seat type; everything else keeps "Type".
   const isRoomUnit = unit.type === 'room';
-  const secondaryLabel = isAmenity ? 'Details' : isRoomUnit ? 'Room type' : unit.secondary ? 'Seat type' : 'Type';
+  const secondaryLabel = isAmenity
+    ? 'Details'
+    : isRoomUnit
+      ? 'Room type'
+      : unit.secondary
+        ? 'Seat type'
+        : unit.room
+          ? 'Room'
+          : 'Type';
   const secondary = isAmenity
     ? unit.secondary || (unit.markerKind || unit.icon ? markerName : 'Marker')
     : isRoomUnit
       ? unit.roomType || unit.secondary || ''
-      : unit.secondary || [TYPE_META[unit.type].name, unit.room].filter(Boolean).join(' · ');
+      : // DESKS/lockers/stalls: seat type when the record has one, else the ROOM they sit in —
+        // never the bare type name, which just repeated the eyebrow above ("DESK / Type: Desk").
+        unit.secondary || unit.room || '';
   /** The record summary is still loading — show a shimmer rather than a value that will change. */
   const detailLoading = state.unitDetailLoading === unit.id;
 

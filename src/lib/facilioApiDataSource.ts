@@ -551,6 +551,20 @@ function markerFeatureToUnit(
   return unit;
 }
 
+/**
+ * The SPACE/ROOM a record sits in, from whichever lookup the org's module uses — desks carry it
+ * (their popup shows the room, not a redundant "Desk"), and the name is all the UI needs.
+ */
+function parentSpaceName(rec: Record<string, any> | undefined): string | undefined {
+  const cands = [rec?.space, rec?.room, rec?.basespace, rec?.parentSpace, rec?.spaceId, rec?.roomName];
+  for (const c of cands) {
+    if (typeof c === 'string' && c.trim()) return c.trim();
+    const n = c?.name;
+    if (typeof n === 'string' && n.trim()) return n.trim();
+  }
+  return undefined;
+}
+
 /** The rooms module's roomType — enum string, enum twin, or lookup — as a display string. */
 function roomTypeName(rec: Record<string, any> | undefined): string | undefined {
   const v = rec?.roomTypeEnum ?? rec?.roomType;
@@ -670,7 +684,7 @@ async function fetchFloorModuleRecords(floorId: string): Promise<Unit[]> {
           id: String(r.id),
           type,
           label: r.name ?? `#${r.id}`,
-          room: null,
+          room: parentSpaceName(r) ?? null,
           // Placeholder geometry — `unplaced` keeps it off the canvas until it's actually placed.
           geom: { kind: 'point', x: 0, y: 0 },
           floor: String(floorId),
@@ -678,7 +692,7 @@ async function fetchFloorModuleRecords(floorId: string): Promise<Unit[]> {
           unplaced: true,
           ...(type === 'workstation' && DESK_TYPE_BY_NUM[r.deskType] ? { deskType: DESK_TYPE_BY_NUM[r.deskType] } : {}),
           ...(type === 'room' && typeof r.reservable === 'boolean' ? { isReservable: r.reservable } : {}),
-          ...(type === 'room' && roomTypeName(r) ? { roomType: roomTypeName(r) } : {}),
+          ...(roomTypeName(r) ? { roomType: roomTypeName(r) } : {}),
           // Explicit flag first; else an assigned (clientcontact_rooms) non-reservable room is
           // implicitly assignment-type — it must never surface as bookable.
           ...(type === 'room' && typeof r.isassignable_rooms === 'boolean'
@@ -787,6 +801,9 @@ async function viewerDataUnitsForFloor(floorId: string): Promise<Unit[]> {
       if (typeof u.isReservable === 'boolean' && placed.isReservable === undefined) placed.isReservable = u.isReservable;
       if (typeof u.isAssignableRoom === 'boolean' && placed.isAssignableRoom === undefined) placed.isAssignableRoom = u.isAssignableRoom;
       if (u.roomType && !placed.roomType) placed.roomType = u.roomType;
+      // The SPACE/ROOM a desk sits in comes from its module record (the marker feed doesn't
+      // project it) — the desk popup shows that instead of a redundant "Desk".
+      if (u.room && !placed.room) placed.room = u.room;
     }
   }
 
@@ -2427,7 +2444,7 @@ export function fetchOrgBookableResources(): Promise<Unit[]> {
                   : type === 'room' && roomContactId(r) != null && r.reservable !== true
                     ? { isAssignableRoom: true }
                     : {}),
-                ...(type === 'room' && roomTypeName(r) ? { roomType: roomTypeName(r) } : {}),
+                ...(roomTypeName(r) ? { roomType: roomTypeName(r) } : {}),
               });
             }
             if ((list as any[]).length < 500) break;
