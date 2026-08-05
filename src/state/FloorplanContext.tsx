@@ -9,7 +9,7 @@ import type { AmenityIcon, Assignments, Booking, ClientContact, DefaultPlanView,
 import type { CadGroup } from '../lib/cadAnalyze';
 import type { Asset } from '../lib/assets';
 import { isFacilioApiConfigured } from '../lib/facilioApi';
-import { assignUnitReal, createRealBooking, fetchCurrentApp, fetchCurrentPeopleId, fetchFloorplanCustomization, fetchFloorplanImage, fetchMyDesk, fetchOrgTimezone, fetchPortalPlanFloors, fetchUnitAssigneeFromSummary, findFloorParents, floorExists, findUnitIdForDeskRecord, getAnyFloor, getFloorPlanSummary, patchUnitContact, resolveHardcodedRolePerms, resolveModePermsForCurrentUser, saveFloorplanDefaultView, saveFloorplanMarkers, vacateUnitReal } from '../lib/facilioApiDataSource';
+import { assignUnitReal, createRealBooking, fetchCurrentApp, fetchCurrentPeopleId, fetchFloorplanCustomization, fetchFloorplanImageResult, fetchMyDesk, fetchOrgTimezone, fetchPortalPlanFloors, fetchUnitAssigneeFromSummary, findFloorParents, floorExists, findUnitIdForDeskRecord, getAnyFloor, getFloorPlanSummary, patchUnitContact, resolveHardcodedRolePerms, resolveModePermsForCurrentUser, saveFloorplanDefaultView, saveFloorplanMarkers, vacateUnitReal } from '../lib/facilioApiDataSource';
 import { listFloorplanFloorIds, loadFloorplanFile, persistFloorplanFile } from '../lib/floorplanFileStore';
 import { DEFAULT_PERMS_MODULE_NAME, loadEffectiveSettings, saveSettings, settingsFromState } from '../lib/settingsStore';
 import { floorFromLocation, pathForView, viewFromLocation, withFloorParam } from '../lib/routes';
@@ -194,7 +194,8 @@ async function loadFloorPlanTypesAndImage(dispatch: Dispatch<Action>, floorId: s
 
     // 2) Refresh from the source (connector/@facilio), and 3) cache the fetch back to the Vibe DB.
     if (isFacilioApiConfigured) {
-      const imageUrl = await fetchFloorplanImage(floorId, resolvedPlanId).catch(() => null);
+      const res = await fetchFloorplanImageResult(floorId, resolvedPlanId).catch(() => ({ dataUrl: null, reason: 'failed' as const }));
+      const imageUrl = res.dataUrl;
       if (imageUrl) {
         dispatch({ type: 'SET_FLOOR_IMAGE', floorId, planId: resolvedPlanId, dataUrl: imageUrl });
         if (useLocalCache) {
@@ -203,9 +204,9 @@ async function loadFloorPlanTypesAndImage(dispatch: Dispatch<Action>, floorId: s
             void persistFloorplanFile(floorId, resolvedPlanId, { dataUrl: storable }).catch(() => {});
           }
         }
-      } else {
-        // No image from Facilio: SHOW THE ERROR (requested) instead of falling back to any local
-        // copy — the canvas keeps its empty state, and this says why it's empty.
+      } else if (res.reason === 'failed') {
+        // A plan RECORD exists but reading it/its file broke — that's worth surfacing. A floor
+        // with NO plan at all is just an empty state and stays silent (requested).
         // eslint-disable-next-line no-console
         console.warn(`[floorplan] plan image fetch failed for ${floorId}:${resolvedPlanId}`);
         showToastVia(dispatch, "Couldn't load this floor plan from Facilio", { variant: 'error' });
@@ -226,14 +227,17 @@ async function loadFloorPlanTypesAndImage(dispatch: Dispatch<Action>, floorId: s
 async function ensureFloorplanImage(dispatch: Dispatch<Action>, floorId: string, planId: PlanId, allowLocalFallback: boolean) {
   dispatch({ type: 'SET_FLOOR_IMAGE_LOADING', value: true });
   try {
-    let imageUrl = isFacilioApiConfigured ? await fetchFloorplanImage(floorId, planId).catch(() => null) : null;
+    const res = isFacilioApiConfigured
+      ? await fetchFloorplanImageResult(floorId, planId).catch(() => ({ dataUrl: null, reason: 'failed' as const }))
+      : { dataUrl: null, reason: 'noPlan' as const };
+    let imageUrl = res.dataUrl;
     // Same hard rule as loadFloorPlanTypesAndImage: with a real backend there is NO local
-    // fallback — a failed fetch reports the error and leaves the empty state.
+    // fallback. Only a genuine FAILURE is reported — a floor without a plan stays silent.
     void allowLocalFallback;
     if (!imageUrl && !isFacilioApiConfigured) {
       const stored = await loadFloorplanFile(floorId, planId).catch(() => null);
       imageUrl = stored?.dataUrl ?? null;
-    } else if (!imageUrl) {
+    } else if (!imageUrl && res.reason === 'failed') {
       // eslint-disable-next-line no-console
       console.warn(`[floorplan] plan image fetch failed for ${floorId}:${planId}`);
       showToastVia(dispatch, "Couldn't load this floor plan from Facilio", { variant: 'error' });

@@ -899,39 +899,55 @@ const sessionImageCache = new Map<string, string>();
  * per-floor detail cache is dropped first) and fetches the file again before giving up.
  */
 export async function fetchFloorplanImage(floorId: string, planId: PlanId): Promise<string | null> {
-  if (!isFacilioApiConfigured) return null;
-  const key = `${floorId}:${planId}`;
-  const cached = sessionImageCache.get(key);
-  if (cached) return cached;
-  const first = await fetchFloorplanImageOnce(floorId, planId).catch(() => null);
-  if (first) {
-    sessionImageCache.set(key, first);
-    return first;
-  }
-  floorplanDetailsCache.delete(floorId);
-  const retry = await fetchFloorplanImageOnce(floorId, planId).catch(() => null);
-  if (retry) {
-    sessionImageCache.set(key, retry);
-    // eslint-disable-next-line no-console
-    console.info(`[facilio-api] plan image for ${key} loaded on retry`);
-    return retry;
-  }
-  return null;
+  return (await fetchFloorplanImageResult(floorId, planId)).dataUrl;
 }
 
-async function fetchFloorplanImageOnce(floorId: string, planId: PlanId): Promise<string | null> {
+/**
+ * Same fetch, but says WHY there's no image: `noPlan` means this floor+plan simply has no
+ * indoorfloorplan record (an empty state, NOT an error — no toast), while `failed` means a plan
+ * record exists and reading it/its file broke (worth surfacing). Callers use that to decide
+ * whether to show an error at all (requested).
+ */
+export async function fetchFloorplanImageResult(
+  floorId: string,
+  planId: PlanId
+): Promise<{ dataUrl: string | null; reason: 'ok' | 'noPlan' | 'failed' }> {
+  if (!isFacilioApiConfigured) return { dataUrl: null, reason: 'noPlan' };
+  const key = `${floorId}:${planId}`;
+  const cached = sessionImageCache.get(key);
+  if (cached) return { dataUrl: cached, reason: 'ok' };
+  const first = await fetchFloorplanImageOnce(floorId, planId).catch(() => null);
+  if (first?.dataUrl) {
+    sessionImageCache.set(key, first.dataUrl);
+    return { dataUrl: first.dataUrl, reason: 'ok' };
+  }
+  // No plan record for this floor+plan type: nothing to retry and nothing to report.
+  if (first && first.reason === 'noPlan') return { dataUrl: null, reason: 'noPlan' };
+  floorplanDetailsCache.delete(floorId);
+  const retry = await fetchFloorplanImageOnce(floorId, planId).catch(() => null);
+  if (retry?.dataUrl) {
+    sessionImageCache.set(key, retry.dataUrl);
+    // eslint-disable-next-line no-console
+    console.info(`[facilio-api] plan image for ${key} loaded on retry`);
+    return { dataUrl: retry.dataUrl, reason: 'ok' };
+  }
+  return { dataUrl: null, reason: retry?.reason === 'noPlan' ? 'noPlan' : 'failed' };
+}
+
+async function fetchFloorplanImageOnce(floorId: string, planId: PlanId): Promise<{ dataUrl: string | null; reason: 'ok' | 'noPlan' | 'failed' }> {
   const byType = await getFloorplanDetailsByType(floorId);
   const summary = byType[String(FLOOR_PLAN_TYPE[planId])];
-  if (!summary?.id) return null;
+  if (!summary?.id) return { dataUrl: null, reason: 'noPlan' };
 
   const recordRes = await facilioApi.fetchRecord<any>('indoorfloorplan', { id: summary.id });
-  if (recordRes.error || !recordRes.indoorfloorplan) return null;
+  if (recordRes.error || !recordRes.indoorfloorplan) return { dataUrl: null, reason: 'failed' };
   const fileId = recordRes.indoorfloorplan.fileId;
-  if (!isValidFileId(fileId)) return null;
+  // A plan record with NO file attached is an empty state ("upload a plan"), not a failure.
+  if (!isValidFileId(fileId)) return { dataUrl: null, reason: 'noPlan' };
 
   const preview = await fetchFilePreview(fileId, { original: true });
-  if (preview.dataUrl) return preview.dataUrl;
-  if (!preview.blob) return null;
+  if (preview.dataUrl) return { dataUrl: preview.dataUrl, reason: 'ok' };
+  if (!preview.blob) return { dataUrl: null, reason: 'failed' };
   // A CAD source plan keeps its ORIGINAL file bytes around (session cache) so Edit mode can offer
   // "Auto-map CAD units" on every visit — not only right after an upload. Analysis stays lazy
   // (running the CAD viewer is expensive); this only remembers the file.
@@ -940,7 +956,8 @@ async function fetchFloorplanImageOnce(floorId: string, planId: PlanId): Promise
     const name = `floorplan.${type.includes('dxf') ? 'dxf' : 'dwg'}`;
     cadSourceFileCache.set(`${floorId}:${planId}`, new File([preview.blob], name, { type }));
   }
-  return blobToRenderableDataUrl(preview.blob, preview.contentType);
+  const dataUrl = await blobToRenderableDataUrl(preview.blob, preview.contentType);
+  return { dataUrl, reason: dataUrl ? 'ok' : 'failed' };
 }
 
 /** Session cache of CAD source files per floor+plan — see fetchFloorplanImage. */
