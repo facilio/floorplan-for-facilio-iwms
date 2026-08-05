@@ -1619,17 +1619,18 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
           dispatch({ type: 'SET_TIME_RANGE', start, end: Math.min(1440, start + 60) });
         });
         // PORTALS hide floors with no indoorfloorplan and offer only the CONFIGURED plan types
-        // (requested — maintenance keeps everything so plans can be set up there). One org scan;
-        // fail-open (null map) never filters.
-        if (isFacilioApiConfigured) {
-          void fetchCurrentApp()
-            .then(async (app) => {
-              const isPortal = !!app?.linkName && app.linkName !== 'maintenance';
-              const map = isPortal ? await fetchPortalPlanFloors() : null;
-              dispatch({ type: 'PORTAL_PLAN_FLOORS_LOADED', isPortal, map });
-            })
-            .catch(() => {});
-        }
+        // (requested — maintenance keeps everything so plans can be set up there). One filtered
+        // floor query; fail-open (null scope) never filters. Started NOW, awaited below: the
+        // LANDING decision must respect the same scope — a portal must never default onto a
+        // floor its own picker doesn't list (reported).
+        const portalScopePromise = fetchCurrentApp()
+          .then(async (app) => {
+            const isPortal = !!app?.linkName && app.linkName !== 'maintenance';
+            const map = isPortal ? await fetchPortalPlanFloors() : null;
+            dispatch({ type: 'PORTAL_PLAN_FLOORS_LOADED', isPortal, map });
+            return map;
+          })
+          .catch(() => null);
         // "Who am I" comes from the SESSION, not a setting: the logged-in user's people id is
         // the id space assignments/bookings use (desks.clientcontact_desks holds it). Resolved
         // once here (cached — fetchMyDesk reuses it) and stamped as bookBy so "My bookings",
@@ -1652,18 +1653,26 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
           dispatch({ type: 'SET_MODE_PERMS', perms: resolved ? { ...defaults, ...resolved } : defaults, fromModule: !!resolved });
         })();
         myDesk = await fetchMyDesk().catch(() => null);
+        // In PORTALS every landing candidate must be a floor the picker actually lists (has an
+        // indoorfloorplan) — a deep link or my-desk floor outside the scope falls through to
+        // the next candidate, and the last resort comes FROM the scope. Null scope
+        // (maintenance / fail-open) gates nothing, exactly like the pickers.
+        const portalScope = await portalScopePromise;
+        const floorAllowed = (id: string | undefined | null): boolean => !!id && (!portalScope || !!portalScope.floors[id]);
         // A `?floor=` deep link WINS over the my-desk landing — but only when the floor
         // actually resolves; a dead id falls back (with a toast) instead of stranding the
         // user on an empty canvas.
         const urlFloor = floorFromLocation(window.location);
         // A dead ?floor= id falls back SILENTLY (no toast — removed on request) to the normal
         // my-desk/any-floor landing.
-        const deepLinkFloor = urlFloor && (await floorExists(urlFloor).catch(() => false)) ? urlFloor : null;
-        firstRealFloor = deepLinkFloor ?? myDesk?.floorId ?? (await getAnyFloor().catch(() => null))?.id;
+        const deepLinkFloor = urlFloor && floorAllowed(urlFloor) && (await floorExists(urlFloor).catch(() => false)) ? urlFloor : null;
+        const myDeskFloor = floorAllowed(myDesk?.floorId) ? myDesk?.floorId : undefined;
+        const fallbackFloor = portalScope ? Object.keys(portalScope.floors)[0] : (await getAnyFloor().catch(() => null))?.id;
+        firstRealFloor = deepLinkFloor ?? myDeskFloor ?? fallbackFloor;
         // One line that says WHERE the app decided to land and why — "first floorplan didn't
         // load" is only debuggable with this in the console.
         // eslint-disable-next-line no-console
-        console.info('[boot] landing decision', { peopleId, myDesk, firstRealFloor });
+        console.info('[boot] landing decision', { peopleId, myDesk, firstRealFloor, portalScopedFloors: portalScope ? Object.keys(portalScope.floors).length : null });
       }
       const floorId = firstRealFloor ?? floorFromLocation(window.location) ?? state.floorId;
       if (floorId !== state.floorId) dispatch({ type: 'SELECT_FLOOR_START', floorId });
