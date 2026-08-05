@@ -231,8 +231,10 @@ export function BookingsView() {
     // Today's already-started slots can't be booked — the backend bumps a past start to "now",
     // so the record would not match what was clicked.
     if (date === today) {
-      const nowD = new Date();
-      if (start < nowD.getHours() * 60 + nowD.getMinutes()) {
+      // The ORG clock decides what's past (nowMinutes reads it) — this used `new Date()`, the
+      // BROWSER clock, so a device running ahead of the facility rejected slots that were still
+      // upcoming there (reported).
+      if (start < nowMinutes()) {
         actions.showToast('That slot has already started — pick an upcoming one');
         return;
       }

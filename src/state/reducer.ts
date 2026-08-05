@@ -602,6 +602,9 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, slotGranularity: action.minutes, end: Math.min(1440, state.start + action.minutes) };
 
     case 'SHOW_TOAST': {
+      // DEDUPE identical messages: one slot click ran the guard through more than one handler and
+      // stacked the same warning three times (reported). Same text already on screen -> ignore.
+      if (state.toasts.some((t) => t.title === action.toast.title && t.description === action.toast.description)) return state;
       // Cap the stack at 3 (design rule) — oldest drops first.
       const next = [...state.toasts, action.toast];
       return { ...state, toasts: next.slice(Math.max(0, next.length - 3)) };
