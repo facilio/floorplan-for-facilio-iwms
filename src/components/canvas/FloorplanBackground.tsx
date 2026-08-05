@@ -28,6 +28,30 @@ const INLINE_MAX_ELEMENTS = 20000;
 const INLINE_PAINT_BUDGET_MS = 8;
 const RASTER_SCALE = 4;
 const RASTER_MAX_EDGE = 8192;
+/**
+ * MOBILE GPUs/browsers cap how large a bitmap can be — a texture edge (often 4096 on phones) and,
+ * on iOS, a total canvas AREA (~16.7 Mpx). A 4x raster of a 1492x1054 plan is 5968x4216 = 25 Mpx,
+ * which the device then downscales to fit — that's why the plan looked blurry on mobile while the
+ * same build was sharp on desktop (reported). Limits are read from the device, not assumed.
+ */
+const RASTER_MAX_AREA_MOBILE = 16.7e6;
+let cachedMaxTextureEdge: number | null = null;
+function maxTextureEdge(): number {
+  if (cachedMaxTextureEdge != null) return cachedMaxTextureEdge;
+  let edge = 4096; // conservative default when WebGL can't be queried
+  try {
+    const gl = document.createElement('canvas').getContext('webgl') as WebGLRenderingContext | null;
+    const v = gl?.getParameter(gl.MAX_TEXTURE_SIZE);
+    if (typeof v === 'number' && v > 0) edge = v;
+  } catch {
+    /* keep the default */
+  }
+  cachedMaxTextureEdge = edge;
+  return edge;
+}
+function isMobileLike(): boolean {
+  return typeof navigator !== 'undefined' && (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || window.innerWidth <= 820);
+}
 type SvgPlanResolution = { inline: string | null; raster: string | null };
 const svgPlanCache = new Map<string, SvgPlanResolution>();
 const svgPlanInFlight = new Map<string, Promise<SvgPlanResolution>>();
@@ -97,13 +121,26 @@ function rasterizeFromImage(img: HTMLImageElement): Promise<string | null> {
   try {
     const w = img.naturalWidth || IMG_W;
     const h = img.naturalHeight || IMG_H;
-    const k = Math.min(RASTER_SCALE, RASTER_MAX_EDGE / Math.max(w, h));
+    // Scale down to whatever THIS device can actually hold as one bitmap: the smaller of the
+    // fixed cap, the GPU's texture edge, and (on phones) the canvas-area cap. Without this the
+    // device silently downscaled an oversized bitmap and the plan rendered soft.
+    const edgeCap = Math.min(RASTER_MAX_EDGE, maxTextureEdge());
+    const areaCap = isMobileLike() ? RASTER_MAX_AREA_MOBILE : Infinity;
+    const k = Math.max(
+      1,
+      Math.min(RASTER_SCALE, edgeCap / Math.max(w, h), Number.isFinite(areaCap) ? Math.sqrt(areaCap / (w * h)) : Infinity)
+    );
     const canvas = document.createElement('canvas');
     canvas.width = Math.round(w * k);
     canvas.height = Math.round(h * k);
     const ctx = canvas.getContext('2d');
     if (!ctx) return Promise.resolve(null);
+    // Smooth downsampling when the source is bigger than the target.
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    // eslint-disable-next-line no-console
+    console.info(`[floorplan] plan raster ${canvas.width}x${canvas.height} (${k.toFixed(2)}x; edge cap ${edgeCap}, mobile=${isMobileLike()})`);
     return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png')).then((blob) => (blob ? URL.createObjectURL(blob) : null));
   } catch {
     return Promise.resolve(null);
@@ -138,13 +175,14 @@ async function resolveSvgPlan(url: string): Promise<SvgPlanResolution> {
         const t0 = performance.now();
         ctx.drawImage(img, 0, 0, w, h);
         const cost = performance.now() - t0;
-        if (cost <= INLINE_PAINT_BUDGET_MS) {
+        const budget = isMobileLike() ? INLINE_PAINT_BUDGET_MS * 2 : INLINE_PAINT_BUDGET_MS;
+        if (cost <= budget) {
           // eslint-disable-next-line no-console
           console.info(`[floorplan] SVG plan renders INLINE (paint probe ${cost.toFixed(1)}ms @${dpr}x)`);
           return { inline: sanitized, raster: null };
         }
         // eslint-disable-next-line no-console
-        console.info(`[floorplan] SVG plan too paint-heavy to inline (probe ${cost.toFixed(1)}ms @${dpr}x > ${INLINE_PAINT_BUDGET_MS}ms) — using ${RASTER_SCALE}x raster`);
+        console.info(`[floorplan] SVG plan too paint-heavy to inline (probe ${cost.toFixed(1)}ms @${dpr}x > ${budget}ms) — using a raster`);
       }
     } catch {
       /* probe failed — raster is the safe path */

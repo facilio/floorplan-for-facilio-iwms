@@ -4,6 +4,8 @@ import { useFloorplan } from '../../state/FloorplanContext';
 import { contactName, floorMeta } from '../../state/selectors';
 import { fmtTime } from '../../lib/geometry';
 import { dataSource } from '../../lib/dataSource';
+import { isFacilioApiConfigured } from '../../lib/facilioApi';
+import { fetchCurrentApp, fetchOrgBookingsForRange } from '../../lib/facilioApiDataSource';
 import { StateflowActions } from '../details/StateflowActions';
 import { TYPE_META } from '../../lib/types';
 import type { Booking, Unit } from '../../lib/types';
@@ -53,16 +55,52 @@ export function MobileQrCheckin({ unit, onClose }: { unit: Unit; onClose: () => 
   const [upcoming, setUpcoming] = useState<Booking[]>([]);
   const [refreshTick, setRefreshTick] = useState(0);
   const today = todayIso();
+  // CLIENT PORTAL: a scan shows only THIS user's bookings for the scanned space (requested) —
+  // scoped server-side by reservedBy, and applied to today's rows too (those come from shared
+  // floor state, which is org-wide). Maintenance keeps seeing every booking on the space.
+  const [isPortal, setIsPortal] = useState(false);
+  const [portalRows, setPortalRows] = useState<Booking[] | null>(null);
+  useEffect(() => {
+    let alive = true;
+    if (isFacilioApiConfigured) {
+      fetchCurrentApp()
+        .then((a) => alive && setIsPortal(!!a?.linkName && a.linkName !== 'maintenance'))
+        .catch(() => {});
+    }
+    return () => {
+      alive = false;
+    };
+  }, []);
+  useEffect(() => {
+    if (!isPortal || !isFacilioApiConfigured) {
+      setPortalRows(null);
+      return;
+    }
+    let alive = true;
+    fetchOrgBookingsForRange(today, addDaysIso(today, 7), { forCurrentUser: true })
+      .then((rows) => alive && setPortalRows(rows.filter((b) => b.unitId === unit.id && /^\d+$/.test(b.id))))
+      .catch(() => alive && setPortalRows([]));
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPortal, unit.id, today, refreshTick, state.bookingsNonce]);
 
   // REAL backend bookings only (numeric ids) — local-only rows have no record, no stateflow, and
   // per the strict rule they don't appear here at all.
-  const todayBookings = useMemo(
-    () => state.bookings.filter((b) => b.unitId === unit.id && b.date === today && /^\d+$/.test(b.id)).sort((a, b) => a.start - b.start),
-    [state.bookings, unit.id, today]
-  );
+  const todayBookings = useMemo(() => {
+    // Portals: the server-scoped rows ARE this user's, so they're the only source.
+    const source = isPortal && portalRows ? portalRows : state.bookings;
+    return source.filter((b) => b.unitId === unit.id && b.date === today && /^\d+$/.test(b.id)).sort((a, b) => a.start - b.start);
+  }, [state.bookings, portalRows, isPortal, unit.id, today]);
 
   // Upcoming: the next 7 days, fetched per-day through the composite (same path the calendar uses).
   useEffect(() => {
+    // Portals get their rows from the reservedBy-scoped range fetch above — no per-day fan-out.
+    if (isPortal) {
+      setUpcoming((portalRows ?? []).filter((b) => b.date > today));
+      return;
+    }
     let cancelled = false;
     const days = Array.from({ length: 7 }, (_, i) => addDaysIso(today, i + 1));
     Promise.all(days.map((d) => dataSource.getBookings(state.floorId, d).catch(() => [] as Booking[]))).then((results) => {
@@ -73,7 +111,7 @@ export function MobileQrCheckin({ unit, onClose }: { unit: Unit; onClose: () => 
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [unit.id, refreshTick]);
+  }, [unit.id, refreshTick, isPortal, portalRows, today]);
 
   /** Time-window status for the chip/note only — the record's REAL state comes from its stateflow pills. */
   function statusOf(b: Booking): Status {
