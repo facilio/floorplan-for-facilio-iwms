@@ -33,6 +33,8 @@ export function MobileUnitSheet() {
 
   const filtered = useMemo(() => {
     const q = contactQuery.trim().toLowerCase();
+    // Local narrowing of whatever the directory holds; the SERVER search (debounced, in
+    // FloorplanContext) tops it up with people outside the first page.
     if (!q) return state.clientContacts;
     return state.clientContacts.filter((c) => c.name.toLowerCase().includes(q) || c.client.toLowerCase().includes(q));
   }, [state.clientContacts, contactQuery]);
@@ -128,7 +130,12 @@ export function MobileUnitSheet() {
               className={styles.empSearch}
               placeholder="Search people or departments"
               value={contactQuery}
-              onChange={(e) => setContactQuery(e.target.value)}
+              // Mirrored into the SHARED contactSearch so the debounced SERVER search runs (the
+              // whole directory is no longer fetched up front).
+              onChange={(e) => {
+                setContactQuery(e.target.value);
+                actions.setContactSearch(e.target.value);
+              }}
             />
             <div className={styles.empList}>
               {shown.map((c) => (

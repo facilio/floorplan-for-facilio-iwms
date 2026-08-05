@@ -96,6 +96,8 @@ export interface AppState {
   calib: [number, number][];
   calibLen: string;
   contactSearch: string;
+  /** True while the SERVER-side people search for `contactSearch` is in flight. */
+  contactSearchLoading: boolean;
   dragContactId: string | null;
   dragOverId: string | null;
 

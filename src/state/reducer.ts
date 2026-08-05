@@ -94,6 +94,7 @@ export function buildInitialState(): AppState {
     calib: [],
     calibLen: '',
     contactSearch: '',
+    contactSearchLoading: false,
     dragContactId: null,
     dragOverId: null,
 
@@ -181,6 +182,8 @@ export type Action =
   | { type: 'SET_SPACE_SEARCH'; value: string }
   | { type: 'PORTFOLIO_LOADED'; portfolio: Site[]; clientContacts: AppState['clientContacts']; assets: AppState['assets'] }
   | { type: 'UPSERT_CLIENT_CONTACT'; contact: AppState['clientContacts'][number] }
+  | { type: 'UPSERT_CLIENT_CONTACTS'; contacts: AppState['clientContacts'] }
+  | { type: 'SET_CONTACT_SEARCH_LOADING'; value: boolean }
   | { type: 'SELECT_UNIT'; id: string | null }
   | { type: 'HIGHLIGHT_UNIT'; id: string | null }
   | { type: 'ADD_UNIT'; unit: Unit }
@@ -386,6 +389,17 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, portfolio: action.portfolio, clientContacts: action.clientContacts, assets: action.assets };
     case 'UPSERT_CLIENT_CONTACT':
       return { ...state, clientContacts: [...state.clientContacts.filter((c) => c.id !== action.contact.id), action.contact] };
+    case 'UPSERT_CLIENT_CONTACTS': {
+      // Server search results merge into the directory: incoming rows win, order is preserved, so
+      // a person found by searching stays available (and assignable) afterwards.
+      if (!action.contacts.length) return state;
+      const incoming = new Map(action.contacts.map((c) => [c.id, c]));
+      const kept = state.clientContacts.map((c) => incoming.get(c.id) ?? c);
+      const keptIds = new Set(kept.map((c) => c.id));
+      return { ...state, clientContacts: [...kept, ...action.contacts.filter((c) => !keptIds.has(c.id))] };
+    }
+    case 'SET_CONTACT_SEARCH_LOADING':
+      return { ...state, contactSearchLoading: action.value };
 
     case 'SELECT_UNIT':
       return {

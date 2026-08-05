@@ -9,7 +9,7 @@ import type { AmenityIcon, Assignments, Booking, ClientContact, DefaultPlanView,
 import type { CadGroup } from '../lib/cadAnalyze';
 import type { Asset } from '../lib/assets';
 import { isFacilioApiConfigured } from '../lib/facilioApi';
-import { assignUnitReal, createRealBooking, fetchCurrentApp, fetchCurrentPeopleId, fetchFloorplanCustomization, fetchFloorplanImageResult, fetchMyDesk, fetchOrgTimezone, fetchPortalPlanFloors, fetchUnitAssigneeFromSummary, findFloorParents, floorExists, findUnitIdForDeskRecord, getAnyFloor, getFloorPlanSummary, patchUnitContact, resolveHardcodedRolePerms, resolveModePermsForCurrentUser, saveFloorplanDefaultView, saveFloorplanMarkers, vacateUnitReal } from '../lib/facilioApiDataSource';
+import { assignUnitReal, createRealBooking, fetchCurrentApp, fetchCurrentPeopleId, fetchFloorplanCustomization, fetchFloorplanImageResult, fetchMyDesk, fetchOrgTimezone, fetchPortalPlanFloors, fetchUnitAssigneeFromSummary, findFloorParents, floorExists, findUnitIdForDeskRecord, getAnyFloor, getFloorPlanSummary, patchUnitContact, resolveHardcodedRolePerms, resolveModePermsForCurrentUser, saveFloorplanDefaultView, saveFloorplanMarkers, searchClientContacts, vacateUnitReal } from '../lib/facilioApiDataSource';
 import { listFloorplanFloorIds, loadFloorplanFile, persistFloorplanFile } from '../lib/floorplanFileStore';
 import { DEFAULT_PERMS_MODULE_NAME, loadEffectiveSettings, saveSettings, settingsFromState } from '../lib/settingsStore';
 import { floorFromLocation, pathForView, viewFromLocation, withFloorParam } from '../lib/routes';
@@ -1617,6 +1617,34 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.selected, state.mobSel]);
+
+  // PEOPLE SEARCH hits the SERVER (requested — the full directory is no longer fetched up front):
+  // the shared contactSearch value is debounced and its results merge into the directory, so every
+  // picker that reads state.clientContacts sees them. Short strings don't query.
+  useEffect(() => {
+    const q = state.contactSearch.trim();
+    if (!isFacilioApiConfigured || q.length < 2) {
+      dispatch({ type: 'SET_CONTACT_SEARCH_LOADING', value: false });
+      return;
+    }
+    let alive = true;
+    dispatch({ type: 'SET_CONTACT_SEARCH_LOADING', value: true });
+    const timer = window.setTimeout(() => {
+      searchClientContacts(q)
+        .then((rows) => {
+          if (!alive) return;
+          dispatch({ type: 'UPSERT_CLIENT_CONTACTS', contacts: rows });
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (alive) dispatch({ type: 'SET_CONTACT_SEARCH_LOADING', value: false });
+        });
+    }, 300);
+    return () => {
+      alive = false;
+      window.clearTimeout(timer);
+    };
+  }, [state.contactSearch]);
 
   // Persist settings (as one JSON string) whenever a config slice changes — debounced so a
   // color-picker drag or rapid toggles collapse into a single write. Skipped until the initial

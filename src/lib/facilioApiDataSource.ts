@@ -136,27 +136,14 @@ export class FacilioApiDataSource implements FloorplanDataSource {
 
   async getClientContacts(): Promise<ClientContact[]> {
     this.assertConfigured();
-    // The WHOLE directory, paginated — with a single 500-row page, assignees past page 1 never
-    // resolved locally and every such desk needed a per-record summary fetch on preview. Capped
-    // at 10 pages (5000 contacts) as a runaway guard; a failed later page keeps earlier pages.
-    const all: ClientContact[] = [];
-    for (let page = 1; page <= 10; page++) {
-      const res = await facilioApi.fetchAll('clientcontact', { page, perPage: 500 });
-      if (res.error) {
-        if (page === 1) throw new Error(`facilio-api: client contact fetch failed (${res.error.code ?? '?'} ${res.error.message ?? ''})`.trim());
-        break;
-      }
-      const list = res.list ?? [];
-      all.push(
-        ...list.map((c: any) => ({
-          id: String(c.id),
-          name: c.name,
-          client: c.client?.name ?? c.clientName ?? '',
-        }))
-      );
-      if (list.length < 500) break;
-    }
-    return all;
+    // ONE page only (requested): the directory can run to thousands of people, and pulling all of
+    // it on every boot cost several round-trips before anything rendered. The pickers have a
+    // search box, and searching queries the SERVER (searchClientContacts) — so this is just the
+    // first page for an immediate list, not the whole directory. Assignees outside it still
+    // resolve through the per-record summary fetch on preview.
+    const res = await facilioApi.fetchAll('clientcontact', { page: 1, perPage: 200 });
+    if (res.error) throw new Error(`facilio-api: client contact fetch failed (${res.error.code ?? '?'} ${res.error.message ?? ''})`.trim());
+    return (res.list ?? []).map(mapClientContact);
   }
 
   async getAssets(): Promise<Asset[]> {
@@ -226,6 +213,23 @@ export class FacilioApiDataSource implements FloorplanDataSource {
     if (!cancel) throw new Error('facilio-api: this booking has no Cancel transition in its current state');
     await executeStateTransition('spacebooking', Number(id), cancel.id);
   }
+}
+
+function mapClientContact(c: any): ClientContact {
+  return { id: String(c.id), name: c.name, client: c.client?.name ?? c.clientName ?? '' };
+}
+
+/**
+ * SERVER-SIDE people search for the pickers' search boxes (requested — the whole directory is no
+ * longer pulled up front). Standard list `search` param; results are merged into the app's contact
+ * directory by the caller, so a searched-for person stays available afterwards.
+ */
+export async function searchClientContacts(text: string): Promise<ClientContact[]> {
+  const q = text.trim();
+  if (!isFacilioApiConfigured || q.length < 2) return [];
+  const res = await facilioApi.fetchAll('clientcontact', { page: 1, perPage: 100, search: q }).catch(() => ({ error: true }) as any);
+  if (res.error) return [];
+  return (res.list ?? []).map(mapClientContact);
 }
 
 /** Best-effort lookup-field id extraction: tries `{key}.id`, `{key}Id`, then the raw field. */

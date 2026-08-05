@@ -112,6 +112,14 @@ export function AssignPanel() {
         </div>
         <div className={styles.peopleList}>
           {state.loading && state.clientContacts.length === 0 && <SkeletonRows rows={6} avatar />}
+          {/* The directory isn't fetched whole any more — typing SEARCHES THE SERVER, so say so
+              while that's in flight instead of showing an empty list. */}
+          {state.contactSearchLoading && contacts.length === 0 && <SkeletonRows rows={4} avatar />}
+          {!state.contactSearchLoading && !state.loading && contacts.length === 0 && (
+            <p className={card.helper} style={{ padding: '10px 12px' }}>
+              {state.contactSearch.trim().length >= 2 ? 'No people match that search.' : 'Type at least 2 characters to search the directory.'}
+            </p>
+          )}
           {contacts.map((contact) => {
             const held = unitsHeldBy(contact.id);
             // Mock demo ids look like "c1".."c14" and have no real record to open — only
