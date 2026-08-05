@@ -1,4 +1,4 @@
-import { apiOrigin, customDelete, customGet, customPost, facilioApi, fetchFilePreview, isFacilioApiConfigured, sdkProperties } from './facilioApi';
+import { apiOrigin, customDelete, customGet, customPatch, customPost, facilioApi, fetchFilePreview, isFacilioApiConfigured, sdkProperties } from './facilioApi';
 import { epochAtInTz, isValidTimezone, setOrgTimezone, wallClockInTz } from './orgTime';
 import { executeStateTransition, fetchAvailableStates, findCancelTransition, isPendingApprovalName, stateName } from './stateflowApi';
 import { renderCadToDataUrl } from './cadPreview';
@@ -1239,10 +1239,17 @@ export async function uploadFloorplanFile(
       const createdId = Number((attachRes as any)?.indoorfloorplan?.id);
       const existingLink = Number(floorRec?.indoorFloorPlanId ?? 0);
       if (createdId > 0 && !(existingLink > 0)) {
-        const linkRes = await facilioApi.updateRecord('floor', { id: floorId, data: { indoorFloorPlanId: createdId } }).catch((e) => ({ error: { message: String(e) } }) as any);
-        if (linkRes?.error) {
-          // eslint-disable-next-line no-console
-          console.warn(`[facilio-api] couldn't set indoorFloorPlanId=${createdId} on floor ${floorId}`, linkRes.error);
+        // PATCH (requested) — v3/modules/floor/{id} patches ONLY the sent field, no full-record
+        // echo. Connected-mode PATCH bridging is unverified (same caveat as stateflow), so a
+        // thrown transport error falls back to the SDK updateRecord with the same partial data.
+        try {
+          await customPatch(`v3/modules/floor/${floorId}`, { id: Number(floorId), data: { indoorFloorPlanId: createdId }, moduleName: 'floor' });
+        } catch (patchErr) {
+          const linkRes = await facilioApi.updateRecord('floor', { id: floorId, data: { indoorFloorPlanId: createdId } }).catch((e) => ({ error: { message: String(e) } }) as any);
+          if (linkRes?.error) {
+            // eslint-disable-next-line no-console
+            console.warn(`[facilio-api] couldn't set indoorFloorPlanId=${createdId} on floor ${floorId}`, patchErr, linkRes.error);
+          }
         }
       }
     }
