@@ -465,6 +465,34 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       }
     },
 
+    /**
+     * Fetch a node's children WITHOUT touching expansion state — the mobile pickers have no
+     * expand affordance, they just need the level they're showing to be populated. No-ops when
+     * the children are already loaded.
+     */
+    loadPortfolioChildren: (id: string) => {
+      const site = state.portfolio.find((s) => s.id === id);
+      if (site) {
+        if (site.buildings.length > 0) return;
+        dataSource
+          .getBuildingsForSite(id)
+          .then((buildings) => dispatch({ type: 'SITE_BUILDINGS_LOADED', siteId: id, buildings }))
+          .catch(() => {});
+        return;
+      }
+      for (const s of state.portfolio) {
+        const building = s.buildings.find((b) => b.id === id);
+        if (building) {
+          if (building.floors.length > 0) return;
+          dataSource
+            .getFloorsForBuilding(id)
+            .then((floors) => dispatch({ type: 'BUILDING_FLOORS_LOADED', siteId: s.id, buildingId: id, floors }))
+            .catch(() => {});
+          return;
+        }
+      }
+    },
+
     selectFloor: (floorId: string) => {
       if (floorId === state.floorId) return;
       loadFloor(floorId);

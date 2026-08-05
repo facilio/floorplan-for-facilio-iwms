@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
 import { useSheetDrag } from './useSheetDrag';
 import styles from './MobileFloorPicker.module.css';
@@ -32,6 +33,27 @@ function LevelIcon({ kind }: { kind: LevelKind }) {
 export function MobileFloorPicker() {
   const { state, actions } = useFloorplan();
   const sheetRef = useSheetDrag(() => actions.setMobFloorOpen(false), state.mobFloorOpen);
+  // The portfolio tree is LAZY: a site's buildings (and a building's floors) only arrive when
+  // something asks for them. The desktop tree does that on expand; this sheet has no expand, so
+  // it asks as soon as the level it's showing is empty — otherwise every site read "0 buildings"
+  // and drilling in showed nothing (reported).
+  const openSiteId = state.mobPickSite;
+  const openBuildingId = state.mobPickBuilding;
+  useEffect(() => {
+    if (!state.mobFloorOpen) return;
+    if (openBuildingId) {
+      actions.loadPortfolioChildren(openBuildingId);
+      return;
+    }
+    if (openSiteId) {
+      actions.loadPortfolioChildren(openSiteId);
+      return;
+    }
+    // Site list: fetch the building counts so the subtitles are real.
+    for (const s of state.portfolio) actions.loadPortfolioChildren(s.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.mobFloorOpen, openSiteId, openBuildingId, state.portfolio.length]);
+
   if (!state.mobFloorOpen) return null;
 
   const site = state.portfolio.find((s) => s.id === state.mobPickSite);
@@ -51,7 +73,8 @@ export function MobileFloorPicker() {
     rows = state.portfolio.filter((s) => siteAllowed(s.id)).map((s) => ({
       id: s.id,
       name: s.name,
-      sub: `${s.buildings.length} building${s.buildings.length === 1 ? '' : 's'}`,
+      // Unknown until the lazy fetch lands — don't claim "0 buildings" meanwhile.
+      sub: s.buildings.length ? `${s.buildings.length} building${s.buildings.length === 1 ? '' : 's'}` : 'Loading…',
       kind: 'site' as const,
       showChevron: true,
       onTap: () => actions.setMobPick(s.id, null),
@@ -61,7 +84,7 @@ export function MobileFloorPicker() {
     rows = site.buildings.filter((b) => buildingAllowed(b.id)).map((b) => ({
       id: b.id,
       name: b.name,
-      sub: `${b.floors.length} floor${b.floors.length === 1 ? '' : 's'}`,
+      sub: b.floors.length ? `${b.floors.length} floor${b.floors.length === 1 ? '' : 's'}` : 'Loading…',
       kind: 'building' as const,
       showChevron: true,
       onTap: () => actions.setMobPick(site.id, b.id),

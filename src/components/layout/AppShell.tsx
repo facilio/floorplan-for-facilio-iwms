@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { BottomNav, useAdminSurfacesAllowed } from './BottomNav';
@@ -7,13 +7,27 @@ import { SettingsScreen } from '../settings/SettingsScreen';
 import { BookingsView } from '../bookings/BookingsView';
 import { PeopleView } from '../people/PeopleView';
 import { BookingModal } from '../details/BookingModal';
+import { hostIsMobile, hostIsMobileParam } from '../../lib/facilioApi';
 import { MobileApp } from '../mobile/MobileApp';
 import { ToastStack } from '../primitives/Toast';
 import styles from './AppShell.module.css';
 
 export function AppShell() {
   const { state, actions } = useFloorplan();
-  const isMobileViewport = useMediaQuery('(max-width: 720px)');
+  const narrowViewport = useMediaQuery('(max-width: 720px)');
+  // The HOST can also force the mobile experience via the connected-app `isMobile` param
+  // (requested) — checked synchronously from the URL, then confirmed from the SDK properties.
+  const [hostMobile, setHostMobile] = useState(hostIsMobileParam());
+  useEffect(() => {
+    let alive = true;
+    void hostIsMobile().then((v) => {
+      if (alive && v) setHostMobile(true);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const isMobileViewport = narrowViewport || hostMobile;
   // Settings + People are maintenance-app surfaces (see useAdminSurfacesAllowed) — gate the
   // ROUTES too, so a deep link / saved URL can't open them from a portal embed.
   const adminAllowed = useAdminSurfacesAllowed();

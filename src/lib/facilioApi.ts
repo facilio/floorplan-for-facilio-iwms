@@ -391,6 +391,38 @@ function parseSdkJson(raw: unknown, path: string): any {
  * outside connected mode where there's no host to ask.
  */
 let sdkPropsCache: Promise<any> | null = null;
+/**
+ * Whether the HOST says this embed is mobile — the connected-app `isMobile` param (query string
+ * first, since the SDK's own props resolve asynchronously). Viewport width still decides on its
+ * own; this only forces the mobile experience when the host asks for it.
+ */
+export function hostIsMobileParam(): boolean {
+  try {
+    const v = new URLSearchParams(window.location.search).get('isMobile');
+    return v != null && /^(1|true|yes)$/i.test(v);
+  } catch {
+    return false;
+  }
+}
+
+/** Same flag from the SDK's properties (async) — anywhere in the props bag. */
+export async function hostIsMobile(): Promise<boolean> {
+  if (hostIsMobileParam()) return true;
+  const props = await sdkProperties().catch(() => null);
+  if (!props) return false;
+  const seen = new Set<unknown>();
+  const walk = (v: unknown, depth: number): boolean => {
+    if (!v || typeof v !== 'object' || depth > 4 || seen.has(v)) return false;
+    seen.add(v);
+    for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+      if (/^is_?mobile$/i.test(k) && (val === true || (typeof val === 'string' && /^(1|true|yes)$/i.test(val)))) return true;
+      if (walk(val, depth + 1)) return true;
+    }
+    return false;
+  };
+  return walk(props, 0);
+}
+
 export function sdkProperties(): Promise<any | null> {
   if (!isConnectedApp) return Promise.resolve(null);
   if (!sdkPropsCache) {
