@@ -222,13 +222,15 @@ function BookingFormInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formId]);
 
-  if (!unit) return null;
-
   const isFacility = module === 'facility';
 
   /**
    * The RESOURCE field on the currently loaded form, straight from its response metadata — used
    * both to render the lookup and to fill it in the create payload. Nothing name-hardcoded.
+   *
+   * NOTE: every hook in this component MUST stay above the `if (!unit)` bail-out below —
+   * a hook after a conditional return changes the hook count between renders (React #310,
+   * which crashed the deployed app).
    */
   const formResourceField = useMemo(() => {
     if (!formMeta || !unit) return null;
@@ -236,6 +238,38 @@ function BookingFormInner() {
     return hit?.name ?? null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formMeta, unit?.type, isFacility]);
+
+  // Booking-date window + "now" on the ORG clock (reactive — re-renders when the zone resolves).
+  const nowOrg = useOrgClock();
+
+  // EXISTING BOOKINGS for the selected resource on the chosen date — see the effect below.
+  const [conflicts, setConflicts] = useState<{ start: number; end: number; name?: string }[]>([]);
+  useEffect(() => {
+    if (!isFacilioApiConfigured || !unit || !resourceId) {
+      setConflicts([]);
+      return;
+    }
+    let alive = true;
+    const timer = window.setTimeout(() => {
+      fetchOrgBookingsForRange(slotDate, slotDate, { resourceField: effType === 'room' ? 'space' : 'desk' })
+        .then((rows) => {
+          if (!alive) return;
+          setConflicts(
+            rows
+              .filter((b) => b.unitId === unit.id && b.date === slotDate && b.start < endMin && b.end > startMin)
+              .map((b) => ({ start: b.start, end: b.end, name: b.name }))
+          );
+        })
+        .catch(() => alive && setConflicts([]));
+    }, 350);
+    return () => {
+      alive = false;
+      window.clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unit?.id, resourceId, slotDate, startMin, endMin, effType, state.bookingsNonce]);
+
+  if (!unit) return null;
 
   const isRoom = effType === 'room';
   const resourceFieldLabel = isFacility ? 'Facility' : SPACE_RESOURCE_LABEL[effType];
@@ -255,7 +289,6 @@ function BookingFormInner() {
 
   // Booking-date window: ROOMS are same-day only; desks/parking book at most ONE WEEK ahead.
   // All of it on the ORG clock — "today" is the facility's today, not the browser's.
-  const nowOrg = useOrgClock(); // reactive: re-renders when the ORG zone resolves
   const minDate = nowOrg.dateISO;
   const maxDate = isRoom ? minDate : wallClockInTz(Date.now() + 7 * 86400000, orgTimezone()).dateISO;
   // For TODAY, slots that already started are off the table — the backend silently bumps a
@@ -449,34 +482,7 @@ function BookingFormInner() {
     </Field>
   );
 
-  // EXISTING BOOKINGS for the selected resource on the chosen date (requested): fetched with the
-  // resource-scoped filter as the range is picked, so a clash is visible BEFORE submitting.
-  const [conflicts, setConflicts] = useState<{ start: number; end: number; name?: string }[]>([]);
-  useEffect(() => {
-    if (!isFacilioApiConfigured || !unit || !resourceId) {
-      setConflicts([]);
-      return;
-    }
-    let alive = true;
-    const timer = window.setTimeout(() => {
-      fetchOrgBookingsForRange(slotDate, slotDate, { resourceField: effType === 'room' ? 'space' : 'desk' })
-        .then((rows) => {
-          if (!alive) return;
-          setConflicts(
-            rows
-              .filter((b) => b.unitId === unit.id && b.date === slotDate && b.start < endMin && b.end > startMin)
-              .map((b) => ({ start: b.start, end: b.end, name: b.name }))
-          );
-        })
-        .catch(() => alive && setConflicts([]));
-    }, 350);
-    return () => {
-      alive = false;
-      window.clearTimeout(timer);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [unit?.id, resourceId, slotDate, startMin, endMin, effType, state.bookingsNonce]);
-
+  // The clash BANNER for those conflicts (the fetch itself is hoisted above the bail-out).
   const conflictNote =
     conflicts.length > 0 ? (
       <div
