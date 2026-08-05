@@ -239,6 +239,14 @@ function BookingFormInner() {
   }, [formId]);
 
   const isFacility = module === 'facility';
+  /**
+   * A form PICKER is offered only when the context genuinely can't decide which form applies —
+   * i.e. the All-spaces switch, which mixes desks and rooms. Booking a SPECIFIC resource (every
+   * mobile path, the plan popup, the side panel) always uses that type's own form, matched by
+   * link name: desk booking form for a desk, space booking form for a room (requested — no
+   * switcher there, even when the org has several forms for the type).
+   */
+  const canPickForm = !!target.allowTypeSwitch;
 
   /**
    * The RESOURCE field on the currently loaded form, straight from its response metadata — used
@@ -791,7 +799,7 @@ function BookingFormInner() {
           // type switch below. ONE form -> static display-name label, no chevron. SEVERAL ->
           // a real Select of their DISPLAY names; picking one swaps the body and the submit id.
           // The raw formId stays internal (it still travels on the create payload).
-          formsForCurrentType.length > 1 ? (
+          canPickForm && formsForCurrentType.length > 1 ? (
             <Select
               value={formId != null ? String(formId) : ''}
               options={formsForCurrentType.map((f) => ({ value: String(f.id), label: f.displayName || f.name }))}
@@ -856,7 +864,7 @@ function BookingFormInner() {
         {/* CLASH BANNER at the top of the form (requested): the selected desk/space already has a
             booking in this window — fetched with the resource-scoped filter as the range changes. */}
         {conflictNote}
-        {formsForCurrentType.length > 1 && formId == null ? (
+        {canPickForm && formsForCurrentType.length > 1 && formId == null ? (
           <div style={{ padding: '28px 0', textAlign: 'center', font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--ink-500)' }}>
             Choose a booking form above to continue.
           </div>

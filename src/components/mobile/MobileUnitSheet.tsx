@@ -61,13 +61,16 @@ export function MobileUnitSheet() {
           <div className={styles.headText}>
             <div className={styles.name}>{unit.label}</div>
             <div className={styles.kind}>
+              {/* ROOMS read their ROOM TYPE, desks their seat type — same rule as the web popup. */}
               {isAmenity
                 ? isAsset
                   ? 'Asset'
                   : unit.markerKind || unit.icon
                     ? resolveMarkerDef(state.customMarkers, unit).name
                     : 'Amenity'
-                : TYPE_META[unit.type].name}
+                : unit.type === 'room'
+                  ? unit.roomType || TYPE_META[unit.type].name
+                  : [TYPE_META[unit.type].name, unit.secondary].filter(Boolean).join(' · ')}
               {unit.room ? ` · ${unit.room}` : ''}
               {unit.department ? ` · ${unit.department}` : ''}
             </div>

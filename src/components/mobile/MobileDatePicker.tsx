@@ -42,11 +42,11 @@ export function MobileDatePicker({ open, onClose }: { open: boolean; onClose: ()
   if (!open) return null;
 
   const todayIso = orgNow().dateISO; // the ORG's today, not the browser's
-  // Same booking window the web date picker enforces: today through +7 days (hardcoded rule);
-  // past days and beyond-a-week days are not selectable.
+  // Same window as the web pickers: the START may be any upcoming day (the 7-day cap applies to
+  // the booking's DURATION, enforced in the shared booking form) — only PAST days are blocked.
   const maxIso = (() => {
     const d = parseISO(todayIso);
-    d.setDate(d.getDate() + 7);
+    d.setDate(d.getDate() + 365);
     return toISO(d);
   })();
   const days = monthGrid(cursor.year, cursor.month);
