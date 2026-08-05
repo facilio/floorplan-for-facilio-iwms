@@ -2188,7 +2188,7 @@ async function fetchSpaceBookingsForRange(
   startISO: string,
   endISO: string,
   floorId: string | null,
-  opts?: { forCurrentUser?: boolean; floorIds?: string[] }
+  opts?: { forCurrentUser?: boolean; floorIds?: string[]; resourceField?: 'desk' | 'space' }
 ): Promise<Booking[]> {
     const tz = await fetchOrgTimezone().catch(() => null);
     const rangeStart = epochAtInTz(startISO, 0, tz);
@@ -2199,6 +2199,9 @@ async function fetchSpaceBookingsForRange(
     const baseFilters: Record<string, unknown> = {
       bookingStartTime: { operatorId: 20, value: [String(rangeStart), String(rangeEnd - 1)] },
       ...(reservedById != null ? { reservedBy: { operatorId: 36, value: [String(reservedById)] } } : {}),
+      // CATEGORY scoping, server-side (requested): a desk booking has its `desk` lookup set, a
+      // room booking its `space` lookup — "is not empty" (operatorId 2) selects per type.
+      ...(opts?.resourceField ? { [opts.resourceField]: { operatorId: 2, value: [] } } : {}),
     };
 
     const fetchPages = async (filters: Record<string, unknown>): Promise<any[]> => {
@@ -2232,7 +2235,7 @@ async function fetchSpaceBookingsForRange(
         for (const r of list as any[]) idsByField[field].push(String(r.id));
       }
       const queries = Object.entries(idsByField)
-        .filter(([, ids]) => ids.length > 0)
+        .filter(([field, ids]) => ids.length > 0 && (!opts?.resourceField || field === opts.resourceField))
         .map(([field, ids]) => fetchPages({ ...baseFilters, [field]: { operatorId: 36, value: ids } }).catch(() => [] as any[]));
       const merged = (await Promise.all(queries)).flat();
       const seen = new Set<string>();
@@ -2362,7 +2365,7 @@ export function fetchOrgBookingsForDate(date: string): Promise<Booking[]> {
 export function fetchOrgBookingsForRange(
   startISO: string,
   endISO: string,
-  opts?: { forCurrentUser?: boolean; floorIds?: string[] }
+  opts?: { forCurrentUser?: boolean; floorIds?: string[]; resourceField?: 'desk' | 'space' }
 ): Promise<Booking[]> {
   if (!isFacilioApiConfigured) return Promise.resolve([]);
   return fetchSpaceBookingsForRange(startISO, endISO, null, opts);

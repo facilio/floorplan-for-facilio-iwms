@@ -21,11 +21,10 @@ import styles from './BookingsView.module.css';
 type CategoryId = UnitType | 'all';
 // "All spaces" lists ONLY bookable desks and rooms (requested) — parking keeps its own tab.
 const BOOKABLE_TYPES: UnitType[] = ['workstation', 'room'];
+// Lockers and Parking tabs are REMOVED for now (requested) — desks and rooms only.
 const CATEGORIES: { id: CategoryId; label: string; bookable: boolean }[] = [
   { id: 'all', label: 'All spaces', bookable: true },
   { id: 'workstation', label: 'Desks', bookable: true },
-  { id: 'parking', label: 'Parking', bookable: true },
-  { id: 'locker', label: 'Lockers', bookable: false },
   { id: 'room', label: 'Rooms', bookable: true },
 ];
 
@@ -169,6 +168,9 @@ export function BookingsView() {
       ? fetchOrgBookingsForRange(first, last, {
           ...(isPortal ? { forCurrentUser: true } : {}),
           ...(floorFilter.length ? { floorIds: floorFilter.map((f) => f.id) } : {}),
+          // Desks/Rooms tab scopes the FETCH by resource lookup (desk / space not-empty) —
+          // switching category re-queries instead of showing unfiltered rows (reported).
+          ...(category === 'workstation' ? { resourceField: 'desk' as const } : category === 'room' ? { resourceField: 'space' as const } : {}),
         }).catch(() => [] as Booking[])
       : Promise.all(visibleDates.map((d) => dataSource.getBookings(state.floorId, d).catch(() => [] as Booking[]))).then((r) => r.flat());
     load.then((rows) => {
@@ -182,7 +184,7 @@ export function BookingsView() {
     return () => {
       cancelled = true;
     };
-  }, [state.floorId, visibleDates, state.bookingsNonce, refreshTick, isPortal, floorFilter]);
+  }, [state.floorId, visibleDates, state.bookingsNonce, refreshTick, isPortal, floorFilter, category]);
 
   const myBookingsInRange = useMemo(() => {
     const mine: Booking[] = [];
