@@ -100,6 +100,68 @@
     default: [/default_spacebooking/i, /spacebooking/i],
   };
 
+  /** Every booking-enabled form whose LINK NAME matches this type's key (desk vs space). */
+  function fetchBookingFormsForType(unitType) {
+    return customGet('v2/spacebooking/forms', { moduleName: 'spacebooking', skipPermission: true })
+      .catch(function () { return null; })
+      .then(function (listBody) {
+        var forms = ((listBody && listBody.result && listBody.result.forms) || []).filter(function (f) { return !f.hideInList; });
+        var patterns = (FORM_PREFS[unitType] || []).concat(FORM_PREFS.default);
+        var matched = forms.filter(function (f) {
+          for (var i = 0; i < patterns.length; i++) if (patterns[i].test(f.name || '')) return true;
+          return false;
+        });
+        if (matched.length) return matched;
+        var avoid = unitType === 'room' ? /desk|parking|hot/i : unitType === 'workstation' ? /space|room|parking/i : /desk|space|room|hot/i;
+        return forms.filter(function (f) { return !avoid.test(f.name || ''); });
+      });
+  }
+
+  /** ONE form's fields by id (same detail endpoint fetchBookingForm uses). */
+  function fetchBookingFormById(formId) {
+    return customGet('v2/forms/spacebooking', { fetchFormRuleFields: true, forCreate: true, formId: formId, skipPermission: true })
+      .catch(function () { return null; })
+      .then(function (detailBody) {
+        var form = detailBody && detailBody.result && (detailBody.result.form || (detailBody.result.sections ? detailBody.result : null));
+        if (!form) return null;
+        var fields = (form.sections || []).reduce(function (acc, sec) { return acc.concat(sec.fields || []); }, [])
+          .map(function (ff) {
+            return {
+              name: (ff.field && ff.field.name) || ff.fieldName || '',
+              label: ff.displayName || (ff.field && ff.field.displayName) || '',
+              required: !!ff.required,
+              type: ff.displayTypeEnum || (ff.field && ff.field.displayTypeEnum) || 'TEXTBOX',
+              lookupModule: ff.field && ff.field.lookupModule && ff.field.lookupModule.name,
+              sequence: ff.sequenceNumber || 0,
+            };
+          })
+          .filter(function (f) { return f.name; })
+          .sort(function (a, b) { return a.sequence - b.sequence; });
+        return { id: form.id, name: form.name, displayName: form.displayName, fields: fields };
+      });
+  }
+
+  /** EXISTING bookings for this resource on `dateISO` — the clash banner's source. */
+  function fetchResourceBookings(unitType, resourceId, dateISO, tz) {
+    var field = unitType === 'room' ? 'space' : unitType === 'parking' ? 'parkingStall' : 'desk';
+    var from = epochAt(dateISO, 0, tz);
+    var to = epochAt(dateISO, 24 * 60, tz) - 1;
+    var filters = { bookingStartTime: { operatorId: 20, value: [String(from), String(to)] } };
+    filters[field] = { operatorId: 36, value: [String(resourceId)] };
+    return fetchAll('spacebooking', { page: 1, perPage: 100, filters: JSON.stringify(filters) })
+      .then(function (res) {
+        return (res.list || [])
+          .map(function (b) {
+            if (!isFinite(b.bookingStartTime)) return null;
+            var st = wallClock(b.bookingStartTime, tz);
+            var en = b.bookingEndTime ? wallClock(b.bookingEndTime, tz) : null;
+            return { date: st.dateISO, start: st.minutes, end: en ? en.minutes : st.minutes + 30 };
+          })
+          .filter(function (x) { return x && x.date === dateISO; });
+      })
+      .catch(function () { return []; });
+  }
+
   function fetchBookingForm(unitType) {
     return customGet('v2/spacebooking/forms', { moduleName: 'spacebooking', skipPermission: true }).catch(function () { return null; })
       .then(function (listBody) {
@@ -169,9 +231,13 @@
   var orgTzCache = null;
   function fetchOrgTimezone() {
     if (!orgTzCache) {
-      orgTzCache = customGet('v2/account').catch(function () { return null; }).then(function (body) {
-        var account = (body && (body.result && body.result.account)) || (body && body.account) || null;
-        var cands = account ? [account.org && account.org.timezone, account.org && account.org.timeZone, account.user && account.user.timezone] : [];
+      orgTzCache = customGet('v2/fetchAccount', { optimized: true })
+        .catch(function () { return customGet('v2/account').catch(function () { return null; }); })
+        .then(function (body) {
+        var account = (body && (body.result && body.result.account)) || (body && body.account) || (body && body.result) || null;
+        var cands = account
+          ? [account.timezone, account.timeZone, account.org && account.org.timezone, account.org && account.org.timeZone, account.user && account.user.timezone]
+          : [];
         for (var i = 0; i < cands.length; i++) {
           var tz = cands[i];
           if (typeof tz === 'string' && tz) {
@@ -208,6 +274,15 @@
     }
     var q = tzParts(at, tz);
     return q.y + '-' + ('0' + q.mo).slice(-2) + '-' + ('0' + q.d).slice(-2);
+  }
+  /** The org-zone wall clock (date + minutes) that `epoch` shows — orgNow for any instant. */
+  function wallClock(epoch, tz) {
+    if (!tz) {
+      var d = new Date(epoch);
+      return { dateISO: d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2), minutes: d.getHours() * 60 + d.getMinutes() };
+    }
+    var q = tzParts(epoch, tz);
+    return { dateISO: q.y + '-' + ('0' + q.mo).slice(-2) + '-' + ('0' + q.d).slice(-2), minutes: q.h * 60 + q.mi };
   }
   function orgNow(tz) {
     if (!tz) {
@@ -250,7 +325,14 @@
 
   // ---- UI -------------------------------------------------------------------
   var KNOWN = { name: 1, description: 1, host: 1, reservedBy: 1, noOfAttendees: 1, bookingStartTime: 1, bookingEndTime: 1, bookingbreachtime: 1, internalAttendees: 1, externalAttendees: 1 };
-  var RESOURCE_LOOKUPS = { desks: 1, space: 1, basespace: 1, parkingstall: 1, facility: 1, parkinglot: 1, lockers: 1 };
+  // Keyed by the LOOKUP MODULE the form's field points at (from its own response) — never by
+  // hardcoded field names: the org's room picker arrives as `meeting_rooms_spacebooking` with
+  // lookupModule `rooms`, which used to fall through and render as a TEXT box.
+  /** Step for non-room windows (rooms use the hardcoded 2h slots) and how many past steps show. */
+  var STEP_MINUTES = 30;
+  var PAST_STEPS_SHOWN = 5;
+  var RESOURCE_LOOKUPS = { desks: 1, desk: 1, space: 1, basespace: 1, rooms: 1, parkingstall: 1, facility: 1, parkinglot: 1, lockers: 1 };
+  var RESOURCE_LOOKUP_TYPE = { desks: 'workstation', desk: 'workstation', rooms: 'room', space: 'room', basespace: 'room', parkingstall: 'parking', parkinglot: 'parking', lockers: 'locker' };
   var PEOPLE_LOOKUPS = { people: 1, employee: 1, clientcontact: 1, users: 1 };
 
   var S = {
@@ -310,15 +392,53 @@
     var _extras = useState({}), extras = _extras[0], setExtras = _extras[1];
     var _busy = useState(false), submitting = _busy[0], setSubmitting = _busy[1];
     var _err = useState(null), error = _err[0], setError = _err[1];
+    // FORM PICKER: every form for this type (by link name). ONE form -> static label; SEVERAL ->
+    // a select of their DISPLAY names that swaps the fields below and the id sent on create.
+    var _forms = useState([]), formList = _forms[0], setFormList = _forms[1];
+    var _fid = useState(null), formId = _fid[0], setFormId = _fid[1];
+    // CLASH BANNER: this resource's existing bookings that overlap the chosen window.
+    var _cl = useState([]), clashes = _cl[0], setClashes = _cl[1];
 
     useEffect(function () {
       var alive = true;
-      fetchBookingForm(unitType).then(function (f) { if (alive) setForm(f); }).finally(function () { if (alive) setLoading(false); });
+      fetchBookingFormsForType(unitType)
+        .then(function (list) {
+          if (!alive) return;
+          setFormList(list || []);
+          if (list && list.length === 1) setFormId(list[0].id);
+          else if (list && list.length > 1) setFormId(list[0].id); // first is the default; the picker can change it
+        })
+        .catch(function () {});
+      fetchBookingForm(unitType).then(function (f) { if (alive) { setForm(f); if (f && f.id) setFormId(function (cur) { return cur || f.id; }); } }).finally(function () { if (alive) setLoading(false); });
       fetchAll('clientcontact', { page: 1, perPage: 500 }).then(function (res) {
         if (alive) setContacts((res.list || []).map(function (c) { return { id: Number(c.id), name: c.name }; }));
       }).catch(function () {});
       return function () { alive = false; };
     }, [unitType]);
+
+    // Fields follow the PICKED form.
+    useEffect(function () {
+      if (!formId || (form && form.id === formId)) return;
+      var alive = true;
+      setLoading(true);
+      fetchBookingFormById(formId).then(function (f) { if (alive && f) setForm(f); }).finally(function () { if (alive) setLoading(false); });
+      return function () { alive = false; };
+    }, [formId]);
+
+    // Existing bookings for this resource on the chosen date — debounced as the window changes.
+    useEffect(function () {
+      var alive = true;
+      var timer = setTimeout(function () {
+        fetchResourceBookings(unitType, props.resourceId, date, tz).then(function (rows) {
+          if (!alive) return;
+          var s0 = isRoom ? (slotStart == null ? -1 : slotStart) : startMin;
+          var e0 = isRoom ? (slotStart == null ? -1 : slotStart + slotLen) : endMin;
+          setClashes(rows.filter(function (b) { return s0 >= 0 && b.start < e0 && b.end > s0; }));
+        });
+      }, 350);
+      return function () { alive = false; clearTimeout(timer); };
+      // eslint-disable-next-line
+    }, [props.resourceId, unitType, date, startMin, endMin, slotStart, tz]);
 
     var slots = [];
     for (var m = 0; m + slotLen <= 1440; m += slotLen) slots.push(m);
@@ -376,7 +496,7 @@
         host: host ? Number(host) : undefined,
         reservedBy: reservedBy ? Number(reservedBy) : undefined,
         noOfAttendees: Number(noOfAttendees) || 1,
-        formId: form && form.id,
+        formId: formId || (form && form.id),
         extras: extraValues,
       }).then(function (res) {
         setSubmitting(false);
@@ -411,13 +531,28 @@
             fmtTime(mm) + ' – ' + fmtTime(mm + slotLen));
         }))));
     } else {
+      // START is NOT limited by the end: every step is listed, already-past ones on today render
+      // DISABLED (org clock) rather than vanishing, and only a few of them stay visible. Picking
+      // a start moves the END to keep the window's length.
+      var visibleTimes = (function () {
+        var firstOk = TIMES.findIndex(function (mm) { return slotSelectable(mm); });
+        return firstOk > PAST_STEPS_SHOWN ? TIMES.slice(firstOk - PAST_STEPS_SHOWN) : TIMES;
+      })();
       timeControls = field('Booking Window', true,
         h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 } },
           h('input', { style: S.input, type: 'date', value: date, min: minDate, max: maxDate, onChange: function (e) { setDate(e.target.value); } }),
-          h('select', { style: S.input, value: startMin, onChange: function (e) { setStartMin(Number(e.target.value)); } },
-            TIMES.filter(function (mm) { return mm < endMin; }).map(function (mm) { return h('option', { key: mm, value: mm }, fmtTime(mm)); })),
+          h('select', {
+            style: S.input,
+            value: startMin,
+            onChange: function (e) {
+              var next = Number(e.target.value);
+              var dur = Math.max(STEP_MINUTES, endMin - startMin);
+              setStartMin(next);
+              setEndMin(Math.min(1440, next + dur));
+            },
+          }, visibleTimes.map(function (mm) { return h('option', { key: mm, value: mm, disabled: !slotSelectable(mm) }, fmtTime(mm)); })),
           h('select', { style: S.input, value: endMin, onChange: function (e) { setEndMin(Number(e.target.value)); } },
-            TIMES.filter(function (mm) { return mm > startMin; }).map(function (mm) { return h('option', { key: mm, value: mm }, fmtTime(mm)); }))));
+            visibleTimes.map(function (mm) { return h('option', { key: mm, value: mm, disabled: mm <= startMin }, fmtTime(mm)); }))));
     }
 
     var extraFields = ((form && form.fields) || []).filter(function (f) {
@@ -430,14 +565,41 @@
           [h('option', { key: '', value: '' }, '— Select —')].concat(contacts.map(function (c) { return h('option', { key: c.id, value: c.id }, c.name); })));
       } else if (f.type === 'TEXTAREA') {
         control = h('textarea', { style: Object.assign({}, S.input, { height: 56 }), value: extras[f.name] || '', onChange: function (e) { setExtra(f.name, e.target.value); } });
+      } else if (/LOOKUP/i.test(f.type || '')) {
+        if (global.console && console.info) console.info('[booking-form] unmapped lookup skipped: ' + f.name + ' (module ' + (f.lookupModule || '?') + ')');
+        return null;
+      } else if (/DATE_?TIME/i.test(f.type || '')) {
+        // The org's own start/end datetime inputs are replaced by this form's window controls
+        // (rooms: 2h slots; everything else: date + start/end) — never a raw datetime box.
+        return null;
       } else {
-        var type = f.type === 'NUMBER' || f.type === 'DECIMAL' ? 'number' : f.type === 'DATE' ? 'date' : f.type === 'DATETIME' ? 'datetime-local' : 'text';
+        var type = f.type === 'NUMBER' || f.type === 'DECIMAL' ? 'number' : f.type === 'DATE' ? 'date' : 'text';
         control = h('input', { style: S.input, type: type, value: extras[f.name] || '', onChange: function (e) { setExtra(f.name, e.target.value); } });
       }
       return h(React.Fragment, { key: f.name }, field(f.label || f.name, f.required, control));
-    });
+    }).filter(Boolean);
+
+    var picker = formList.length > 1
+      ? h('div', { style: { display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid #e8edf2', paddingBottom: 10, marginBottom: 12 } },
+          h('span', { style: { font: '700 14px system-ui', color: '#1c2733' } }, 'Space Booking'),
+          h('span', { style: { color: '#d5dce4' } }, '|'),
+          h('select', { style: Object.assign({}, S.input, { maxWidth: 260 }), value: formId || '', onChange: function (e) { setFormId(Number(e.target.value)); } },
+            formList.map(function (f) { return h('option', { key: f.id, value: f.id }, f.displayName || f.name); })))
+      : h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid #e8edf2', paddingBottom: 10, marginBottom: 12 } },
+          h('span', { style: { font: '700 14px system-ui', color: '#1c2733' } }, 'Space Booking'),
+          h('span', { style: { font: '500 12px system-ui', color: '#5b6b7d', border: '1px solid #d5dce4', borderRadius: 6, padding: '3px 8px' } },
+            (form && (form.displayName || form.name)) || (formList[0] && (formList[0].displayName || formList[0].name)) || ''));
+
+    var clashBanner = clashes.length
+      ? h('div', { role: 'alert', style: { border: '1px solid #f0bcbc', borderLeft: '3px solid #c62828', background: '#fdf2f2', color: '#8f2323', borderRadius: 8, padding: '10px 12px', font: '500 12.5px/1.45 system-ui', marginBottom: 12 } },
+          'This ' + (isRoom ? 'space' : 'desk') + ' is already booked ' +
+            clashes.map(function (c) { return fmtTime(c.start) + '–' + fmtTime(c.end); }).join(', ') +
+            ' on ' + date + '. Pick another time.')
+      : null;
 
     return h('div', { style: S.root },
+      picker,
+      clashBanner,
       field(isRoom ? 'Location' : unitType === 'parking' ? 'Parking' : 'Desk', true,
         h('div', { style: Object.assign({}, S.input, { background: '#f2f4f7' }) }, props.resourceLabel)),
       field('Name', false, h('input', { style: S.input, value: name, placeholder: 'Enter your text here', onChange: function (e) { setName(e.target.value); } })),
@@ -456,6 +618,9 @@
   global.FacilioBookingForms = {
     BookingForm: BookingForm,
     fetchBookingForm: fetchBookingForm,
+    fetchBookingFormsForType: fetchBookingFormsForType,
+    fetchBookingFormById: fetchBookingFormById,
+    fetchResourceBookings: fetchResourceBookings,
     createSpaceBooking: createSpaceBooking,
     mount: function (el, props) {
       var root = global.ReactDOM.createRoot(el);

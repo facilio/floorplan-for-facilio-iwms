@@ -244,11 +244,11 @@ function moduleIdByName(): Promise<Map<string, number>> {
 let orgTzCache: Promise<string | null> | null = null;
 function fetchOrgTimezone(): Promise<string | null> {
   if (!orgTzCache) {
-    orgTzCache = customGet('v2/account')
+    orgTzCache = customGet('v2/fetchAccount', { optimized: true })
       .catch(() => null)
       .then((body: any) => {
         const account = body?.result?.account ?? body?.account ?? null;
-        for (const tz of [account?.org?.timezone, account?.org?.timeZone, account?.user?.timezone]) {
+        for (const tz of [account?.timezone ?? account?.org?.timezone, account?.org?.timeZone, account?.user?.timezone]) {
           if (typeof tz === 'string' && tz) {
             try {
               new Intl.DateTimeFormat('en-US', { timeZone: tz });
@@ -364,7 +364,7 @@ const fmtTime = (m: number) => {
 
 const ROOM_SLOT_MINUTES = 120; // rooms book HARDCODED 2h slots
 const KNOWN_FIELDS = new Set(['name', 'description', 'host', 'reservedBy', 'noOfAttendees', 'bookingStartTime', 'bookingEndTime', 'bookingbreachtime', 'internalAttendees', 'externalAttendees']);
-const RESOURCE_LOOKUPS = new Set(['desks', 'space', 'basespace', 'parkingstall', 'facility', 'parkinglot', 'lockers']);
+const RESOURCE_LOOKUPS = new Set(['desks', 'desk', 'space', 'basespace', 'rooms', 'parkingstall', 'facility', 'parkinglot', 'lockers']);
 const PEOPLE_LOOKUPS = new Set(['people', 'employee', 'clientcontact', 'users']);
 
 const S: Record<string, CSSProperties> = {
