@@ -40,6 +40,23 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: 'dist',
       emptyOutDir: true,
+      // The connected-app host accepts ONLY css, html, jpeg, jpg, js, json, png, svg, txt, pdf.
+      // pdf.js ships its worker as `.mjs`, and Vite kept that extension for the emitted asset —
+      // an unacceptable type, which broke the deployment upload. Force every emitted chunk and
+      // asset to a `.js`/allowed name, and keep hashes so cache-busting still works.
+      rollupOptions: {
+        output: {
+          entryFileNames: 'assets/[name]-[hash].js',
+          chunkFileNames: 'assets/[name]-[hash].js',
+          assetFileNames: (info) => {
+            const name = info.name ?? 'asset';
+            // A worker/script asset that arrives as .mjs (pdf.js) is renamed to .js — same bytes,
+            // an allowed extension. Everything else keeps its own extension.
+            if (/\.mjs$/i.test(name)) return 'assets/[name]-[hash].js';
+            return 'assets/[name]-[hash][extname]';
+          },
+        },
+      },
     },
   };
 });
