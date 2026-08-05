@@ -313,7 +313,7 @@ export async function findFloorParents(floorId: string): Promise<FloorParents | 
  * touched within one TTL window) rather than growing for every floor visited all session — keeps
  * the memory footprint flat, not proportional to session length.
  */
-function pruneExpired<T extends { at: number }>(cache: Map<string, T>, ttl: number): void {
+function pruneExpired<K, T extends { at: number }>(cache: Map<K, T>, ttl: number): void {
   const now = Date.now();
   for (const [k, v] of cache) if (now - v.at >= ttl) cache.delete(k);
 }
@@ -705,16 +705,29 @@ async function viewerDataUnitsForFloor(floorId: string): Promise<Unit[]> {
   const byId = new Map<string, Unit>();
   let attempted = 0;
   let failed = 0;
-  for (const [typeNum, summary] of Object.entries(byType)) {
-    const planId = PLAN_ID_BY_TYPE[Number(typeNum)];
-    if (!planId || !summary?.id) continue;
-    attempted += 1;
-    const data = await fetchViewerData(summary.id, 'ASSIGNMENT').catch((err) => {
-      failed += 1;
-      // eslint-disable-next-line no-console
-      console.warn(`[facilio-api] viewerData fetch failed for plan ${summary.id} (${planId}, floor ${floorId})`, err);
-      return null;
-    });
+  // One viewerData call PER PLAN TYPE — fired TOGETHER, not one after another. Each bridge
+  // round-trip costs ~1.5-2s on the connected tier, so three plan types serialized added
+  // seconds to every floor load before a single marker appeared.
+  // The module-records fetch is INDEPENDENT of the viewerData feeds — start it here so it
+  // overlaps them instead of running afterwards.
+  const moduleRecordsPromise = fetchFloorModuleRecords(floorId).catch(() => [] as Unit[]);
+  const plans = Object.entries(byType)
+    .map(([typeNum, summary]) => ({ planId: PLAN_ID_BY_TYPE[Number(typeNum)], summary }))
+    .filter((p): p is { planId: PlanId; summary: any } => !!p.planId && !!p.summary?.id);
+  attempted = plans.length;
+  const feeds = await Promise.all(
+    plans.map((p) =>
+      fetchViewerData(p.summary.id, 'ASSIGNMENT').catch((err) => {
+        failed += 1;
+        // eslint-disable-next-line no-console
+        console.warn(`[facilio-api] viewerData fetch failed for plan ${p.summary.id} (${p.planId}, floor ${floorId})`, err);
+        return null;
+      })
+    )
+  );
+  for (let i = 0; i < plans.length; i++) {
+    const { planId, summary } = plans[i];
+    const data = feeds[i];
     if (!data) continue;
 
     const quad = geometryStringToQuad(data.indoorfloorplan?.geometry);
@@ -757,7 +770,7 @@ async function viewerDataUnitsForFloor(floorId: string): Promise<Unit[]> {
   // The floor's module records with NO marker yet ride along as `unplaced` — placed records
   // (already in byId under the same record id) win, but the MODULE record's richer projection
   // backfills detail fields the viewerData feed doesn't project (department, desk type).
-  const moduleRecords = await fetchFloorModuleRecords(floorId).catch(() => [] as Unit[]);
+  const moduleRecords = await moduleRecordsPromise;
   for (const u of moduleRecords) {
     const placed = byId.get(u.id);
     if (!placed) {
@@ -820,9 +833,11 @@ function roomContactId(p: Record<string, any>): string | null {
 async function viewerDataAssignmentsForFloor(floorId: string): Promise<Assignments> {
   const byType = await getFloorplanDetailsByType(floorId);
   const map: Assignments = {};
-  for (const [, summary] of Object.entries(byType)) {
-    if (!summary?.id) continue;
-    const data = await fetchViewerData(summary.id, 'ASSIGNMENT').catch(() => null);
+  // Per-plan-type feeds in PARALLEL (same reason as viewerDataUnitsForFloor) — and these hit the
+  // shared viewerData cache the units pass just filled, so usually no extra request at all.
+  const summaries = Object.values(byType).filter((x: any) => x?.id);
+  const feeds = await Promise.all(summaries.map((summary: any) => fetchViewerData(summary.id, 'ASSIGNMENT').catch(() => null)));
+  for (const data of feeds) {
     for (const f of (data?.marker?.features ?? []) as ViewerMarkerFeature[]) {
       const p = f.properties ?? {};
       const recordId = p.recordId ?? p.deskId;
@@ -939,9 +954,9 @@ async function fetchFloorplanImageOnce(floorId: string, planId: PlanId): Promise
   const summary = byType[String(FLOOR_PLAN_TYPE[planId])];
   if (!summary?.id) return { dataUrl: null, reason: 'noPlan' };
 
-  const recordRes = await facilioApi.fetchRecord<any>('indoorfloorplan', { id: summary.id });
-  if (recordRes.error || !recordRes.indoorfloorplan) return { dataUrl: null, reason: 'failed' };
-  const fileId = recordRes.indoorfloorplan.fileId;
+  const record = await readIndoorFloorPlanRecord(summary.id);
+  if (!record) return { dataUrl: null, reason: 'failed' };
+  const fileId = record.fileId;
   // A plan record with NO file attached is an empty state ("upload a plan"), not a failure.
   if (!isValidFileId(fileId)) return { dataUrl: null, reason: 'noPlan' };
 
@@ -980,7 +995,7 @@ export async function fetchFloorplanCustomization(floorId: string, planId: PlanI
   const byType = await getFloorplanDetailsByType(floorId);
   const summary = byType[String(FLOOR_PLAN_TYPE[planId])];
   if (!summary?.id) return null;
-  const record = await fetchIndoorFloorPlanRecord(summary.id);
+  const record = await readIndoorFloorPlanRecord(summary.id);
   if (!record) return null;
   // The record carries the customization TWICE (object + JSON-string twin) and projections
   // differ on which one is populated/current — parse both and prefer whichever actually has
@@ -1309,6 +1324,7 @@ export async function uploadFloorplanFile(
     floorplanDetailsCache.delete(floorId);
     viewerDataCache.clear();
     sessionImageCache.delete(`${floorId}:${planId}`);
+    if (existing?.id) indoorPlanReadCache.delete(existing.id);
     const cadKey = `${floorId}:${planId}`;
     if (/\.(dwg|dxf)$/i.test(file.name)) cadSourceFileCache.set(cadKey, file);
     else cadSourceFileCache.delete(cadKey);
@@ -1388,6 +1404,25 @@ async function fetchIndoorFloorPlanRecord(indoorFloorPlanId: number): Promise<an
   const res = await facilioApi.fetchRecord<any>('indoorfloorplan', { id: indoorFloorPlanId });
   if (res.error || !res.indoorfloorplan) return null;
   return res.indoorfloorplan;
+}
+
+/**
+ * SHORT-TTL read cache for the indoorfloorplan record. A single floor load used to GET this
+ * record TWICE — once for the plan image (fileId) and again for the customization (colors +
+ * default view) — and it's a heavy payload (markers + markedZones arrays). Every WRITE path
+ * still fetches FRESH (writes echo the whole record back, so a stale copy would clobber), which
+ * is why this wraps only the read helper.
+ */
+const INDOOR_PLAN_READ_TTL_MS = 15_000;
+const indoorPlanReadCache = new Map<number, { at: number; promise: Promise<any | null> }>();
+function readIndoorFloorPlanRecord(indoorFloorPlanId: number): Promise<any | null> {
+  const hit = indoorPlanReadCache.get(indoorFloorPlanId);
+  if (hit && Date.now() - hit.at < INDOOR_PLAN_READ_TTL_MS) return hit.promise;
+  const promise = fetchIndoorFloorPlanRecord(indoorFloorPlanId);
+  promise.catch(() => indoorPlanReadCache.delete(indoorFloorPlanId));
+  pruneExpired(indoorPlanReadCache, INDOOR_PLAN_READ_TTL_MS);
+  indoorPlanReadCache.set(indoorFloorPlanId, { at: Date.now(), promise });
+  return promise;
 }
 
 /**

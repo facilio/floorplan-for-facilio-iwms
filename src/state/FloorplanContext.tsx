@@ -322,6 +322,10 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
     // load forever (state.loading would never clear) — local-fallback-disabled failures surface
     // as a toast + empty result instead.
     let floorLoadFailed = false;
+    // The PLAN IMAGE chain (plan types -> record -> file download) is the slowest part of a floor
+    // load and used to start only AFTER the three data calls resolved, so its round-trips queued
+    // behind theirs. Kick it off NOW, in parallel — it dispatches its own results.
+    const planLoad = loadFloorPlanTypesAndImage(dispatch, floorId, state.planId, state.allowLocalFallback);
     const [units, assignments, bookings] = await Promise.all([
       dataSource.getUnits(floorId).catch((err) => {
         floorLoadFailed = true;
@@ -342,7 +346,7 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
     ]);
     if (floorLoadFailed) showToast("Couldn't load this floor's data");
     dispatch({ type: 'SELECT_FLOOR_DONE', floorId, units, assignments, bookings });
-    loadFloorPlanTypesAndImage(dispatch, floorId, state.planId, state.allowLocalFallback);
+    void planLoad;
     return units;
   }
 
@@ -1676,7 +1680,12 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
         // the id space assignments/bookings use (desks.clientcontact_desks holds it). Resolved
         // once here (cached — fetchMyDesk reuses it) and stamped as bookBy so "My bookings",
         // the "Your desk" badge, and booking defaults all follow the real login.
-        const peopleId = await fetchCurrentPeopleId().catch(() => null);
+        // INDEPENDENT boot lookups run TOGETHER (they were sequential — three bridge
+        // round-trips back to back before the floor could even be resolved).
+        const [peopleId, myDeskEarly] = await Promise.all([
+          fetchCurrentPeopleId().catch(() => null),
+          fetchMyDesk().catch(() => null),
+        ]);
         if (peopleId) dispatch({ type: 'SET_BOOK_FIELD', field: 'bookBy', value: String(peopleId) });
         // Mode-tab permissions: the role-permissions module record matching the session's role
         // decides which tabs show; no record/module -> the TEMPORARY hardcoded role fallbacks,
@@ -1693,7 +1702,7 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
           const resolved = fromModule ?? hardcoded;
           dispatch({ type: 'SET_MODE_PERMS', perms: resolved ? { ...defaults, ...resolved } : defaults, fromModule: !!resolved });
         })();
-        myDesk = await fetchMyDesk().catch(() => null);
+        myDesk = myDeskEarly;
         // In PORTALS every landing candidate must be a floor the picker actually lists (has an
         // indoorfloorplan) — a deep link or my-desk floor outside the scope falls through to
         // the next candidate, and the last resort comes FROM the scope. Null scope
