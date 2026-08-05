@@ -97,16 +97,17 @@ export function MobileUnitSheet() {
         )}
 
         {!showBookTab && assignable && contactId && !state.mobAssignEdit && (
-          <>
-            <div className={styles.assignedRow}>
-              <span className={styles.avatar}>{initials(contactName(state, contactId) || 'Occupied')}</span>
-              <span className={styles.assignedName}>{contactName(state, contactId) || 'Occupied'}</span>
-            </div>
-            {/* No hardcoded Vacate/Reassign — state actions come from the record's stateflow
-                buttons (below), matching the web panel. */}
-            <UnitStateflowSection unit={unit} />
-          </>
+          <div className={styles.assignedRow}>
+            <span className={styles.avatar}>{initials(contactName(state, contactId) || 'Occupied')}</span>
+            <span className={styles.assignedName}>{contactName(state, contactId) || 'Occupied'}</span>
+          </div>
         )}
+
+        {/* RECORD ACTIONS COME FROM THE API for every unit, exactly like the web panels
+            (AssignPanel/BookPanel): the record's own stateflow + approval transitions, never a
+            hardcoded Vacate/Reassign/Book-state button. Read-only where the web is read-only:
+            the Book tab, and units that aren't assignable in the Assign tab. */}
+        {!isAmenity && !state.mobAssignEdit && <UnitStateflowSection unit={unit} readOnly={showBookTab || !assignable} />}
 
         {picking && (
           <div className={styles.pickWrap}>
