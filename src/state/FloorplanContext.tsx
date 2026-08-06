@@ -1644,7 +1644,11 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
           // "Occupied" placeholder standing in for someone the directory page didn't include.
           if (res.contact) dispatch({ type: 'UPSERT_CLIENT_CONTACT', contact: { id: res.contact.id, name: res.contact.name, client: '' } });
         })
-        .catch(() => {}),
+        // A failing summary SHOWS (requested) instead of being swallowed — the preview then
+        // stops loading with the fields it has, rather than shimmering forever or crashing.
+        .catch((err) => {
+          if (!cancelled) showToastVia(dispatch, `Couldn't load this record: ${(err as Error)?.message || 'unknown error'}`, { variant: 'error' });
+        }),
       // The assignee's NAME when the bulk contact fetch missed them — ROOMS INCLUDED. They were
       // skipped here, and their lookup (clientcontact_rooms) wasn't read either, so a held room
       // showed the "Occupied" fallback forever instead of who holds it (reported).
@@ -1653,7 +1657,11 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
             .then((c) => {
               if (!cancelled && c) dispatch({ type: 'UPSERT_CLIENT_CONTACT', contact: { id: c.id, name: c.name, client: '' } });
             })
-            .catch(() => {})
+            .catch((err) => {
+              // Non-fatal: the record itself already rendered, only the name is missing.
+              // eslint-disable-next-line no-console
+              console.warn('[floorplan] assignee name lookup failed', err);
+            })
         : Promise.resolve(),
     ]).finally(() => {
       if (!cancelled) dispatch({ type: 'SET_UNIT_DETAIL_LOADING', unitId: null });

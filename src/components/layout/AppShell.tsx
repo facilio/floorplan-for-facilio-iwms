@@ -6,6 +6,7 @@ import { MapStage } from './MapStage';
 import { SettingsScreen } from '../settings/SettingsScreen';
 import { BookingsView } from '../bookings/BookingsView';
 import { PeopleView } from '../people/PeopleView';
+import { ErrorBoundary } from '../primitives/ErrorBoundary';
 import { PeoplePickerModal } from '../details/PeoplePickerModal';
 import { BookingModal } from '../details/BookingModal';
 import { hostIsMobile, hostIsMobileParam } from '../../lib/facilioApi';
@@ -45,9 +46,18 @@ export function AppShell() {
   if (isMobileViewport) {
     return (
       <div className={styles.mobileRoot}>
-        <MobileApp mode="page" />
-        <BookingModal />
-        <PeoplePickerModal />
+        {/* A failure in ONE surface is reported and contained; the toast stack lives OUTSIDE
+            every boundary so the message can still be shown (requested — an error must surface
+            as a toast, not take the app down). */}
+        <ErrorBoundary label="this floor" onError={(m) => actions.showToast(`Something went wrong: ${m}`, { variant: 'error' })} resetKey={`${state.floorId}:${state.mobSel ?? ''}`}>
+          <MobileApp mode="page" />
+        </ErrorBoundary>
+        <ErrorBoundary label="the booking form" silent onError={(m) => actions.showToast(`Couldn't show the booking form: ${m}`, { variant: 'error' })} resetKey={state.bookForm?.unitId ?? null}>
+          <BookingModal />
+        </ErrorBoundary>
+        <ErrorBoundary label="the person list" silent onError={(m) => actions.showToast(`Couldn't show the person list: ${m}`, { variant: 'error' })} resetKey={state.peoplePicker}>
+          <PeoplePickerModal />
+        </ErrorBoundary>
         <ToastStack toasts={state.toasts} onDismiss={actions.dismissToast} />
       </div>
     );
@@ -55,18 +65,30 @@ export function AppShell() {
 
   return (
     <div className={styles.root}>
-      {state.activeView === 'settings' && adminAllowed ? (
-        <SettingsScreen />
-      ) : state.activeView === 'bookings' && state.modePerms.book ? (
-        <BookingsView />
-      ) : state.activeView === 'people' && adminAllowed ? (
-        <PeopleView />
-      ) : (
-        <MapStage stageRef={stageRef} />
-      )}
+      {/* Per-VIEW boundary: a broken record on one screen must not blank the app — the bottom
+          nav stays usable, so the user can move somewhere that works. */}
+      <ErrorBoundary
+        label={`the ${state.activeView} view`}
+        onError={(m) => actions.showToast(`Something went wrong: ${m}`, { variant: 'error' })}
+        resetKey={`${state.activeView}:${state.floorId}:${state.selected ?? ''}`}
+      >
+        {state.activeView === 'settings' && adminAllowed ? (
+          <SettingsScreen />
+        ) : state.activeView === 'bookings' && state.modePerms.book ? (
+          <BookingsView />
+        ) : state.activeView === 'people' && adminAllowed ? (
+          <PeopleView />
+        ) : (
+          <MapStage stageRef={stageRef} />
+        )}
+      </ErrorBoundary>
       <BottomNav />
-      <BookingModal />
-      <PeoplePickerModal />
+      <ErrorBoundary label="the booking form" silent onError={(m) => actions.showToast(`Couldn't show the booking form: ${m}`, { variant: 'error' })} resetKey={state.bookForm?.unitId ?? null}>
+        <BookingModal />
+      </ErrorBoundary>
+      <ErrorBoundary label="the person list" silent onError={(m) => actions.showToast(`Couldn't show the person list: ${m}`, { variant: 'error' })} resetKey={state.peoplePicker}>
+        <PeoplePickerModal />
+      </ErrorBoundary>
       <ToastStack toasts={state.toasts} onDismiss={actions.dismissToast} />
     </div>
   );
