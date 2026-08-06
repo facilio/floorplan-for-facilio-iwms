@@ -223,9 +223,10 @@ export function BookingsView() {
     // Booking-date window (mirrors the form's own validation): rooms are same-day only,
     // everything else books at most one week ahead. ISO strings compare lexicographically.
     const today = orgTodayISO();
-    const maxDate = category === 'room' ? today : addDays(today, 7);
-    if (date < today || date > maxDate) {
-      actions.showToast(category === 'room' ? 'Rooms can only be booked for today' : 'Bookings can be made at most one week ahead');
+    // ANY UPCOMING DAY is bookable — rooms included (requested: no same-day limit) — only the
+    // past is refused. Duration rules live in the form: rooms a fixed 2h, desks up to 7 days.
+    if (date < today) {
+      actions.showToast('That day has already passed — pick an upcoming one');
       return;
     }
     // Today's already-started slots can't be booked — the backend bumps a past start to "now",

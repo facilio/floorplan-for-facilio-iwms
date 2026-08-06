@@ -331,9 +331,11 @@ function BookingFormInner() {
   // ROOMS: same day only. DESKS/parking: the START is unrestricted (any upcoming time), and the
   // DURATION is what's capped — the end may be up to 7 DAYS after the start, so 2h, 5h, 10h30 or
   // 6 days are all bookable (requested). Times themselves step by 30m (:00/:30).
-  const maxDate = isRoom ? minDate : addDaysIso(slotDate, 365);
-  const endMinDate = isRoom ? minDate : slotDate;
-  const endMaxDate = isRoom ? minDate : addDaysIso(slotDate, 7);
+  // ROOMS are no longer same-day (requested): any upcoming day, still a fixed 2h window whose end
+  // is derived. Desks/parking: any upcoming start, with the DURATION capped at 7 days.
+  const maxDate = addDaysIso(slotDate, 365);
+  const endMinDate = slotDate;
+  const endMaxDate = isRoom ? addDaysIso(slotDate, 1) : addDaysIso(slotDate, 7);
   /** Minutes-from-midnight of a date+time pair, for comparing across days. */
   const absMin = (dateISO: string, m: number) => Math.round(new Date(`${dateISO}T00:00:00`).getTime() / 60000) + m;
   // A room's end = start + 2h, rolling into the next day when the start is late.
@@ -422,11 +424,7 @@ function BookingFormInner() {
       return;
     }
     if (slotDate < minDate) {
-      actions.showToast(isRoom ? 'Rooms can only be booked for today' : "That start time is in the past");
-      return;
-    }
-    if (isRoom && slotDate !== minDate) {
-      actions.showToast('Rooms can only be booked for today');
+      actions.showToast('That start time is in the past');
       return;
     }
     let start: number;
