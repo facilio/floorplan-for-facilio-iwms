@@ -117,10 +117,12 @@ export function Tooltip() {
           <div className={styles.value}>{unit.department}</div>
         </div>
       )}
-      {/* WHO holds the room, right in the popup (requested) — never the raw contact id. While the
-          record summary is still resolving the name, a SHIMMER stands in: showing "Occupied" and
-          then swapping in the person a moment later read as a glitch. */}
-      {unit.type === 'room' && contactId && (
+      {/* WHO holds the space, right in the popup — never the raw contact id. While the record
+          summary is still resolving the name, a SHIMMER stands in: showing "Occupied" and then
+          swapping in the person a moment later read as a glitch.
+          Rooms only, once — so a DESK popup showed just an "Occupied" pill and never said who
+          (reported). Every assignable type gets the line now; amenities have no assignee. */}
+      {!isAmenity && contactId && (
         <div className={styles.section}>
           <div className={styles.eyebrow}>Assigned to</div>
           {detailLoading && !contactName(state, contactId) ? (
