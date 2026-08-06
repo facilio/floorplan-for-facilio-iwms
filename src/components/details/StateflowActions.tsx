@@ -241,7 +241,6 @@ export function StateflowActions({
 export function UnitStateflowSection({ unit, readOnly, showStatusRow }: { unit: Unit; readOnly?: boolean; showStatusRow?: boolean }) {
   const { state, actions } = useFloorplan();
   const [ref, setRef] = useState<{ moduleName: string; recordId: number } | null>(null);
-  const assigned = !!state.assignments[unit.id];
 
   useEffect(() => {
     let cancelled = false;
@@ -270,14 +269,15 @@ export function UnitStateflowSection({ unit, readOnly, showStatusRow }: { unit: 
       // run elsewhere) so the popup never shows the pre-action state.
       refreshKey={state.unitNonce}
       onChanged={() => actions.unitChanged()}
-      // ONE assign button, not two: while the unit is UNASSIGNED this surface already offers
-      // "Assign a person", so the record's own Assign transition is dropped from the bar and runs
-      // after the contact is set instead (reported: an "Assign" transition button sat right above
-      // "Assign a person"). An ASSIGNED unit keeps its Re-Assign button — that's the only way
-      // back into the picker — but it too only opens the picker now.
-      hideTransition={(t) => !readOnly && !assigned && isAssignTransition(t)}
-      // An assign/re-assign transition opens the PERSON PICKER and stops there: the transition
-      // itself fires from `assign()` once a contact has actually been chosen.
+      // ONE assign button, not two — in BOTH states. Every surface that renders this section
+      // editable now carries its own "Assign a person" / "Re-assign" button, so the record's
+      // assign-ish transitions are dropped from the bar entirely: unassigned they sat above
+      // "Assign a person", and once occupied a "Re-Assign" transition sat above "Re-assign"
+      // (both reported). Vacate is untouched — it stays a real transition button.
+      hideTransition={(t) => !readOnly && isAssignTransition(t)}
+      // Belt and braces for a surface that DOES show an assign transition (a read-only one never
+      // renders buttons, so today nothing does): it opens the person picker and stops there —
+      // assigning is a record write, so the transition must not fire on the click.
       onTransitionStart={(t) => {
         if (isAssignTransition(t)) {
           actions.openPeoplePicker(unit.id);
