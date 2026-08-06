@@ -584,10 +584,14 @@ function BookingFormInner() {
             onChange={(iso) => {
               setSlotDate(iso);
               if (endDate < iso) setEndDate(iso);
+              // Keep the window inside the 7-day span as the start moves.
+              const cap = addDaysIso(iso, 7);
+              if (endDate > cap) setEndDate(cap);
             }}
             onMinutesChange={(m) => {
               setStartMin(m);
               if (endDate === slotDate && endMin <= m) setEndMin(Math.min(1440, m + 30));
+              if (endDate === addDaysIso(slotDate, 7) && endMin > m) setEndMin(m);
             }}
             fullWidth
             aria-label="Start time"
@@ -602,7 +606,12 @@ function BookingFormInner() {
             minutes={endMin}
             minuteStep={30}
             minMinutes={endDate === slotDate ? startMin + 30 : undefined}
-            onChange={setEndDate}
+            maxMinutes={endDate === endMaxDate ? startMin : undefined}
+            onChange={(iso) => {
+              // Landing on the last allowed day pulls the time back inside the 7-day span.
+              setEndDate(iso);
+              if (iso === endMaxDate && endMin > startMin) setEndMin(startMin);
+            }}
             onMinutesChange={setEndMin}
             fullWidth
             aria-label="End time"
@@ -610,7 +619,11 @@ function BookingFormInner() {
         </div>
       </div>
       <p className={card.helper} style={{ marginTop: 6 }}>
-        {endAbs > startAbs ? `Duration ${fmtSpan(endAbs - startAbs)}` : 'The end must be after the start'} · up to 7 days
+        {endAbs <= startAbs
+          ? 'The end must be after the start'
+          : endAbs - startAbs > MAX_SPAN_MIN
+            ? `That window is ${fmtSpan(endAbs - startAbs)} — the maximum is 7 days`
+            : `Duration ${fmtSpan(endAbs - startAbs)}`}{' · up to 7 days'}
       </p>
     </Field>
   ) : (

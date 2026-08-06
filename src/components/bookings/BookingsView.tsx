@@ -243,7 +243,20 @@ export function BookingsView() {
       actions.showToast('That window overlaps an existing booking');
       return;
     }
-    actions.openBookingForm({ unitId: resourceId, date, start, end });
+    // ALL SPACES mixes desks and rooms, so the form opens with the TYPE/FORM SWITCH enabled
+    // (that flag is what shows it — without it the All-spaces form had no switch at all,
+    // reported). A single-category tab books that type only, so no switch there.
+    // The resource snapshot rides along: org-wide records aren't in state.units, and without it
+    // the form can't name/keep the picked resource until the org pool lands.
+    const picked = resources.find((r) => r.id === resourceId);
+    actions.openBookingForm({
+      unitId: resourceId,
+      date,
+      start,
+      end,
+      ...(category === 'all' ? { allowTypeSwitch: true } : {}),
+      ...(picked ? { resourceUnit: picked } : {}),
+    });
   }
 
   function cancelBooking(b: Booking) {
