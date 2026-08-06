@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
 import { isFacilioApiConfigured } from '../../lib/facilioApi';
 import { resolveUnitRecordRef } from '../../lib/facilioApiDataSource';
@@ -37,6 +38,7 @@ export function StateflowActions({
   onTransitionStart,
   onTransitionDone,
   hideTransition,
+  replaceTransition,
   refreshKey,
 }: {
   moduleName: string;
@@ -49,6 +51,13 @@ export function StateflowActions({
   onTransitionStart?: (t: TransitionOption) => void | boolean | 'defer';
   /** Drop a state transition from the button bar — for surfaces that offer the same act through their own UI (an assign handled by the person picker) and would otherwise show two buttons for it. */
   hideTransition?: (t: TransitionOption) => boolean;
+  /**
+   * Render the caller's OWN control in place of a transition, in the same slot. Used for an act
+   * the app performs differently than a plain transition (assigning writes the record via the
+   * person picker) while keeping the API as the authority on whether it's offered at all: no
+   * transition from the backend for this record and user, no button.
+   */
+  replaceTransition?: (t: TransitionOption) => ReactNode | null;
   /** Bump to re-read the record's state — e.g. after an assignment changed it from outside. */
   refreshKey?: number;
   /** Called after a transition executes successfully, with the transition that ran — for callers that mirror specific transitions into app state (e.g. a desk Vacate clearing the assignee). */
@@ -158,11 +167,16 @@ export function StateflowActions({
         })()}
       {!readOnly && allActions.length > 0 && (
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', position: 'relative' }}>
-          {visible.map(({ kind, t }, i) => (
-            <Button key={`${kind}${t.id}`} variant={i === 0 ? 'primary' : 'secondary'} disabled={busyId !== null} onClick={() => run(kind, t)}>
-              {busyId === `${kind}:${t.id}` ? <ButtonSpinner /> : t.name}
-            </Button>
-          ))}
+          {visible.map(({ kind, t }, i) => {
+            // The caller may own this act (assign) — its control takes the transition's slot.
+            const replacement = kind === 'state' ? replaceTransition?.(t) : null;
+            if (replacement) return <span key={`${kind}${t.id}`} style={{ display: 'contents' }}>{replacement}</span>;
+            return (
+              <Button key={`${kind}${t.id}`} variant={i === 0 ? 'primary' : 'secondary'} disabled={busyId !== null} onClick={() => run(kind, t)}>
+                {busyId === `${kind}:${t.id}` ? <ButtonSpinner /> : t.name}
+              </Button>
+            );
+          })}
           {overflow.length > 0 && (
             <>
               <Button
@@ -269,12 +283,18 @@ export function UnitStateflowSection({ unit, readOnly, showStatusRow }: { unit: 
       // run elsewhere) so the popup never shows the pre-action state.
       refreshKey={state.unitNonce}
       onChanged={() => actions.unitChanged()}
-      // ONE assign button, not two — in BOTH states. Every surface that renders this section
-      // editable now carries its own "Assign a person" / "Re-assign" button, so the record's
-      // assign-ish transitions are dropped from the bar entirely: unassigned they sat above
-      // "Assign a person", and once occupied a "Re-Assign" transition sat above "Re-assign"
-      // (both reported). Vacate is untouched — it stays a real transition button.
-      hideTransition={(t) => !readOnly && isAssignTransition(t)}
+      // ONE assign button, and only when the API offers the act (requested — assign/vacate/
+      // re-assign must not show for everyone). The record's assign-ish transition keeps its slot
+      // but renders OUR control: the app assigns by writing the record through the person picker,
+      // not by firing the transition. No assign transition for this record and user -> no button
+      // at all. Vacate is untouched: it stays a real transition button.
+      replaceTransition={(t) =>
+        !readOnly && isAssignTransition(t) ? (
+          <Button variant={state.assignments[unit.id] ? 'secondary' : 'primary'} onClick={() => actions.openPeoplePicker(unit.id)}>
+            {state.assignments[unit.id] ? 'Re-assign' : 'Assign a person'}
+          </Button>
+        ) : null
+      }
       // Belt and braces for a surface that DOES show an assign transition (a read-only one never
       // renders buttons, so today nothing does): it opens the person picker and stops there —
       // assigning is a record write, so the transition must not fire on the click.

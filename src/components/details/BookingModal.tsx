@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
 import { isBookable, unitById } from '../../state/selectors';
@@ -102,13 +102,25 @@ function BookingFormInner() {
   // resource lookup work from ANY floor; the snapshot covers the instant before it lands.
   const snap = target.resourceUnit;
   const [orgUnits, setOrgUnits] = useState<Unit[]>([]);
+  const [resourcesLoading, setResourcesLoading] = useState(isFacilioApiConfigured);
+  // Re-read desks/rooms/stalls on EVERY form open and on every type switch (requested) rather
+  // than replaying a session cache, so the lookup always offers what the org has right now.
+  const [resourceNonce, setResourceNonce] = useState(0);
   useEffect(() => {
+    if (!isFacilioApiConfigured) return;
     let alive = true;
-    if (isFacilioApiConfigured) fetchOrgBookableResources().then((u) => alive && setOrgUnits(u));
+    setResourcesLoading(true);
+    fetchOrgBookableResources({ force: true })
+      .then((u) => {
+        if (!alive) return;
+        setOrgUnits(u);
+        setResourcesLoading(false);
+      })
+      .catch(() => alive && setResourcesLoading(false));
     return () => {
       alive = false;
     };
-  }, []);
+  }, [resourceNonce]);
   const unitPool = useMemo(() => {
     const ids = new Set(state.units.map((u) => u.id));
     // FLOORPLAN VIEW scopes the lookup to the floor being viewed (requested): booking from a plan
@@ -134,6 +146,15 @@ function BookingFormInner() {
     if (first) setResourceId(first.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [typeOverride, unitPool]);
+  // A form/type SWITCH re-reads the resource lists too (requested) — the desk pool and the room
+  // pool are different records, and the one being switched to may have changed since open.
+  const lastType = useRef(effType);
+  useEffect(() => {
+    if (lastType.current === effType) return;
+    lastType.current = effType;
+    setResourceNonce((n) => n + 1);
+  }, [effType]);
+
   const module = state.bookingModule;
   const contacts = state.clientContacts;
 
@@ -559,7 +580,7 @@ function BookingFormInner() {
       value={unit && unit.type === effType ? resourceId : null}
       options={resourceOptions}
       onChange={setResourceId}
-      placeholder={`Select a ${resourceFieldLabel.toLowerCase()}`}
+      placeholder={resourcesLoading && resourceOptions.length === 0 ? 'Loading…' : `Select a ${resourceFieldLabel.toLowerCase()}`}
       fullWidth
       aria-label={resourceFieldLabel}
     />

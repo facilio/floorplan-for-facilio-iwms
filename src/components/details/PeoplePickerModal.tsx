@@ -67,7 +67,8 @@ export function PeoplePickerModal() {
               key={c.id}
               type="button"
               className={styles.personRow}
-              data-tip={[c.name, c.client].filter(Boolean).join(' · ')}
+              // NO hover tooltip here: these rows are wide and already show both lines in full,
+              // so the bubble only covered the row below it (reported as a black bar).
               style={{ width: '100%', textAlign: 'left', background: 'none', cursor: 'pointer' }}
               onClick={() => {
                 void actions.assign(c.id, unitId);

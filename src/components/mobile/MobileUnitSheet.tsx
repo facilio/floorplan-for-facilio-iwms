@@ -5,6 +5,7 @@ import { unitStatus } from '../../lib/unitStatus';
 import { fmtTime } from '../../lib/geometry';
 import { resolveMarkerDef, TYPE_META } from '../../lib/types';
 import { useSheetDrag } from './useSheetDrag';
+import { isFacilioApiConfigured } from '../../lib/facilioApi';
 import { UnitStateflowSection } from '../details/StateflowActions';
 import styles from './MobileUnitSheet.module.css';
 
@@ -114,7 +115,7 @@ export function MobileUnitSheet() {
             lookup is the shared popup, so the sheet no longer carries its own inline list. That
             list also only filtered what was already in memory, while the popup searches the
             directory on the server. */}
-        {!isAmenity && !showBookTab && assignable && (
+        {!isFacilioApiConfigured && !isAmenity && !showBookTab && assignable && (
           <button
             className={styles.primaryBtn}
             onClick={() => {

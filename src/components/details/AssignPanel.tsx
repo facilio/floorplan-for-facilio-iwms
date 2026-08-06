@@ -3,7 +3,7 @@ import type { DragEvent as ReactDragEvent } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
 import { contactName, initials, isAssignable, notAssignableReason, unitById } from '../../state/selectors';
 import { TYPE_META } from '../../lib/types';
-import { openRecordSummary } from '../../lib/facilioApi';
+import { isFacilioApiConfigured, openRecordSummary } from '../../lib/facilioApi';
 import { Button } from '../primitives/Button';
 import { SkeletonRows } from '../primitives/Skeleton';
 import { UnitStateflowSection } from './StateflowActions';
@@ -214,9 +214,13 @@ function AssignBody({ unitId }: { unitId: string }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       {assignedRow}
-      <Button variant={contactId ? 'secondary' : 'primary'} fullWidth onClick={() => actions.openPeoplePicker(unitId)}>
-        {contactId ? 'Re-assign' : 'Assign a person'}
-      </Button>
+      {/* Connected mode gets this button from the record's own assign transition (in the
+          stateflow section), so it can't appear for someone the API won't let assign. */}
+      {!isFacilioApiConfigured && (
+        <Button variant={contactId ? 'secondary' : 'primary'} fullWidth onClick={() => actions.openPeoplePicker(unitId)}>
+          {contactId ? 'Re-assign' : 'Assign a person'}
+        </Button>
+      )}
       <p className={styles.dragHint} style={{ marginTop: 8 }}>
         Or drag a person from the list below onto this space.
       </p>

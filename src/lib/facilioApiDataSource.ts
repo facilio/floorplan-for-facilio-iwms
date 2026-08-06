@@ -2454,8 +2454,15 @@ async function fetchSpaceBookingsForRange(
  * Paginated per module (up to 2000 records each), session-cached.
  */
 let orgResourcesCache: Promise<Unit[]> | null = null;
-export function fetchOrgBookableResources(): Promise<Unit[]> {
+/**
+ * `force` re-reads the modules instead of replaying the session cache — the booking form asks for
+ * that every time it OPENS and every time its form/type SWITCHES (requested), so a lookup can't
+ * offer a stale list, and a first fetch that failed or landed empty can't strand the picker on
+ * "No matches" for the rest of the session.
+ */
+export function fetchOrgBookableResources(opts?: { force?: boolean }): Promise<Unit[]> {
   if (!isFacilioApiConfigured) return Promise.resolve([]);
+  if (opts?.force) orgResourcesCache = null;
   if (!orgResourcesCache) {
     orgResourcesCache = (async () => {
       const mods: { type: UnitType; moduleName: string; plan: PlanId }[] = [
@@ -2497,9 +2504,13 @@ export function fetchOrgBookableResources(): Promise<Unit[]> {
       );
       return out;
     })();
-    orgResourcesCache.catch(() => {
-      orgResourcesCache = null;
-    });
+    orgResourcesCache
+      .then((rows) => {
+        if (!rows.length) orgResourcesCache = null; // never cache "nothing" — retry next open
+      })
+      .catch(() => {
+        orgResourcesCache = null;
+      });
   }
   return orgResourcesCache;
 }

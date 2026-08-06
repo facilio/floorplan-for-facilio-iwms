@@ -171,7 +171,10 @@ export function Tooltip() {
           Manage bookings
         </Button>
       )}
-      {state.mode === 'assign' && assignable && (
+      {/* With a real backend the assign button comes from the record's own transitions (rendered
+          inside the stateflow section above), so it appears only for users/records the API offers
+          it to. This standalone button is the LOCAL-mode fallback, where there is no API to ask. */}
+      {!isFacilioApiConfigured && state.mode === 'assign' && assignable && (
         <Button variant={contactId ? 'secondary' : 'primary'} fullWidth style={{ marginTop: 10 }} onClick={() => actions.openPeoplePicker(unit.id)}>
           {contactId ? 'Re-assign' : 'Assign a person'}
         </Button>
