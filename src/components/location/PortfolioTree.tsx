@@ -244,7 +244,14 @@ export function PortfolioTree() {
               />
             </div>
           ) : (
-            <div key={r.id} className={[styles.row, r.active ? styles.rowActive : ''].join(' ')} style={{ paddingLeft: r.pad }} onClick={r.onClick}>
+            <div
+              key={r.id}
+              className={[styles.row, r.active ? styles.rowActive : ''].join(' ')}
+              // Row-anchored: the name ellipsizes, and a clipping box would cut its own tooltip.
+              data-tip={r.name}
+              style={{ paddingLeft: r.pad }}
+              onClick={r.onClick}
+            >
               {r.hasChildren && (
                 <svg
                   width="12"
@@ -278,14 +285,15 @@ export function PortfolioTree() {
                   <path d="M12 2L2 7l10 5 10-5-10-5z M2 12l10 5 10-5 M2 17l10 5 10-5" />
                 </svg>
               )}
-              {/* Long site/building/floor names ellipsize — the title shows them in full on hover. */}
-              <span className={styles.name} title={r.name}>{r.name}</span>
+              {/* Long names ellipsize — the row's tooltip shows them in full on hover. */}
+              <span className={styles.name}>{r.name}</span>
               {/* Collapsible in-branch search: the icon on an EXPANDED site/building toggles its
                   scoped search bar (buildings within this site / floors within this building). */}
               {r.hasChildren && r.expanded && (
                 <button
                   type="button"
-                  title={branch?.id === r.id ? 'Close search' : r.kind === 'site' ? 'Search buildings in this site' : 'Search floors in this building'}
+                  data-tip={branch?.id === r.id ? 'Close search' : r.kind === 'site' ? 'Search buildings in this site' : 'Search floors in this building'}
+                  data-tip-align="end"
                   aria-label={branch?.id === r.id ? 'Close search' : r.kind === 'site' ? 'Search buildings in this site' : 'Search floors in this building'}
                   aria-expanded={branch?.id === r.id}
                   onClick={(e) => {

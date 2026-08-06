@@ -58,7 +58,11 @@ export function LocationPanel() {
     >
       <div className={styles.body}>
         <div className={styles.switcherRow}>
-          <button className={styles.switcher} onClick={() => actions.setNavView(isTree ? 'spaces' : 'tree')}>
+          <button
+            className={styles.switcher}
+            data-tip={meta ? `${meta.site.name} › ${meta.building.name} › ${floor?.name ?? ''}` : ''}
+            onClick={() => actions.setNavView(isTree ? 'spaces' : 'tree')}
+          >
             <span className={styles.switcherIcon}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 2L2 7l10 5 10-5-10-5z M2 12l10 5 10-5 M2 17l10 5 10-5" />
@@ -66,10 +70,10 @@ export function LocationPanel() {
             </span>
             <span className={styles.switcherText}>
               {/* Both lines ellipsize — the title carries the full path for long names. */}
-              <span className={styles.switcherPath} title={meta ? `${meta.site.name} › ${meta.building.name}` : undefined}>
+              <span className={styles.switcherPath}>
                 {meta ? `${meta.site.name} › ${meta.building.name}` : ''}
               </span>
-              <span className={styles.switcherName} title={floor?.name}>{floor?.name ?? 'Choose a floor'}</span>
+              <span className={styles.switcherName}>{floor?.name ?? 'Choose a floor'}</span>
             </span>
             <svg
               width="16"

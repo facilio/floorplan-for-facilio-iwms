@@ -13,12 +13,12 @@ export function ZoomControls({ rectW, rectH }: { rectW: number; rectH: number })
         {scaleText} · {zoomPct}
       </span>
       <div className={styles.group}>
-        <button className={styles.btn} title="Zoom in" onClick={() => actions.zoomIn(rectW, rectH)}>
+        <button className={styles.btn} data-tip="Zoom in" data-tip-side="left" onClick={() => actions.zoomIn(rectW, rectH)}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
             <path d="M12 5v14M5 12h14" />
           </svg>
         </button>
-        <button className={[styles.btn, styles.btnLast].join(' ')} title="Zoom out" onClick={() => actions.zoomOut(rectW, rectH)}>
+        <button className={[styles.btn, styles.btnLast].join(' ')} data-tip="Zoom out" data-tip-side="left" onClick={() => actions.zoomOut(rectW, rectH)}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
             <path d="M5 12h14" />
           </svg>
@@ -26,7 +26,8 @@ export function ZoomControls({ rectW, rectH }: { rectW: number; rectH: number })
       </div>
       <button
         className={[styles.fit, state.showAllLabels ? styles.fitActive : ''].join(' ')}
-        title={state.showAllLabels ? 'Labels: all (click for auto)' : 'Show all labels'}
+        data-tip={state.showAllLabels ? 'Labels: all (click for auto)' : 'Show all labels'}
+        data-tip-side="left"
         onClick={actions.toggleShowAllLabels}
       >
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -34,7 +35,7 @@ export function ZoomControls({ rectW, rectH }: { rectW: number; rectH: number })
           <circle cx="7" cy="7" r="1.5" fill="currentColor" stroke="none" />
         </svg>
       </button>
-      <button className={styles.fit} title="Fit to view" onClick={() => actions.fitView(rectW, rectH)}>
+      <button className={styles.fit} data-tip="Fit to view" data-tip-side="left" onClick={() => actions.fitView(rectW, rectH)}>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
           <path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3" />
         </svg>

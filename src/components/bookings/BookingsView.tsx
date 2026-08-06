@@ -428,7 +428,7 @@ export function BookingsView() {
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
                         <button
                           type="button"
-                          title="Show on the calendar"
+                          data-tip="Show on the calendar"
                           onClick={() => jumpToBooking(b)}
                           style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', font: '600 13.5px var(--font-sans)', color: 'var(--blue-600)', textAlign: 'left' }}
                         >
@@ -943,7 +943,7 @@ function PortfolioFilter({ applied, onApply }: { applied: { id: string; name: st
         // keeps showing the TRUE total.
         <div className={styles.filterChips}>
           {applied.slice(0, CHIP_LIMIT).map((f) => (
-            <span key={f.id} className={styles.filterChip} title={f.name}>
+            <span key={f.id} className={styles.filterChip} data-tip={f.name} data-tip-align="end" data-tip-pos="top">
               <span className={styles.chipLabel}>{f.name}</span>
               <button className={styles.chipX} title="Remove" onClick={() => onApply(applied.filter((x) => x.id !== f.id))}>
                 ×
@@ -979,7 +979,7 @@ function PortfolioFilter({ applied, onApply }: { applied: { id: string; name: st
               </div>
               <div className={styles.activeList}>
                 {Array.from(draft, ([id, name]) => (
-                  <span key={id} className={styles.filterChip} title={name}>
+                  <span key={id} className={styles.filterChip} data-tip={name}>
                     <span className={styles.chipLabel}>{name}</span>
                     <button
                       className={styles.chipX}

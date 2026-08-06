@@ -124,34 +124,8 @@
   display: flex;
 }
 /* Fast custom tooltip (the native title waits ~1s): shows after 150ms on hover, below the text. */
-.tipHost {
-  position: relative;
-}
-.tipHost[data-tip]::after {
-  content: attr(data-tip);
-  position: absolute;
-  left: 0;
-  top: calc(100% + 4px);
-  z-index: 40;
-  background: var(--ink-900);
-  color: #fff;
-  font: 500 11.5px/1.35 var(--font-sans);
-  padding: 5px 8px;
-  border-radius: 6px;
-  max-width: 240px;
-  width: max-content;
-  white-space: normal;
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(-2px);
-  transition: opacity 0.12s ease, transform 0.12s ease;
-  box-shadow: var(--shadow-md);
-}
-.tipHost[data-tip]:hover::after {
-  opacity: 1;
-  transform: none;
-  transition-delay: 0.15s;
-}
+/* Tooltips come from the GLOBAL [data-tip] system (styles/global.css) — this local copy is gone
+   so every hint in the app looks and times the same. */
 .rowLabel {
   /* Flex so the id chip can sit beside the name and stay whole while the NAME ellipsizes. */
   display: flex;

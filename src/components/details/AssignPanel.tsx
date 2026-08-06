@@ -129,6 +129,9 @@ export function AssignPanel() {
               <div
                 key={contact.id}
                 className={styles.personRow}
+                // Anchored on the row — the name/dept lines clip, and a clipping box would cut
+                // its own tooltip off.
+                data-tip={[contact.name, contact.client].filter(Boolean).join(' · ')}
                 draggable
                 onDragStart={(e) => onDragStart(e, contact.id, contact.name)}
                 onDragEnd={onDragEnd}
@@ -137,16 +140,21 @@ export function AssignPanel() {
                 <span className={styles.avatar}>{initials(contact.name)}</span>
                 <div className={styles.personText}>
                   {/* Long names/clients ellipsize — titles carry the full text. */}
-                  <div className={styles.personName} title={contact.name}>{contact.name}</div>
-                  <div className={styles.personDept} title={contact.client || undefined}>{contact.client}</div>
+                  <div className={styles.personName}>{contact.name}</div>
+                  <div className={styles.personDept}>{contact.client}</div>
                 </div>
-                {held.length > 0 && <span className={styles.heldBadge} title={held.join(', ')}>{held.join(', ')}</span>}
+                {held.length > 0 && (
+                  <span className={styles.heldBadge} data-tip={held.join(', ')} data-tip-align="end">
+                    {held.join(', ')}
+                  </span>
+                )}
                 {/* Record summary opens ONLY from this icon — a whole-row click used to redirect,
                     which made selecting/dragging a person too easy to misfire into a navigation. */}
                 {canOpen && (
                   <button
                     type="button"
-                    title="Open client contact record"
+                    data-tip="Open client contact record"
+                    data-tip-align="end"
                     aria-label={`Open ${contact.name}'s record`}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -184,12 +192,12 @@ function AssignBody({ unitId }: { unitId: string }) {
   // the record's own "Re-Assign" stateflow transition, which now opens this picker itself);
   // only a Cancel escape while the picker is open.
   const assignedRow = contactId ? (
-    <div className={styles.assignedRow}>
+    <div className={styles.assignedRow} data-tip={name ?? ''}>
       <span className={styles.avatar}>{loadingName ? '' : initials(name!)}</span>
       {loadingName ? (
         <span className={styles.nameSkeleton} />
       ) : (
-        <span className={styles.assignedName} title={name!}>{name}</span>
+        <span className={styles.assignedName}>{name}</span>
       )}
       {reassigning && (
         <div style={{ marginLeft: 'auto' }}>

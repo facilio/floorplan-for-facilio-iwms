@@ -24,7 +24,16 @@
   border: 1px solid var(--ink-200);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-md);
-  overflow: hidden;
+  /* NO overflow:hidden — it clipped the buttons' tooltips. The corners are rounded on the first
+     and last buttons instead, which looks identical. */
+}
+.group > :first-child {
+  border-top-left-radius: var(--radius-md);
+  border-top-right-radius: var(--radius-md);
+}
+.group > :last-child {
+  border-bottom-left-radius: var(--radius-md);
+  border-bottom-right-radius: var(--radius-md);
 }
 .btn {
   width: 34px;

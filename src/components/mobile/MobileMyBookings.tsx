@@ -115,7 +115,7 @@ export function MobileMyBookings({ open, onClose }: { open: boolean; onClose: ()
                       {fmtTime(b.start)} – {fmtTime(b.end)}
                     </span>
                     <span className={styles.rowText}>
-                      <span className={styles.rowLabel}>{unit?.label ?? b.name ?? 'Space'}</span>
+                      <span className={styles.rowLabel} data-tip={unit?.label ?? b.name ?? 'Space'}>{unit?.label ?? b.name ?? 'Space'}</span>
                       <span className={styles.rowSub}>
                         {new Date(`${b.date}T00:00:00`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}
                         {unit ? ` · ${TYPE_META[unit.type].name}` : ''}

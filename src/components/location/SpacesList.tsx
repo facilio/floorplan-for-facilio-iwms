@@ -151,6 +151,11 @@ function SpaceRow({ unit, unplaced }: { unit: Unit; unplaced?: boolean }) {
   return (
     <div
       className={styles.row}
+      // The tooltip hangs off the ROW, not the ellipsized text: a text node with
+      // `overflow: hidden` (what makes the ellipsis) also clips its own tooltip bubble.
+      data-tip={[unit.label, unit.secondary || [unit.type === 'workstation' ? 'Desk' : unit.type, unit.room].filter(Boolean).join(' · ')]
+        .filter(Boolean)
+        .join(' · ')}
       style={
         unplaced
           ? placing
@@ -195,9 +200,8 @@ function SpaceRow({ unit, unplaced }: { unit: Unit; unplaced?: boolean }) {
     >
       <span className={styles.dot} style={{ background: status.dot }} />
       <div className={styles.rowText}>
-        {/* Both lines ellipsize — the fast tooltip (150ms, see .tipHost) shows the full text,
-            only mounted when the name is actually long enough to clip. */}
-        <div className={[styles.rowLabel, styles.tipHost].join(' ')} data-tip={unit.label.length > 20 ? unit.label : undefined}>
+        {/* Both lines ellipsize — the global [data-tip] tooltip (200ms) carries the full text. */}
+        <div className={styles.rowLabel}>
           <span className={styles.rowLabelText}>{unit.label}</span>
           {/* EDIT mode's unplaced list shows the RECORD ID (requested): two records can share a
               name, and this is the only way to tell them apart when placing. Ids appear ONLY here
@@ -209,7 +213,7 @@ function SpaceRow({ unit, unplaced }: { unit: Unit; unplaced?: boolean }) {
             </span>
           )}
         </div>
-        <div className={styles.rowSub} title={unit.secondary || undefined}>
+        <div className={styles.rowSub}>
           {unit.secondary || [unit.type === 'workstation' ? 'Desk' : unit.type, unit.room].filter(Boolean).join(' · ')}
         </div>
       </div>

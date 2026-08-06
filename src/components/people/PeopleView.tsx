@@ -42,7 +42,8 @@ export function PeopleView() {
               const canOpen = /^\d+$/.test(c.id);
               const desk = deskByContact[c.id];
               return (
-                <div key={c.id} className={styles.row}>
+                // Row-anchored tooltip (the name/dept lines clip, so they can't host it).
+                <div key={c.id} className={styles.row} data-tip={[c.name, c.client].filter(Boolean).join(' · ')}>
                   <span className={styles.avatar}>{initials(c.name) || '·'}</span>
                   <div className={styles.meta}>
                     <span className={styles.name}>{c.name}</span>

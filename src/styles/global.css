@@ -108,3 +108,163 @@ button {
   white-space: nowrap;
   border: 0;
 }
+
+/* ───────────────────────────────────────────────────────────────────────────
+   TOOLTIPS — one dark bubble for every hint in the app (see the approved
+   design). Any element opts in with `data-tip="…"`; nothing else is needed:
+   pure CSS means no portal, no state, no re-render, and the bubble can't
+   linger because it lives and dies with :hover/:focus-visible.
+
+     data-tip="text"           the bubble's text (wraps beyond 280px)
+     data-tip-pos="top"        flip above the anchor (rows near a bottom edge)
+     data-tip-align="end"      right-align (anchors near the right edge)
+     data-tip-align="center"   centre (icon-only buttons)
+
+   Shown after 200ms of hover (requested) and hidden the instant the pointer
+   leaves. Native `title` is avoided for text hints: ~1s delay, OS styling,
+   and it can't wrap.
+   ─────────────────────────────────────────────────────────────────────────── */
+:root {
+  --tip-bg: var(--ink-900);
+  --tip-fg: #fff;
+  --tip-radius: 6px;
+  --tip-pad: 6px 9px;
+  --tip-font: 500 11.5px/1.4 var(--font-sans);
+  --tip-max: 280px;
+  --tip-gap: 6px;
+  --tip-delay: 200ms;
+  --tip-in: 120ms;
+  --tip-shadow: 0 6px 18px rgba(15, 26, 40, 0.22);
+  --tip-z: 600;
+}
+
+[data-tip] {
+  position: relative;
+}
+[data-tip]::after,
+[data-tip]::before {
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  z-index: var(--tip-z);
+  transition: opacity var(--tip-in) ease, transform var(--tip-in) ease;
+}
+[data-tip]::after {
+  content: attr(data-tip);
+  left: 0;
+  top: calc(100% + var(--tip-gap));
+  background: var(--tip-bg);
+  color: var(--tip-fg);
+  font: var(--tip-font);
+  padding: var(--tip-pad);
+  border-radius: var(--tip-radius);
+  max-width: var(--tip-max);
+  width: max-content;
+  white-space: normal;
+  text-align: left;
+  box-shadow: var(--tip-shadow);
+  transform: translateY(-3px);
+}
+[data-tip]::before {
+  content: '';
+  left: 10px;
+  top: calc(100% + var(--tip-gap) - 4px);
+  border: 4px solid transparent;
+  border-bottom-color: var(--tip-bg);
+  transform: translateY(-3px);
+}
+[data-tip]:hover::after,
+[data-tip]:hover::before,
+[data-tip]:focus-visible::after,
+[data-tip]:focus-visible::before {
+  opacity: 1;
+  transform: none;
+  transition-delay: var(--tip-delay);
+}
+/* Flip UP — for anchors with no room below. */
+[data-tip-pos='top']::after {
+  top: auto;
+  bottom: calc(100% + var(--tip-gap));
+  transform: translateY(3px);
+}
+[data-tip-pos='top']::before {
+  top: auto;
+  bottom: calc(100% + var(--tip-gap) - 4px);
+  border-bottom-color: transparent;
+  border-top-color: var(--tip-bg);
+  transform: translateY(3px);
+}
+/* Right-aligned — for anchors near a right edge. */
+[data-tip-align='end']::after {
+  left: auto;
+  right: 0;
+}
+[data-tip-align='end']::before {
+  left: auto;
+  right: 10px;
+}
+/* Centred — for icon-only controls. */
+[data-tip-align='center']::after {
+  left: 50%;
+  transform: translate(-50%, -3px);
+}
+[data-tip-align='center']:hover::after,
+[data-tip-align='center']:focus-visible::after {
+  transform: translateX(-50%);
+}
+[data-tip-align='center']::before {
+  left: 50%;
+  margin-left: -4px;
+}
+/* An empty data-tip renders nothing (call sites can pass a conditional value). */
+[data-tip='']::after,
+[data-tip='']::before {
+  content: none;
+}
+
+/* SIDE placement — for controls pinned to an edge inside a clipping container (the zoom cluster
+   sits in the stage, which has overflow:hidden, so a bubble opening right/down gets cut). */
+[data-tip-side='left']::after {
+  left: auto;
+  right: calc(100% + var(--tip-gap));
+  top: 50%;
+  transform: translate(3px, -50%);
+}
+[data-tip-side='left']:hover::after,
+[data-tip-side='left']:focus-visible::after {
+  transform: translateY(-50%);
+}
+[data-tip-side='left']::before {
+  left: auto;
+  right: calc(100% + var(--tip-gap) - 4px);
+  top: 50%;
+  margin-top: -4px;
+  border-bottom-color: transparent;
+  border-left-color: var(--tip-bg);
+  transform: translateX(3px);
+}
+[data-tip-side='left']:hover::before,
+[data-tip-side='left']:focus-visible::before {
+  transform: none;
+}
+[data-tip-side='right']::after {
+  left: calc(100% + var(--tip-gap));
+  top: 50%;
+  transform: translate(-3px, -50%);
+}
+[data-tip-side='right']:hover::after,
+[data-tip-side='right']:focus-visible::after {
+  transform: translateY(-50%);
+}
+[data-tip-side='right']::before {
+  left: calc(100% + var(--tip-gap) - 4px);
+  top: 50%;
+  margin-top: -4px;
+  border-bottom-color: transparent;
+  border-right-color: var(--tip-bg);
+  transform: translateX(-3px);
+}
+[data-tip-side='right']:hover::before,
+[data-tip-side='right']:focus-visible::before {
+  transform: none;
+}
