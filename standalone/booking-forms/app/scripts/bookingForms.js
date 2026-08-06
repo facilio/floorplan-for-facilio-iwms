@@ -363,7 +363,6 @@
     var unitType = props.unitType;
     var isRoom = unitType === 'room';
     // ONLY rooms book by slots — desks, parking, and lockers all book a plain start/end window.
-    var useSlots = isRoom;
     var slotLen = ROOM_SLOT_MINUTES;
     var _tz = useState(null), tz = _tz[0], setTz = _tz[1];
     useEffect(function () {
@@ -380,7 +379,6 @@
     var _loading = useState(true), loading = _loading[0], setLoading = _loading[1];
     var _contacts = useState([]), contacts = _contacts[0], setContacts = _contacts[1];
     var _date = useState(minDate), date = _date[0], setDate = _date[1];
-    var _slot = useState(null), slotStart = _slot[0], setSlotStart = _slot[1];
     var defStart = Math.min(1410, Math.ceil(nowMinutes / 30) * 30);
     var _start = useState(defStart), startMin = _start[0], setStartMin = _start[1];
     var _end = useState(Math.min(1440, defStart + 60)), endMin = _end[0], setEndMin = _end[1];
@@ -431,17 +429,15 @@
       var timer = setTimeout(function () {
         fetchResourceBookings(unitType, props.resourceId, date, tz).then(function (rows) {
           if (!alive) return;
-          var s0 = isRoom ? (slotStart == null ? -1 : slotStart) : startMin;
-          var e0 = isRoom ? (slotStart == null ? -1 : slotStart + slotLen) : endMin;
+          var s0 = startMin;
+          var e0 = isRoom ? startMin + ROOM_SLOT_MINUTES : endMin;
           setClashes(rows.filter(function (b) { return s0 >= 0 && b.start < e0 && b.end > s0; }));
         });
       }, 350);
       return function () { alive = false; clearTimeout(timer); };
       // eslint-disable-next-line
-    }, [props.resourceId, unitType, date, startMin, endMin, slotStart, tz]);
+    }, [props.resourceId, unitType, date, startMin, endMin, tz]);
 
-    var slots = [];
-    for (var m = 0; m + slotLen <= 1440; m += slotLen) slots.push(m);
     function slotSelectable(mm) { return date !== minDate || mm >= nowMinutes; }
     var TIMES = [];
     for (var t = 0; t <= 1440; t += 30) TIMES.push(t);
@@ -457,10 +453,9 @@
         return;
       }
       var start, end;
-      if (useSlots) {
-        if (slotStart == null) { setError('Pick a time slot.'); return; }
-        if (!slotSelectable(slotStart)) { setError('That slot has already started — pick an upcoming one.'); return; }
-        start = slotStart; end = slotStart + slotLen;
+      if (isRoom) {
+        if (!slotSelectable(startMin)) { setError('That start time has already passed — pick an upcoming one.'); return; }
+        start = startMin; end = startMin + ROOM_SLOT_MINUTES;
       } else {
         if (endMin <= startMin) { setError('End time must be after the start time.'); return; }
         if (!slotSelectable(startMin)) { setError('That start time has already passed.'); return; }
@@ -521,15 +516,23 @@
     if (loading) return h('div', { style: S.root }, "Loading the org's booking form…");
 
     var timeControls;
-    if (useSlots) {
-      timeControls = field('Time Slots', true, h('div', null,
-        h('input', { style: S.input, type: 'date', value: date, min: minDate, max: maxDate, onChange: function (e) { setDate(e.target.value); } }),
-        h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 } }, slots.map(function (mm) {
-          var ok = slotSelectable(mm);
-          var st = Object.assign({}, S.chip, slotStart === mm ? S.chipActive : null, ok ? null : S.chipDisabled);
-          return h('button', { key: mm, type: 'button', disabled: !ok, style: st, onClick: function () { setSlotStart(mm); } },
-            fmtTime(mm) + ' – ' + fmtTime(mm + slotLen));
-        }))));
+    if (isRoom) {
+      // ROOMS: no slot chips (removed on request). The START is free on 30-minute steps and the
+      // END is DERIVED as start + 2h, shown READ-ONLY.
+      var roomEnd = startMin + ROOM_SLOT_MINUTES;
+      var roomEndLabel = fmtTime(roomEnd % 1440) + (roomEnd >= 1440 ? ' (next day)' : '');
+      var roomTimes = (function () {
+        var firstOk = TIMES.findIndex(function (mm) { return slotSelectable(mm); });
+        return firstOk > PAST_STEPS_SHOWN ? TIMES.slice(firstOk - PAST_STEPS_SHOWN) : TIMES;
+      })();
+      timeControls = field('Booking Window', true, h('div', null,
+        h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 } },
+          h('input', { style: S.input, type: 'date', value: date, min: minDate, max: maxDate, onChange: function (e) { setDate(e.target.value); } }),
+          h('select', { style: S.input, value: startMin, onChange: function (e) { setStartMin(Number(e.target.value)); } },
+            roomTimes.map(function (mm) { return h('option', { key: mm, value: mm, disabled: !slotSelectable(mm) }, fmtTime(mm)); })),
+          h('div', { style: Object.assign({}, S.input, { background: '#f2f4f7', color: '#5b6b7d', display: 'flex', alignItems: 'center' }) }, roomEndLabel)),
+        h('div', { style: { font: '500 11.5px system-ui', color: '#5b6b7d', marginTop: 6 } },
+          'Rooms book a fixed 2-hour window — the end follows the start.')));
     } else {
       // START is NOT limited by the end: every step is listed, already-past ones on today render
       // DISABLED (org clock) rather than vanishing, and only a few of them stay visible. Picking

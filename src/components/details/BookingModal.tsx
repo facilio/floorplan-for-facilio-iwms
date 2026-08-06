@@ -133,10 +133,8 @@ function BookingFormInner() {
   const [noOfAttendees, setNoOfAttendees] = useState('1');
   const [internalAttendees, setInternalAttendees] = useState<string[]>([]);
   const [externalAttendees, setExternalAttendees] = useState<string[]>([]);
-  // ROOMS book a discrete slot (HARDCODED 2h, per request); desks book a free start/end time
-  // window instead — no slots there. Parking/facility keep the configured slot length.
+  // ROOMS book a HARDCODED 2h window from the chosen start; desks/parking book a free window.
   const [slotDate, setSlotDate] = useState(target.date);
-  const [slotStart, setSlotStart] = useState<number | null>(target.start);
   const [startMin, setStartMin] = useState(target.start);
   const [endMin, setEndMin] = useState(Math.max(target.end, target.start + 15));
   // Desk/parking windows can SPAN DAYS (requested: any duration up to 7 days), so the end carries
@@ -300,14 +298,10 @@ function BookingFormInner() {
   const fallbackFormName = isFacility ? FACILITY_FORM_NAME[unit.type] : SPACE_FORM_NAME[unit.type];
   const reserverLabel = isFacility ? 'Reserved For' : 'Reserved By';
 
-  // ONLY rooms book by slots (HARDCODED 2-hour). Everything else — desks, parking, lockers —
-  // books a plain start/end window.
-  // ROOMS: 2h slots, HARDCODED in the form (never the settings granularity) — a room can only be
-  // booked in whole slots. Everything else books a start/end window stepping by the granularity.
-  const slotLen = 120;
-  const useSlots = effType === 'room';
-  // Full-day slot chips (00:00–24:00), not the old 08:00–18:00 office window.
-  const slots = Array.from({ length: Math.floor((24 * 60) / slotLen) }, (_, i) => i * slotLen);
+  // ROOMS book a HARDCODED 2-HOUR window: the START is free on 30-minute steps (1:30, 2:00,
+  // 3:30 …) and the END is DERIVED as start + 2h and shown read-only (requested — the slot chips
+  // are gone). Everything else books a free start/end window.
+  const ROOM_LEN = 120;
   // Desk start/end options — full day, half-hour steps, cross-filtered so end stays after start.
   const TIME_OPTIONS = Array.from({ length: 1440 / 30 + 1 }, (_, i) => i * 30).map((m) => ({ value: String(m), label: fmtTime(m) }));
 
@@ -322,6 +316,10 @@ function BookingFormInner() {
   const endMaxDate = isRoom ? minDate : addDaysIso(slotDate, 7);
   /** Minutes-from-midnight of a date+time pair, for comparing across days. */
   const absMin = (dateISO: string, m: number) => Math.round(new Date(`${dateISO}T00:00:00`).getTime() / 60000) + m;
+  // A room's end = start + 2h, rolling into the next day when the start is late.
+  const roomEndAbsMin = startMin + ROOM_LEN;
+  const roomEndMin = roomEndAbsMin % 1440;
+  const roomEndDate = roomEndAbsMin >= 1440 ? addDaysIso(slotDate, 1) : slotDate;
   const startAbs = absMin(slotDate, startMin);
   const endAbs = absMin(endDate, endMin);
   const MAX_SPAN_MIN = 7 * 24 * 60;
@@ -418,17 +416,14 @@ function BookingFormInner() {
       actions.showToast('A booking can span at most 7 days');
       return;
     }
-    if (useSlots) {
-      if (slotStart == null) {
-        actions.showToast('Pick a time slot');
+    if (isRoom) {
+      // Fixed 2h window from the chosen start; the end may land on the next day.
+      if (!slotSelectable(startMin)) {
+        actions.showToast('That start time has already passed — pick an upcoming one');
         return;
       }
-      if (!slotSelectable(slotStart)) {
-        actions.showToast('That slot has already started — pick an upcoming one');
-        return;
-      }
-      start = slotStart;
-      end = slotStart + slotLen;
+      start = startMin;
+      end = roomEndMin === 0 ? 1440 : roomEndAbsMin >= 1440 ? roomEndMin : startMin + ROOM_LEN;
     } else {
       // Desk path: free start/end window (no slots), possibly spanning days.
       if (endAbs <= startAbs) {
@@ -493,7 +488,7 @@ function BookingFormInner() {
       internalAttendees,
       externalAttendees,
       // A multi-day desk window ends on its OWN date (rooms always end same-day).
-      ...(isRoom || endDate === date ? {} : { endDate }),
+      ...(isRoom ? (roomEndDate !== date ? { endDate: roomEndDate } : {}) : endDate === date ? {} : { endDate }),
       formId: formMeta?.id,
       extras: extraValues,
       // The form's own resource lookup name (from its response) so the create fills it too.
@@ -564,7 +559,7 @@ function BookingFormInner() {
 
   // ROOMS: hardcoded 2h slot chips. Everything else: no slots — a plain start/end window on
   // the chosen date.
-  const timeWindow = !useSlots ? (
+  const timeWindow = (
     <Field key="__time" label="Booking Window" required>
       {/* The org declares start/end as DATETIME fields, so each is one datetime control here
           (calendar + HH/MM columns, like the native picker) instead of a date plus two dropdowns.
@@ -600,10 +595,11 @@ function BookingFormInner() {
         <div>
           <div className={card.label}>End Time</div>
           <DatePicker
-            value={endDate}
+            value={isRoom ? roomEndDate : endDate}
             min={endMinDate}
-            max={endMaxDate}
-            minutes={endMin}
+            max={isRoom ? roomEndDate : endMaxDate}
+            minutes={isRoom ? roomEndMin : endMin}
+            disabled={isRoom}
             minuteStep={30}
             minMinutes={endDate === slotDate ? startMin + 30 : undefined}
             maxMinutes={endDate === endMaxDate ? startMin : undefined}
@@ -619,53 +615,15 @@ function BookingFormInner() {
         </div>
       </div>
       <p className={card.helper} style={{ marginTop: 6 }}>
-        {endAbs <= startAbs
+        {isRoom ? (
+          'Rooms book a fixed 2-hour window — the end follows the start.'
+        ) : endAbs <= startAbs
           ? 'The end must be after the start'
           : endAbs - startAbs > MAX_SPAN_MIN
             ? `That window is ${fmtSpan(endAbs - startAbs)} — the maximum is 7 days`
-            : `Duration ${fmtSpan(endAbs - startAbs)}`}{' · up to 7 days'}
+            : `Duration ${fmtSpan(endAbs - startAbs)}`}
+        {!isRoom && ' · up to 7 days'}
       </p>
-    </Field>
-  ) : (
-    <Field key="__time" label="Time Slots" required>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-        <div>
-          <div className={card.label}>Select Date</div>
-          <DatePicker value={slotDate} min={minDate} max={maxDate} onChange={setSlotDate} fullWidth aria-label="Booking date" />
-        </div>
-        <div>
-          <div className={card.label}>Time Slot</div>
-          <div className={card.input} style={{ display: 'flex', alignItems: 'center', color: slotStart != null ? 'var(--ink-900)' : 'var(--ink-400)' }}>
-            {slotStart != null ? `${fmtTime(slotStart)} – ${fmtTime(slotStart + slotLen)}` : 'Pick a slot'}
-          </div>
-        </div>
-      </div>
-      <div className={card.label} style={{ marginTop: 12, color: 'var(--blue-600)' }}>Available Slots</div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-        {slots.map((m) => {
-          const selectable = slotSelectable(m);
-          return (
-            <button
-              key={m}
-              type="button"
-              disabled={!selectable}
-              title={selectable ? undefined : 'Already past'}
-              onClick={() => setSlotStart(m)}
-              style={{
-                padding: '6px 10px',
-                borderRadius: 6,
-                border: `1px solid ${slotStart === m ? 'var(--blue-500)' : 'var(--ink-200)'}`,
-                background: selectable ? (slotStart === m ? 'var(--blue-025)' : '#fff') : 'var(--ink-050)',
-                color: selectable ? (slotStart === m ? 'var(--blue-600)' : 'var(--ink-700)') : 'var(--ink-300)',
-                font: '500 12px/1 var(--font-sans)',
-                cursor: selectable ? 'pointer' : 'not-allowed',
-              }}
-            >
-              {fmtTime(m)}
-            </button>
-          );
-        })}
-      </div>
     </Field>
   );
 

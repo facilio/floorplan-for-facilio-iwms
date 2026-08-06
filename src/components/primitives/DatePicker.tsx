@@ -19,6 +19,7 @@ export function DatePicker({
   minuteStep = 1,
   minMinutes,
   maxMinutes,
+  disabled,
   'aria-label': ariaLabel,
 }: {
   /** ISO yyyy-mm-dd */
@@ -39,6 +40,8 @@ export function DatePicker({
   /** Earliest selectable minute ON the min date (org clock) — past times can't be picked. */
   minMinutes?: number;
   maxMinutes?: number;
+  /** Read-only display — a DERIVED value (e.g. a room's end = start + 2h) can't be edited. */
+  disabled?: boolean;
   'aria-label'?: string;
 }) {
   const isDateTime = minutes != null && !!onMinutesChange;
@@ -126,7 +129,8 @@ export function DatePicker({
       <button
         type="button"
         aria-label={ariaLabel ?? 'Date'}
-        onClick={() => setOpen((o) => !o)}
+        disabled={disabled}
+        onClick={() => !disabled && setOpen((o) => !o)}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -137,10 +141,10 @@ export function DatePicker({
           padding: '9px 11px',
           borderRadius: 8,
           border: `1.5px solid ${open ? 'var(--blue-500)' : 'var(--ink-200)'}`,
-          background: '#fff',
+          background: disabled ? 'var(--ink-050)' : '#fff',
           font: '500 13.5px var(--font-sans)',
-          color: 'var(--ink-900)',
-          cursor: 'pointer',
+          color: disabled ? 'var(--ink-600)' : 'var(--ink-900)',
+          cursor: disabled ? 'not-allowed' : 'pointer',
           textAlign: 'left',
         }}
       >
