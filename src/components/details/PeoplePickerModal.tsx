@@ -69,7 +69,18 @@ export function PeoplePickerModal() {
               className={styles.personRow}
               // NO hover tooltip here: these rows are wide and already show both lines in full,
               // so the bubble only covered the row below it (reported as a black bar).
-              style={{ width: '100%', textAlign: 'left', background: 'none', cursor: 'pointer' }}
+              // The row class was written for a <div>, so as a <button> it inherited the browser's
+              // own dark border (reported) — a plain grey box instead, and a pointer rather than
+              // the directory list's grab cursor, since this row is clicked, not dragged.
+              style={{
+                width: '100%',
+                textAlign: 'left',
+                font: 'inherit',
+                color: 'inherit',
+                background: 'var(--paper, #fff)',
+                border: '1px solid var(--ink-200)',
+                cursor: 'pointer',
+              }}
               onClick={() => {
                 void actions.assign(c.id, unitId);
                 close();
