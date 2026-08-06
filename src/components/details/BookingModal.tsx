@@ -127,12 +127,15 @@ function BookingFormInner() {
     // means booking something ON that plan, so org-wide records are left out there. The BOOKINGS
     // calendar stays org-wide (its whole point is booking anything, incl. unplaced records).
     const onFloorplan = state.activeView === 'map';
+    // CALENDAR: org-wide by default, but when the top portfolio filter is applied the lookups
+    // follow it (requested) — the same floors the calendar itself is showing.
+    const scope = target.floorIds && target.floorIds.length ? new Set(target.floorIds) : null;
     const pool = onFloorplan
       ? [...state.units, ...orgUnits.filter((u) => !ids.has(u.id) && u.floor === state.floorId)]
-      : [...state.units, ...orgUnits.filter((u) => !ids.has(u.id))];
+      : [...state.units, ...orgUnits.filter((u) => !ids.has(u.id) && (!scope || scope.has(u.floor)))];
     if (snap && !pool.some((u) => u.id === snap.id)) pool.push(snap);
     return pool;
-  }, [state.units, orgUnits, snap, state.activeView, state.floorId]);
+  }, [state.units, orgUnits, snap, state.activeView, state.floorId, target.floorIds]);
   const unit = unitById(state, resourceId) ?? unitPool.find((u) => u.id === resourceId) ?? unitById(state, target.unitId) ?? snap ?? null;
   // The FORM SHOWN follows the type switch itself (both pills always render in All spaces —
   // requested), independent of whether a resource of that type is picked/available yet.
@@ -310,7 +313,7 @@ function BookingFormInner() {
    */
   const formResourceField = useMemo(() => {
     if (!formMeta || !unit) return null;
-    const hit = formMeta.fields.find((f) => isResourceField(f));
+    const hit = [...formMeta.fields].filter(isResourceField).sort((a, b) => resourceFieldRank(a) - resourceFieldRank(b))[0];
     return hit?.name ?? null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formMeta, unit?.type, isFacility]);
@@ -435,6 +438,21 @@ function BookingFormInner() {
         return isResourceFamilyField(f);
     }
   }
+
+  /**
+   * A space-booking form can carry TWO fields for the same thing: the generic `space` ("Location")
+   * and the org's own room lookup ("Meeting Rooms", lookupModule `rooms`). Only the most specific
+   * one is shown (requested) — Location is hidden and filled from the chosen room on SAVE, which
+   * createRealBooking already does by mapping the picked record onto the `space` lookup.
+   */
+  function resourceFieldRank(f: BookingFormFieldMeta): number {
+    const lm = (f.lookupModule ?? '').toLowerCase();
+    if (effType === 'room') return lm === 'rooms' ? 0 : lm === 'space' || lm === 'basespace' ? 2 : 1;
+    return lm in RESOURCE_LOOKUP_TYPE ? 0 : 1;
+  }
+  const primaryResourceFieldName = formMeta
+    ? ([...formMeta.fields].filter(isResourceField).sort((a, b) => resourceFieldRank(a) - resourceFieldRank(b))[0]?.name ?? null)
+    : null;
 
   /** Org fields rendered generically (not mapped to a dedicated control) → typed extras for the API. */
   function collectExtras(meta: BookingFormMeta | null): { values: Record<string, unknown>; missing: string | null } {
@@ -765,6 +783,9 @@ function BookingFormInner() {
         break;
     }
     if (isResourceField(f)) {
+      // The SECOND resource field for the same unit (Location next to Meeting Rooms) isn't shown
+      // at all — the save fills it from the picked record.
+      if (primaryResourceFieldName && f.name !== primaryResourceFieldName) return null;
       flags.resource = true;
       return (
         <Field key={f.name} label={f.label || resourceFieldLabel} required={f.required}>

@@ -257,6 +257,9 @@ export function BookingsView() {
       end,
       ...(category === 'all' ? { allowTypeSwitch: true } : {}),
       ...(picked ? { resourceUnit: picked } : {}),
+      // With NO top filter the form's lookups stay org-wide; with one applied they follow it
+      // (requested), so the picker offers the same floors the calendar is showing.
+      ...(floorFilter.length ? { floorIds: floorFilter.map((f) => f.id) } : {}),
     });
   }
 
