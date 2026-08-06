@@ -124,7 +124,9 @@ export function myAssignedUnit(state: AppState): Unit | null {
   // Real-backend fallback, no "This is me" pick needed: servicePortalHome already resolved the
   // SESSION user's assigned/booked desk at boot (state.myDesk), and viewerData-sourced units
   // carry the backing desk record id as their unit id — so the join is a direct id match.
-  if (state.myDesk?.recordId != null) return unitById(state, String(state.myDesk.recordId));
+  // A ROOM assignment is deliberately NOT a "my desk" (requested): it still decides which floor
+  // the app lands on at boot, but it is never what this button locates or badges.
+  if (state.myDesk?.recordId != null && !state.myDesk.isRoom) return unitById(state, String(state.myDesk.recordId));
   return null;
 }
 

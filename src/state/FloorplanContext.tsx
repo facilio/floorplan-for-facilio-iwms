@@ -606,6 +606,9 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
     locateMyDesk: async (rectW: number, rectH: number) => {
       const md = state.myDesk;
       if (!md?.floorId) return;
+      // A room assigned to the user is NOT "my desk" (requested) — it only seeds the landing
+      // floor at boot, so there is nothing to locate here.
+      if (md.isRoom) return;
       let units: Unit[] = state.units;
       if (md.floorId !== state.floorId) units = await loadFloor(md.floorId);
       // viewerData-sourced units (and room ZONES — the my-desk fallback when no desk exists)
@@ -630,7 +633,7 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
         setTimeout(() => dispatch({ type: 'HIGHLIGHT_UNIT', id: null }), 2000);
         setTimeout(() => dispatch({ type: 'SET_VIEW', view, animate: false }), 380);
       } else {
-        showToast(`Your ${md.isRoom ? 'room' : 'desk'} ${md.name} is on this floor`);
+        showToast(`Your desk ${md.name} is on this floor`);
       }
     },
 

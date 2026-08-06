@@ -8,8 +8,9 @@ export function Toolbar({ leftPad, rightPad }: { leftPad: number; rightPad: numb
   if (!state.modePerms.edit && !state.modePerms.assign && !state.modePerms.book) return null;
   const myUnit = myAssignedUnit(state);
   // Mock tier derives "my desk" from local assignments; the real backend provides it via
-  // servicePortalHome (state.myDesk). Either one lights the button up.
-  const hasMyDesk = !!myUnit || !!state.myDesk;
+  // servicePortalHome (state.myDesk). Either one lights the button up — except a ROOM
+  // assignment, which isn't a desk (requested): it only picks the boot floor.
+  const hasMyDesk = !!myUnit || (!!state.myDesk && !state.myDesk.isRoom);
 
   function onMyDesk() {
     if (myUnit) actions.focusUnit(myUnit.id, state.stage.w, state.stage.h, { select: false });
