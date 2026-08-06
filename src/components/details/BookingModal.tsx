@@ -816,42 +816,9 @@ function BookingFormInner() {
         onClose={actions.closeBookingForm}
       />
       <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14, maxHeight: '64vh', overflowY: 'auto' }}>
-        {/* NO form switcher (removed on request): the unit type's own form is auto-picked by
-            its LINK NAME (pickDefaultBookingForm) — desk bookings get only the desk form,
-            space bookings only the space form. From "All spaces" (allowTypeSwitch) a TYPE
-            switch flips desk/space/parking — the resource options AND the org form follow. */}
-        {target.allowTypeSwitch && (
-          <div role="tablist" aria-label="Booking type" style={{ display: 'flex', gap: 6 }}>
-            {/* Desk and Space, BOTH always shown (requested) — the two org forms the switch
-                flips between; an empty type still shows its form with the lookup awaiting. */}
-            {(['workstation', 'room'] as const).map((t) => {
-              const active = effType === t;
-              const label = t === 'workstation' ? 'Desk' : 'Space';
-              return (
-                <button
-                  key={t}
-                  type="button"
-                  role="tab"
-                  aria-selected={active}
-                  onClick={() => {
-                    if (!active) setTypeOverride(t);
-                  }}
-                  style={{
-                    padding: '6px 12px',
-                    borderRadius: 999,
-                    border: `1px solid ${active ? 'var(--blue-500)' : 'var(--ink-200)'}`,
-                    background: active ? 'var(--blue-025)' : '#fff',
-                    color: active ? 'var(--blue-600)' : 'var(--ink-700)',
-                    font: `${active ? 600 : 500} 12px/1 var(--font-sans)`,
-                    cursor: 'pointer',
-                  }}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-        )}
+        {/* NO Desk/Space PILLS (removed on request): the FORM PICKER above is the switch — the
+            chosen form decides what's being booked (see typeOfForm), and the resource lookup
+            follows it. A context view has a single form and shows a static label instead. */}
         {/* CLASH BANNER at the top of the form (requested): the selected desk/space already has a
             booking in this window — fetched with the resource-scoped filter as the range changes. */}
         {conflictNote}
