@@ -1313,9 +1313,25 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       /** Multi-day desk windows end on their OWN date (omitted = same day as `date`). */
       endDate?: string;
     }): Promise<boolean> => {
-      const unit = unitById(state, form.unitId);
-      if (!unit || form.end <= form.start) {
-        showToast('Pick a valid time window');
+      // The resource may not be on the LOADED FLOOR at all: the bookings calendar offers the
+      // org-wide pool, so `state.units` (this floor only) can't resolve it — that mismatch was
+      // rejecting perfectly valid bookings as "Pick a valid time window" (reported). The form
+      // carries the record it rendered, and unplaced records count too.
+      const unit =
+        unitById(state, form.unitId) ??
+        (state.bookForm?.resourceUnit?.id === form.unitId ? state.bookForm.resourceUnit : null) ??
+        state.unplacedUnits.find((u) => u.id === form.unitId) ??
+        null;
+      if (!unit) {
+        showToast("That space isn't available any more — pick another", { variant: 'error' });
+        return false;
+      }
+      // A window that ENDS ON ANOTHER DAY is longer, not invalid: comparing the two clock times
+      // alone refused every overnight and multi-day desk booking (18:00 -> 09:00 tomorrow), which
+      // is exactly what the 7-day duration rule is meant to allow.
+      const dayOffset = form.endDate && form.endDate !== form.date ? Math.round((Date.parse(`${form.endDate}T00:00:00`) - Date.parse(`${form.date}T00:00:00`)) / 86_400_000) : 0;
+      if (!Number.isFinite(dayOffset) || dayOffset < 0 || form.end + dayOffset * 1440 <= form.start) {
+        showToast('Pick a valid time window', { variant: 'error' });
         return false;
       }
       // Conflict-check against the resource's real slice for that exact date (the form can target
