@@ -61,6 +61,28 @@ export function isBookable(u: Unit): boolean {
   return true;
 }
 
+/** The one sentence for a unit nothing can be done with — same copy in book AND assign view. */
+const NO_ACTION_ROOM = "This room isn't set up for booking or assignment, so there's nothing to do here.";
+
+/**
+ * Nothing is actionable on a unit that is neither bookable nor assignable — a room whose record
+ * carries `reservable = false` AND `isassignable_rooms = false` is the case that reaches this
+ * (requested). Surfaces use it to withhold every action rather than offer one that can't run.
+ */
+export function isActionable(u: Unit): boolean {
+  return isBookable(u) || isAssignable(u);
+}
+
+/**
+ * Why `unit` can't be ASSIGNED — the mirror of notBookableReason. Both hardcoded "Meeting Rooms
+ * can only be booked, not assigned", which is wrong for a room that can't be booked either.
+ */
+export function notAssignableReason(u: Unit): string {
+  if (u.type === 'room') return isBookable(u) ? 'Meeting Rooms can only be booked, not assigned' : NO_ACTION_ROOM;
+  if (u.type === 'workstation') return 'This is a bookable (hot) desk, so it isn’t assigned to anyone.';
+  return "This space can't be assigned.";
+}
+
 /**
  * Why `unit` can't be booked — accurate per TYPE (see isBookable). Shared by the web Book panel
  * and the mobile unit sheet, which both hardcoded the LOCKER sentence and so told users a room or
@@ -71,7 +93,9 @@ export function notBookableReason(u: Unit): string {
     case 'workstation':
       return "This desk is assigned to a person, so it can't be booked — pick a free (hot) desk instead.";
     case 'room':
-      return 'This room is set up for assignment, not booking.';
+      // A room flagged NEITHER reservable NOR assignable has no action at all — claiming it is
+      // "set up for assignment" would send the user to a tab that offers nothing (requested).
+      return isAssignable(u) ? 'This room is set up for assignment, not booking.' : NO_ACTION_ROOM;
     case 'locker':
       return 'Lockers are assigned, not booked.';
     case 'parking':

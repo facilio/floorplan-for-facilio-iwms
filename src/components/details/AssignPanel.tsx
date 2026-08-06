@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import type { DragEvent as ReactDragEvent } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
-import { contactName, initials, isAssignable, unitById } from '../../state/selectors';
+import { contactName, initials, isAssignable, notAssignableReason, unitById } from '../../state/selectors';
 import { TYPE_META } from '../../lib/types';
 import { openRecordSummary } from '../../lib/facilioApi';
 import { Select } from '../primitives/Select';
@@ -74,7 +74,7 @@ export function AssignPanel() {
             {isAssignable(sel) ? (
               <AssignBody unitId={sel.id} />
             ) : sel.type === 'room' ? (
-              <p className={card.helper}>Meeting Rooms can only be booked, not assigned</p>
+              <p className={card.helper}>{notAssignableReason(sel)}</p>
             ) : null}
             {/* Buttons only for ASSIGNABLE units — a booking-type (HOT/HOTEL) desk selected in
                 assign view shows its state read-only (mirror of the booking view's rule).

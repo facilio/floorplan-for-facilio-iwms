@@ -17,7 +17,7 @@ import { orgNow } from '../lib/orgTime';
 import { buildInitialState, reducer } from './reducer';
 import type { Action } from './reducer';
 import type { AppState } from './types';
-import { conflictsFor, isAssignable, nextLabel, unitById } from './selectors';
+import { conflictsFor, isAssignable, nextLabel, notAssignableReason, unitById } from './selectors';
 import { calibratedPxPerMeter, clampPanelPos, defaultPanelPos, distNormToPx, fitView as fitViewFn, focusUnitView, pointInPoly, zoomAt as zoomAtFn } from '../lib/geometry';
 
 interface Ctx {
@@ -1111,6 +1111,13 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       // Edit button — anyone who can see the Assignment tab can change assignments.
       const target = unitById(state, unitId);
       if (!target) return;
+      // NOTHING is actionable on a unit the rules say can't be assigned — a room carrying
+      // reservable=false AND isassignable_rooms=false above all (requested). The panels already
+      // withheld the UI, but a drag-and-drop onto the marker still wrote an assignment here.
+      if (!isAssignable(target)) {
+        showToast(notAssignableReason(target));
+        return;
+      }
       const next = { ...state.assignments };
       // one unit per type per contact
       for (const [uid, cId] of Object.entries(next)) {

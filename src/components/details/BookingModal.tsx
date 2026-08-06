@@ -72,6 +72,17 @@ const RESOURCE_LOOKUP_TYPE: Record<string, UnitType> = {
 };
 const PEOPLE_LOOKUPS = new Set(['people', 'employee', 'clientcontact', 'users']);
 
+/**
+ * What a booking FORM'S resource lookup offers (requested, form scope only — the plan's own
+ * states are untouched): DESKS list hot/hotel records, ROOMS list only what the org flagged
+ * reservable. `isBookable`'s legacy "reservable unset -> bookable" default is too loose here.
+ */
+function lookupEligible(u: Unit): boolean {
+  if (u.type === 'workstation') return u.deskType === 'HOT' || u.deskType === 'HOTEL';
+  if (u.type === 'room') return u.isReservable === true;
+  return isBookable(u);
+}
+
 export function BookingModal() {
   const { state } = useFloorplan();
   if (!state.bookForm) return null;
@@ -117,7 +128,9 @@ function BookingFormInner() {
   const effType: UnitType = typeOverride ?? unit?.type ?? 'workstation';
   useEffect(() => {
     if (!typeOverride || unit?.type === typeOverride) return;
-    const first = unitPool.find((u) => u.type === typeOverride && isBookable(u));
+    // Pick from what the LOOKUP will actually offer, so the auto-selected resource is one of
+    // its options rather than a record the list then refuses to show.
+    const first = unitPool.find((u) => u.type === typeOverride && lookupEligible(u));
     if (first) setResourceId(first.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [typeOverride, unitPool]);
@@ -280,6 +293,25 @@ function BookingFormInner() {
     return hit?.name ?? null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formMeta, unit?.type, isFacility]);
+
+  /**
+   * The LOADED form is the authority on what it books — its own resource lookup's target module.
+   * The pre-resolved type map (Step 1) can miss: a form whose fetch failed caches `null`, and the
+   * link-name fallback checks the desk key first, so picking "Meeting Room Booking" left the body
+   * on the DESK field and the desk 7-day window while only the header changed (reported).
+   * Re-deriving from the fetched form makes the switch flip the whole form, on any org.
+   */
+  useEffect(() => {
+    if (!canPickForm || !formMeta) return;
+    for (const f of formMeta.fields) {
+      const lm = (f.lookupModule ?? '').toLowerCase();
+      const t = lm ? RESOURCE_LOOKUP_TYPE[lm] : undefined;
+      if (t) {
+        if (t !== effType) setTypeOverride(t);
+        return;
+      }
+    }
+  }, [formMeta, canPickForm, effType]);
 
   // Booking-date window + "now" on the ORG clock (reactive — re-renders when the zone resolves).
   const nowOrg = useOrgClock();
@@ -518,7 +550,7 @@ function BookingFormInner() {
 
   // Bookable units of the SAME type as the picked one — the lookup's option set, org-wide.
   const resourceOptions = unitPool
-    .filter((u) => u.type === effType && isBookable(u))
+    .filter((u) => u.type === effType && lookupEligible(u))
     .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }))
     .map((u) => ({ value: u.id, label: u.label, sublabel: u.room ?? u.secondary ?? undefined }));
 
@@ -825,8 +857,14 @@ function BookingFormInner() {
             Choose a booking form above to continue.
           </div>
         ) : formLoading ? (
-          <div style={{ padding: '28px 0', textAlign: 'center', font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--ink-500)' }}>
-            Loading the org's booking form…
+          // Just a loader — no running commentary about what's being fetched (requested).
+          <div style={{ padding: '34px 0', display: 'flex', justifyContent: 'center' }} role="status" aria-label="Loading">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" strokeWidth="2.4" strokeLinecap="round" aria-hidden>
+              <circle cx="12" cy="12" r="9" stroke="var(--ink-100)" />
+              <path d="M12 3a9 9 0 0 1 9 9" stroke="var(--ink-400)">
+                <animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="0.8s" repeatCount="indefinite" />
+              </path>
+            </svg>
           </div>
         ) : formMeta && formMeta.fields.length > 0 ? (
           renderOrgForm(formMeta)

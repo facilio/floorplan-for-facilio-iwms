@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { Unit } from '../../lib/types';
 import { useFloorplan } from '../../state/FloorplanContext';
-import { notBookableReason, contactName, initials, isAssignable, isBookable, unitById } from '../../state/selectors';
+import { notAssignableReason, notBookableReason, contactName, initials, isAssignable, isBookable, unitById } from '../../state/selectors';
 import { unitStatus } from '../../lib/unitStatus';
 import { fmtTime } from '../../lib/geometry';
 import { resolveMarkerDef, TYPE_META } from '../../lib/types';
@@ -106,9 +106,7 @@ export function MobileUnitSheet() {
         {/* WHY this space can't be booked, per TYPE — the copy was hardcoded to lockers and read
             wrong on an assigned desk (reported). Mirrors isBookable's actual rules. */}
         {!isAmenity && showBookTab && !bookable && <div className={styles.infoBox}>{notBookableReason(unit)}</div>}
-        {!isAmenity && !showBookTab && !assignable && unit.type === 'room' && (
-          <div className={styles.infoBox}>Meeting Rooms can only be booked, not assigned</div>
-        )}
+        {!isAmenity && !showBookTab && !assignable && unit.type === 'room' && <div className={styles.infoBox}>{notAssignableReason(unit)}</div>}
 
         {!showBookTab && assignable && contactId && !state.mobAssignEdit && (
           // Shimmer while the record summary resolves the assignee's name — "Occupied" then the

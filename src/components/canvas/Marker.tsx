@@ -1,6 +1,6 @@
 import type { DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
-import { contactName, myAssignedUnit } from '../../state/selectors';
+import { contactName, isAssignable, myAssignedUnit } from '../../state/selectors';
 import { markerStyle, unitStatus } from '../../lib/unitStatus';
 import type { PointGeom, Unit } from '../../lib/types';
 import { MARKER_ICONS as ICONS } from './markerIcons';
@@ -45,7 +45,9 @@ export function Marker({ unit, invZ, onDragStart, myUnitId, labelVisible }: { un
       if (state.dragOverId !== unit.id) actions.dragOverUnit(unit.id);
       return;
     }
-    if (state.mode !== 'assign') return;
+    // A unit that can't be assigned is not a drop target at all — no highlight, no "move"
+    // cursor, nothing to release onto (requested: nothing actionable on such a room).
+    if (state.mode !== 'assign' || !isAssignable(unit)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     if (state.dragOverId !== unit.id) actions.dragOverUnit(unit.id);
@@ -63,7 +65,7 @@ export function Marker({ unit, invZ, onDragStart, myUnitId, labelVisible }: { un
       if (unitId && unitId !== unit.id) actions.placeUnitOnUnit(unitId, unit.id);
       return;
     }
-    if (state.mode !== 'assign') return;
+    if (state.mode !== 'assign' || !isAssignable(unit)) return;
     e.preventDefault();
     const contactId = state.dragContactId || e.dataTransfer.getData('text/plain');
     if (contactId) actions.assign(contactId, unit.id);
