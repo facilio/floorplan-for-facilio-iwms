@@ -269,8 +269,15 @@ export function DatePicker({
                 type="button"
                 onClick={() => {
                   const now = orgNow();
+                  // "Now" lands on the NEXT WHOLE SLOT, never the raw clock minute (requested:
+                  // 10:51 -> 11:00, 11:01 -> 11:30) — the MM column only offers the grid, so a
+                  // raw minute produced a time the user could not have picked by hand. Rolling
+                  // past the end of the day would change the DATE, so the last slot is the cap.
+                  const step = Math.max(1, minuteStep);
+                  const upper = Math.min(maxMinutes ?? 1440 - step, 1440 - step);
+                  const snapped = Math.min(upper, Math.max(minMinutes ?? 0, Math.ceil(now.minutes / step) * step));
                   if (inRange(now.dateISO)) onChange(now.dateISO);
-                  onMinutesChange!(now.minutes);
+                  onMinutesChange!(snapped);
                 }}
                 style={{ border: 'none', background: 'none', color: 'var(--blue-600)', font: '600 12.5px var(--font-sans)', cursor: 'pointer', padding: 0 }}
               >

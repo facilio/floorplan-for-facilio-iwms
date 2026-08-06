@@ -7,6 +7,7 @@ import {
   executeStateTransition,
   fetchApprovalTransitions,
   fetchAvailableStates,
+  isAssignTransition,
   type FlowState,
   type TransitionOption,
 } from '../../lib/stateflowApi';
@@ -35,6 +36,8 @@ export function StateflowActions({
   onChanged,
   onTransitionStart,
   onTransitionDone,
+  hideTransition,
+  refreshKey,
 }: {
   moduleName: string;
   recordId: number;
@@ -42,8 +45,12 @@ export function StateflowActions({
   showStatusRow?: boolean;
   readOnly?: boolean;
   onChanged?: () => void;
-  /** Called the moment a transition is CLICKED (before the API round-trip) — for callers that open follow-up UI instantly (e.g. Re-Assign opening the person picker). Return true to SUPPRESS the "<name> done" toast: the follow-up UI is the feedback, and the toast covered the picker. */
-  onTransitionStart?: (t: TransitionOption) => void | boolean;
+  /** Called the moment a transition is CLICKED (before the API round-trip) — for callers that open follow-up UI instantly (e.g. Re-Assign opening the person picker). Return true to SUPPRESS the "<name> done" toast: the follow-up UI is the feedback, and the toast covered the picker. Return 'defer' to ALSO skip the request itself: the caller runs the transition later, once its follow-up UI has produced the data the transition is about (an assign needs a person first). */
+  onTransitionStart?: (t: TransitionOption) => void | boolean | 'defer';
+  /** Drop a state transition from the button bar — for surfaces that offer the same act through their own UI (an assign handled by the person picker) and would otherwise show two buttons for it. */
+  hideTransition?: (t: TransitionOption) => boolean;
+  /** Bump to re-read the record's state — e.g. after an assignment changed it from outside. */
+  refreshKey?: number;
   /** Called after a transition executes successfully, with the transition that ran — for callers that mirror specific transitions into app state (e.g. a desk Vacate clearing the assignee). */
   onTransitionDone?: (t: TransitionOption) => void;
 }) {
@@ -80,10 +87,10 @@ export function StateflowActions({
     return () => {
       cancelled = true;
     };
-  }, [moduleName, recordId, showApproval, nonce]);
+  }, [moduleName, recordId, showApproval, nonce, refreshKey]);
 
   if (!isFacilioApiConfigured) return null;
-  const stateTransitions = flow?.transitions ?? [];
+  const stateTransitions = (flow?.transitions ?? []).filter((t) => !hideTransition?.(t));
   const approvalTransitions = approval?.transitions ?? [];
   const hasAnything = flow?.currentStateName || approval?.currentStateName || stateTransitions.length > 0 || approvalTransitions.length > 0;
   if (!hasAnything) return null;
@@ -97,8 +104,13 @@ export function StateflowActions({
       if (body === null) return; // aborted — no request
       data = { transitionCommentData: { body, bodyHTML: body } };
     }
+    const started = onTransitionStart?.(t);
+    // DEFERRED: the caller opened UI that must produce something first (the person picker for an
+    // assign) and will run the transition itself once it has it — firing it now would move the
+    // record's state with nobody assigned (reported).
+    if (started === 'defer') return;
     setBusyId(`${kind}:${t.id}`);
-    const openedFollowUp = onTransitionStart?.(t) === true;
+    const openedFollowUp = started === true;
     try {
       if (kind === 'state') await executeStateTransition(moduleName, recordId, t.id, data);
       else await executeApprovalTransition(moduleName, recordId, t.id, data);
@@ -227,8 +239,9 @@ export function StateflowActions({
  * StateflowActions for it.
  */
 export function UnitStateflowSection({ unit, readOnly, showStatusRow }: { unit: Unit; readOnly?: boolean; showStatusRow?: boolean }) {
-  const { actions } = useFloorplan();
+  const { state, actions } = useFloorplan();
   const [ref, setRef] = useState<{ moduleName: string; recordId: number } | null>(null);
+  const assigned = !!state.assignments[unit.id];
 
   useEffect(() => {
     let cancelled = false;
@@ -253,13 +266,22 @@ export function UnitStateflowSection({ unit, readOnly, showStatusRow }: { unit: 
       recordId={ref.recordId}
       readOnly={readOnly}
       showStatusRow={showStatusRow}
-      // An assign/re-assign transition opens the PERSON PICKER the moment it's clicked (no
-      // waiting on the API — reassign IS assign: the transition changes state, the picker
-      // writes who).
+      // Re-read the record's state after ANY action on this unit (assign, vacate, a transition
+      // run elsewhere) so the popup never shows the pre-action state.
+      refreshKey={state.unitNonce}
+      onChanged={() => actions.unitChanged()}
+      // ONE assign button, not two: while the unit is UNASSIGNED this surface already offers
+      // "Assign a person", so the record's own Assign transition is dropped from the bar and runs
+      // after the contact is set instead (reported: an "Assign" transition button sat right above
+      // "Assign a person"). An ASSIGNED unit keeps its Re-Assign button — that's the only way
+      // back into the picker — but it too only opens the picker now.
+      hideTransition={(t) => !readOnly && !assigned && isAssignTransition(t)}
+      // An assign/re-assign transition opens the PERSON PICKER and stops there: the transition
+      // itself fires from `assign()` once a contact has actually been chosen.
       onTransitionStart={(t) => {
-        if (!/vacat|unassign/i.test(t.name) && /assign/i.test(t.name)) {
-          actions.setWebReassign(unit.id);
-          return true; // the picker IS the feedback — no "Re-Assign done" toast over it
+        if (isAssignTransition(t)) {
+          actions.openPeoplePicker(unit.id);
+          return 'defer';
         }
         return false;
       }}

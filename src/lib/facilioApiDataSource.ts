@@ -652,6 +652,19 @@ const FLOOR_RECORD_MODULES: { type: UnitType; moduleName: string; plan: PlanId }
 const FLOOR_RECORDS_TTL_MS = 20_000;
 const floorRecordsCache = new Map<string, { at: number; promise: Promise<any[]> }>();
 
+/**
+ * Drop every cached read that an action on a unit can invalidate, so the surfaces re-reading after
+ * it (the side list AND the details viewer) see the record as it is now — requested after an
+ * assign/vacate showed the PREVIOUS occupant for up to 20s. `floorRecordsCache` matters most: its
+ * rows are overlaid LAST in viewerDataAssignmentsForFloor (they're treated as the authority), so
+ * clearing only viewerDataCache let a stale row win over a fresh feed.
+ */
+export function invalidateUnitRecordCaches(): void {
+  viewerDataCache.clear();
+  floorRecordsCache.clear();
+  realSpaceRecordCache.clear();
+}
+
 function fetchFloorRecordsRaw(moduleName: string, floorId: string): Promise<any[]> {
   const key = `${floorId}:${moduleName}`;
   const hit = floorRecordsCache.get(key);

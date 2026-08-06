@@ -82,6 +82,19 @@ export function Tooltip() {
           </svg>
         </button>
       </div>
+      {/* While the record is (re)loading — on open, and again after every action — the WHOLE body
+          loads as one block (requested). Field-by-field shimmers next to already-rendered values
+          read as a half-updated popup; the header stays because it names what you clicked. */}
+      {detailLoading ? (
+        <div className={styles.loadingBody} aria-live="polite" aria-busy="true">
+          <div className={[styles.skelLine, styles.eyebrowLine].join(' ')} />
+          <div className={[styles.skelLine, styles.valueLine].join(' ')} />
+          <div className={[styles.skelLine, styles.pillLine].join(' ')} />
+          <div className={[styles.skelLine, styles.btnLine].join(' ')} />
+          <div className={[styles.caret, place.below ? styles.caretBelow : styles.caretAbove].join(' ')} />
+        </div>
+      ) : (
+      <>
       {/* Hidden rather than showing an em dash when the record carries no type (a room whose
           roomType isn't set) — and a shimmer while the summary that would fill it is in flight. */}
       {(secondary || detailLoading) && (
@@ -159,8 +172,8 @@ export function Tooltip() {
         </Button>
       )}
       {state.mode === 'assign' && assignable && (
-        <Button variant={contactId ? 'secondary' : 'primary'} fullWidth style={{ marginTop: 10 }} onClick={() => actions.openPanel('details')}>
-          {contactId ? 'Manage' : 'Assign a person'}
+        <Button variant={contactId ? 'secondary' : 'primary'} fullWidth style={{ marginTop: 10 }} onClick={() => actions.openPeoplePicker(unit.id)}>
+          {contactId ? 'Re-assign' : 'Assign a person'}
         </Button>
       )}
       {/* Bookable-only DESKS get no note (removed on approval); ROOMS get this exact line. */}
@@ -171,6 +184,8 @@ export function Tooltip() {
       )}
 
       <div className={[styles.caret, place.below ? styles.caretBelow : styles.caretAbove].join(' ')} />
+      </>
+      )}
     </div>
   );
 }

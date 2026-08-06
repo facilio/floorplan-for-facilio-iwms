@@ -9,7 +9,7 @@ import type { AmenityIcon, Assignments, Booking, ClientContact, DefaultPlanView,
 import type { CadGroup } from '../lib/cadAnalyze';
 import type { Asset } from '../lib/assets';
 import { isFacilioApiConfigured } from '../lib/facilioApi';
-import { assignUnitReal, createRealBooking, fetchCurrentApp, fetchCurrentPeopleId, fetchFloorplanCustomization, fetchFloorplanImageResult, fetchMyDesk, fetchOrgTimezone, fetchPortalPlanFloors, fetchUnitAssigneeFromSummary, fetchUnitRecordDetails, findFloorParents, floorExists, findUnitIdForDeskRecord, getAnyFloor, getFloorPlanSummary, patchUnitContact, resolveHardcodedRolePerms, resolveModePermsForCurrentUser, saveFloorplanDefaultView, saveFloorplanMarkers, searchClientContacts, vacateUnitReal } from '../lib/facilioApiDataSource';
+import { assignUnitReal, createRealBooking, fetchCurrentApp, fetchCurrentPeopleId, fetchFloorplanCustomization, fetchFloorplanImageResult, fetchMyDesk, fetchOrgTimezone, fetchPortalPlanFloors, fetchUnitAssigneeFromSummary, fetchUnitRecordDetails, findFloorParents, floorExists, findUnitIdForDeskRecord, getAnyFloor, getFloorPlanSummary, patchUnitContact, resolveHardcodedRolePerms, resolveModePermsForCurrentUser, saveFloorplanDefaultView, invalidateUnitRecordCaches, saveFloorplanMarkers, searchClientContacts, vacateUnitReal } from '../lib/facilioApiDataSource';
 import { listFloorplanFloorIds, loadFloorplanFile, persistFloorplanFile } from '../lib/floorplanFileStore';
 import { DEFAULT_PERMS_MODULE_NAME, loadEffectiveSettings, saveSettings, settingsFromState } from '../lib/settingsStore';
 import { floorFromLocation, pathForView, viewFromLocation, withFloorParam } from '../lib/routes';
@@ -1154,7 +1154,14 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
               // eslint-disable-next-line no-console
               console.warn('[facilio-api] real assignment failed', err);
             })
-          );
+          )
+          // ASSIGN / RE-ASSIGN are RECORD WRITES, not transitions (requested): setting the
+          // assignee above IS the action. Only the caches and the on-screen surfaces need to
+          // catch up — VACATE is the one that calls the transition API (see stateflowVacated).
+          .then(() => {
+            invalidateUnitRecordCaches();
+            dispatch({ type: 'UNIT_CHANGED' });
+          });
       }
       // Resolve names from the LIVE contact directory, not the mock seed — real contacts have
       // numeric ids the mock list can't know, which used to toast the raw id ("8830421 assigned").
@@ -1201,6 +1208,22 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
           console.warn('[facilio-api] assignee clear after stateflow vacate failed', err);
         });
       }
+    },
+    /**
+     * Something changed on a record (a stateflow transition ran) — drop the cached reads and
+     * re-read everything on screen: the side panel's list AND the open details viewer.
+     */
+    unitChanged: () => {
+      invalidateUnitRecordCaches();
+      dispatch({ type: 'UNIT_CHANGED' });
+    },
+    /** Open the person lookup for an assign / re-assign in its own popup. */
+    openPeoplePicker: (unitId: string) => {
+      dispatch({ type: 'SET_CONTACT_SEARCH', value: '' });
+      dispatch({ type: 'SET_PEOPLE_PICKER', id: unitId });
+    },
+    closePeoplePicker: () => {
+      dispatch({ type: 'SET_PEOPLE_PICKER', id: null });
     },
     setWebReassign: (id: string | null) => {
       dispatch({ type: 'SET_WEB_REASSIGN', id });
@@ -1633,8 +1656,10 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
       cancelled = true;
       dispatch({ type: 'SET_UNIT_DETAIL_LOADING', unitId: null });
     };
+    // `unitNonce` bumps after every action on a unit (assign, vacate, a stateflow transition), so
+    // the open preview re-reads the record instead of showing what it looked like before.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.selected, state.mobSel]);
+  }, [state.selected, state.mobSel, state.unitNonce]);
 
   // PEOPLE SEARCH hits the SERVER (requested — the full directory is no longer fetched up front):
   // the shared contactSearch value is debounced and its results merge into the directory, so every

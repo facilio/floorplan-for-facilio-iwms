@@ -108,7 +108,9 @@ export function buildInitialState(): AppState {
     bookForm: null,
     bookingModule: 'space',
     bookingsNonce: 0,
+    unitNonce: 0,
     webReassign: null,
+    peoplePicker: null,
     schedView: 'list',
 
     role: 'admin',
@@ -205,7 +207,9 @@ export type Action =
   | { type: 'DRAG_OVER_UNIT'; id: string | null }
   | { type: 'ASSIGN'; unitId: string; contactId: string; assignments: AppState['assignments'] }
   | { type: 'VACATE'; unitId: string; assignments: AppState['assignments'] }
+  | { type: 'UNIT_CHANGED' }
   | { type: 'SET_WEB_REASSIGN'; id: string | null }
+  | { type: 'SET_PEOPLE_PICKER'; id: string | null }
   | { type: 'SET_DATE'; value: string; bookings: Booking[] }
   | { type: 'SET_TIME_RANGE'; start: number; end: number }
   | { type: 'SET_BOOK_MODAL'; open: boolean }
@@ -527,11 +531,16 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'DRAG_OVER_UNIT':
       return { ...state, dragOverId: action.id };
     case 'ASSIGN':
-      return { ...state, assignments: action.assignments, dragOverId: null, dragContactId: null, selected: action.unitId, webReassign: null };
+      return { ...state, assignments: action.assignments, dragOverId: null, dragContactId: null, selected: action.unitId, webReassign: null, peoplePicker: null, unitNonce: state.unitNonce + 1 };
     case 'VACATE':
-      return { ...state, assignments: action.assignments };
+      return { ...state, assignments: action.assignments, unitNonce: state.unitNonce + 1 };
+    // Any other action on a record (a stateflow transition) — re-read what's on screen.
+    case 'UNIT_CHANGED':
+      return { ...state, unitNonce: state.unitNonce + 1 };
     case 'SET_WEB_REASSIGN':
       return { ...state, webReassign: action.id };
+    case 'SET_PEOPLE_PICKER':
+      return { ...state, peoplePicker: action.id };
 
     case 'SET_DATE':
       return { ...state, date: action.value, bookings: action.bookings };

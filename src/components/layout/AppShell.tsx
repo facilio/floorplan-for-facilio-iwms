@@ -6,6 +6,7 @@ import { MapStage } from './MapStage';
 import { SettingsScreen } from '../settings/SettingsScreen';
 import { BookingsView } from '../bookings/BookingsView';
 import { PeopleView } from '../people/PeopleView';
+import { PeoplePickerModal } from '../details/PeoplePickerModal';
 import { BookingModal } from '../details/BookingModal';
 import { hostIsMobile, hostIsMobileParam } from '../../lib/facilioApi';
 import { MobileApp } from '../mobile/MobileApp';
@@ -46,6 +47,7 @@ export function AppShell() {
       <div className={styles.mobileRoot}>
         <MobileApp mode="page" />
         <BookingModal />
+        <PeoplePickerModal />
         <ToastStack toasts={state.toasts} onDismiss={actions.dismissToast} />
       </div>
     );
@@ -64,6 +66,7 @@ export function AppShell() {
       )}
       <BottomNav />
       <BookingModal />
+      <PeoplePickerModal />
       <ToastStack toasts={state.toasts} onDismiss={actions.dismissToast} />
     </div>
   );

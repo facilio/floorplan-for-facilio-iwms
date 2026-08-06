@@ -52,6 +52,17 @@ export function findCancelTransition(transitions: TransitionOption[]): Transitio
   return transitions.find((t) => /cancel/i.test(t.name)) ?? null;
 }
 
+/**
+ * An ASSIGN-ish transition (never a vacate/unassign one). Assign and re-assign are RECORD WRITES
+ * in this app (requested): the picker patches the desk's assignee field and that is the whole
+ * action — no transition call. This predicate exists so those transitions can be kept off the
+ * button bar and, where one is the only way back into the picker (Re-Assign), open it without
+ * firing. VACATE is the opposite: it goes straight to the transition API.
+ */
+export function isAssignTransition(t: TransitionOption): boolean {
+  return /assign/i.test(t.name) && !/vacat|un-?assign|de-?assign|release/i.test(t.name);
+}
+
 function assertConfigured(): void {
   if (!isFacilioApiConfigured) throw new Error('facilio-api: not configured');
 }

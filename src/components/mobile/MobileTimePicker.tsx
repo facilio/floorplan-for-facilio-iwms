@@ -28,7 +28,9 @@ export function MobileTimePicker() {
       // Booking today: the start can't step into the past (ORG clock) — same block the web
       // slot pickers enforce.
       const now = orgNow();
-      if (state.date === now.dateISO) next = Math.max(next, Math.floor(now.minutes / step) * step);
+      // Round UP to the next whole slot, never down: flooring 10:51 to 10:30 offered a start that
+      // had already passed (requested rule — 10:51 -> 11:00, 11:01 -> 11:30).
+      if (state.date === now.dateISO) next = Math.max(next, Math.ceil(now.minutes / step) * step);
       // The START moves freely and does NOT rewrite the END (same as the web form) — the end is
       // only nudged when it would land at/before the new start.
       actions.setTimeRange(next, next >= state.end ? Math.min(1440, next + step) : state.end);

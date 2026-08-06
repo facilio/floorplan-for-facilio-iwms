@@ -114,7 +114,12 @@ export interface AppState {
   bookingModule: 'space' | 'facility';
   /** Bumped on every booking add/cancel so surfaces holding their own booking cache (the calendar) know to refetch. */
   bookingsNonce: number;
+  /** Bumped after ANY action on a unit (assign, vacate, a stateflow transition) so the open
+   *  details popup/panel re-reads the record instead of showing the pre-action state. */
+  unitNonce: number;
   webReassign: string | null;
+  /** Unit whose ASSIGN / RE-ASSIGN person lookup popup is open (requested: its own popup, not an inline picker). */
+  peoplePicker: string | null;
   schedView: 'list' | 'calendar';
 
   role: Role;
