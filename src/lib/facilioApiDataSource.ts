@@ -1106,6 +1106,37 @@ export async function saveFloorplanDefaultView(floorId: string, planId: PlanId, 
  * tried first) — replaces walking the whole site/building tree just to find "a" floor.
  */
 /**
+ * The unit's OWN module record, mapped to the detail fields the preview shows — room type, seat
+ * type, department, the space it sits in, desk type, room flags. The plan feeds (viewerData
+ * markers/zones) don't project these, so a preview used to fall back to a generic label ("Room
+ * type: Room", reported). Fetched per selection; callers show a loader until it lands.
+ */
+export async function fetchUnitRecordDetails(unit: Unit): Promise<Partial<Unit> | null> {
+  if (!isFacilioApiConfigured) return null;
+  const moduleName = unit.type === 'room' ? ROOM_RECORDS_MODULE : REAL_SPACE_MODULE[unit.type];
+  if (!moduleName || !/^\d+$/.test(unit.id)) return null;
+  const res: any = await facilioApi.fetchRecord<any>(moduleName, { id: Number(unit.id) }).catch(() => null);
+  const rec = res && !res.error ? res[moduleName] ?? res.data ?? null : null;
+  if (!rec) return null;
+  const patch: Partial<Unit> = {};
+  const rt = roomTypeName(rec);
+  if (rt) patch.roomType = rt;
+  const space = parentSpaceName(rec);
+  if (space) patch.room = space;
+  const dept = departmentName(rec);
+  if (dept) patch.department = dept;
+  if (unit.type === 'workstation' && DESK_TYPE_BY_NUM[rec.deskType]) patch.deskType = DESK_TYPE_BY_NUM[rec.deskType];
+  if (unit.type === 'room') {
+    if (typeof rec.reservable === 'boolean') patch.isReservable = rec.reservable;
+    if (typeof rec.isassignable_rooms === 'boolean') patch.isAssignableRoom = rec.isassignable_rooms;
+  }
+  // A record's own descriptive line (seat type etc.) when the org projects one.
+  const secondary = [rec.seatType, rec.seattype, rec.description].find((v: unknown) => typeof v === 'string' && v.trim());
+  if (secondary) patch.secondary = String(secondary).trim();
+  return Object.keys(patch).length ? patch : null;
+}
+
+/**
  * PORTALS-only visibility scope. PRIMARY: floors carry `indoorFloorPlanId` when a plan exists
  * (confirmed live), so ONE filtered floor query — {"indoorFloorPlanId":{"operatorId":2,
  * "value":[]}}, the exact filter confirmed by the user — returns the plan-backed floors WITH

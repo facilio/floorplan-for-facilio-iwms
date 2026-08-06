@@ -87,13 +87,15 @@ export function Tooltip() {
       {(secondary || detailLoading) && (
         <div className={styles.section}>
           <div className={styles.eyebrow}>{secondaryLabel}</div>
-          {!secondary && detailLoading ? <div className={styles.valueSkeleton} /> : <div className={styles.value}>{secondary}</div>}
+          {/* While the unit's own record is loading, shimmer — a room whose roomType hasn't
+              arrived yet would otherwise print the generic fallback and then change. */}
+          {detailLoading ? <div className={styles.valueSkeleton} /> : <div className={styles.value}>{secondary}</div>}
         </div>
       )}
-      {(unit.type === 'workstation' || isAmenity) && unit.room && (
+      {(unit.type === 'workstation' || isAmenity) && (unit.room || detailLoading) && (
         <div className={styles.section}>
           <div className={styles.eyebrow}>Room</div>
-          <div className={styles.value}>{unit.room}</div>
+          {detailLoading && !unit.room ? <div className={styles.valueSkeleton} /> : <div className={styles.value}>{unit.room}</div>}
         </div>
       )}
       {unit.department && (

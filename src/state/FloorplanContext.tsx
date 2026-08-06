@@ -9,7 +9,7 @@ import type { AmenityIcon, Assignments, Booking, ClientContact, DefaultPlanView,
 import type { CadGroup } from '../lib/cadAnalyze';
 import type { Asset } from '../lib/assets';
 import { isFacilioApiConfigured } from '../lib/facilioApi';
-import { assignUnitReal, createRealBooking, fetchCurrentApp, fetchCurrentPeopleId, fetchFloorplanCustomization, fetchFloorplanImageResult, fetchMyDesk, fetchOrgTimezone, fetchPortalPlanFloors, fetchUnitAssigneeFromSummary, findFloorParents, floorExists, findUnitIdForDeskRecord, getAnyFloor, getFloorPlanSummary, patchUnitContact, resolveHardcodedRolePerms, resolveModePermsForCurrentUser, saveFloorplanDefaultView, saveFloorplanMarkers, searchClientContacts, vacateUnitReal } from '../lib/facilioApiDataSource';
+import { assignUnitReal, createRealBooking, fetchCurrentApp, fetchCurrentPeopleId, fetchFloorplanCustomization, fetchFloorplanImageResult, fetchMyDesk, fetchOrgTimezone, fetchPortalPlanFloors, fetchUnitAssigneeFromSummary, fetchUnitRecordDetails, findFloorParents, floorExists, findUnitIdForDeskRecord, getAnyFloor, getFloorPlanSummary, patchUnitContact, resolveHardcodedRolePerms, resolveModePermsForCurrentUser, saveFloorplanDefaultView, saveFloorplanMarkers, searchClientContacts, vacateUnitReal } from '../lib/facilioApiDataSource';
 import { listFloorplanFloorIds, loadFloorplanFile, persistFloorplanFile } from '../lib/floorplanFileStore';
 import { DEFAULT_PERMS_MODULE_NAME, loadEffectiveSettings, saveSettings, settingsFromState } from '../lib/settingsStore';
 import { floorFromLocation, pathForView, viewFromLocation, withFloorParam } from '../lib/routes';
@@ -1596,21 +1596,32 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
     const selId = state.selected ?? state.mobSel;
     if (!selId || !isFacilioApiConfigured) return;
     const unit = unitById(state, selId);
-    if (!unit || unit.type === 'amenity' || unit.type === 'room') return;
+    if (!unit || unit.type === 'amenity') return;
     const contactId = state.assignments[selId];
-    if (!contactId || state.clientContacts.some((c) => c.id === contactId)) return;
+    const needsName = !!contactId && !state.clientContacts.some((c) => c.id === contactId);
     let cancelled = false;
     // Flagged WHILE IN FLIGHT so previews show a loader instead of printing a generic "Occupied"
     // and swapping in the real person a moment later (reported as a glitch on clicking a desk).
     dispatch({ type: 'SET_UNIT_DETAIL_LOADING', unitId: selId });
-    fetchUnitAssigneeFromSummary(unit)
-      .then((c) => {
-        if (!cancelled && c) dispatch({ type: 'UPSERT_CLIENT_CONTACT', contact: { id: c.id, name: c.name, client: '' } });
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) dispatch({ type: 'SET_UNIT_DETAIL_LOADING', unitId: null });
-      });
+    Promise.all([
+      // The unit's OWN record: room type / seat type / department / the space it sits in. The plan
+      // feeds don't project these, so without this the preview showed a generic label.
+      fetchUnitRecordDetails(unit)
+        .then((patch) => {
+          if (!cancelled && patch) dispatch({ type: 'UPDATE_UNIT', id: selId, patch });
+        })
+        .catch(() => {}),
+      // The assignee's NAME when the bulk contact fetch missed them (rooms included).
+      needsName && unit.type !== 'room'
+        ? fetchUnitAssigneeFromSummary(unit)
+            .then((c) => {
+              if (!cancelled && c) dispatch({ type: 'UPSERT_CLIENT_CONTACT', contact: { id: c.id, name: c.name, client: '' } });
+            })
+            .catch(() => {})
+        : Promise.resolve(),
+    ]).finally(() => {
+      if (!cancelled) dispatch({ type: 'SET_UNIT_DETAIL_LOADING', unitId: null });
+    });
     return () => {
       cancelled = true;
       dispatch({ type: 'SET_UNIT_DETAIL_LOADING', unitId: null });

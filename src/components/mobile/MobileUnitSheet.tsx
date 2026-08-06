@@ -60,6 +60,11 @@ export function MobileUnitSheet() {
         <div className={styles.headRow}>
           <div className={styles.headText}>
             <div className={styles.name}>{unit.label}</div>
+            {/* Shimmer while the unit's own record loads — the type line would otherwise show a
+                generic fallback and change a moment later. */}
+            {state.unitDetailLoading === unit.id ? (
+              <span className={styles.nameSkeleton} style={{ width: 90, height: 11 }} />
+            ) : (
             <div className={styles.kind}>
               {/* ROOMS read their ROOM TYPE, desks their seat type — same rule as the web popup. */}
               {isAmenity
@@ -74,6 +79,7 @@ export function MobileUnitSheet() {
               {unit.room ? ` · ${unit.room}` : ''}
               {unit.department ? ` · ${unit.department}` : ''}
             </div>
+            )}
           </div>
           {!isAmenity && (
             <span className={styles.statusPill} style={{ background: status.bg, color: status.fg }}>
