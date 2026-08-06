@@ -198,7 +198,16 @@ function SpaceRow({ unit, unplaced }: { unit: Unit; unplaced?: boolean }) {
         {/* Both lines ellipsize — the fast tooltip (150ms, see .tipHost) shows the full text,
             only mounted when the name is actually long enough to clip. */}
         <div className={[styles.rowLabel, styles.tipHost].join(' ')} data-tip={unit.label.length > 20 ? unit.label : undefined}>
-          {unit.label}
+          <span className={styles.rowLabelText}>{unit.label}</span>
+          {/* EDIT mode's unplaced list shows the RECORD ID (requested): two records can share a
+              name, and this is the only way to tell them apart when placing. Ids appear ONLY here
+              — never in the booking/assignment previews — and only for real backend records
+              (a locally-created, unsaved unit has no id to show). */}
+          {unplaced && /^\d+$/.test(unit.id) && (
+            <span className={styles.idChip} title={`Record id ${unit.id}`}>
+              #{unit.id}
+            </span>
+          )}
         </div>
         <div className={styles.rowSub} title={unit.secondary || undefined}>
           {unit.secondary || [unit.type === 'workstation' ? 'Desk' : unit.type, unit.room].filter(Boolean).join(' · ')}
