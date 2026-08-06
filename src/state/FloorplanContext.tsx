@@ -1637,12 +1637,18 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
       // The unit's OWN record: room type / seat type / department / the space it sits in. The plan
       // feeds don't project these, so without this the preview showed a generic label.
       fetchUnitRecordDetails(unit)
-        .then((patch) => {
-          if (!cancelled && patch) dispatch({ type: 'UPDATE_UNIT', id: selId, patch });
+        .then((res) => {
+          if (cancelled || !res) return;
+          if (Object.keys(res.patch).length) dispatch({ type: 'UPDATE_UNIT', id: selId, patch: res.patch });
+          // The record's own lookup carries the assignee's NAME — no second request, and no
+          // "Occupied" placeholder standing in for someone the directory page didn't include.
+          if (res.contact) dispatch({ type: 'UPSERT_CLIENT_CONTACT', contact: { id: res.contact.id, name: res.contact.name, client: '' } });
         })
         .catch(() => {}),
-      // The assignee's NAME when the bulk contact fetch missed them (rooms included).
-      needsName && unit.type !== 'room'
+      // The assignee's NAME when the bulk contact fetch missed them — ROOMS INCLUDED. They were
+      // skipped here, and their lookup (clientcontact_rooms) wasn't read either, so a held room
+      // showed the "Occupied" fallback forever instead of who holds it (reported).
+      needsName
         ? fetchUnitAssigneeFromSummary(unit)
             .then((c) => {
               if (!cancelled && c) dispatch({ type: 'UPSERT_CLIENT_CONTACT', contact: { id: c.id, name: c.name, client: '' } });

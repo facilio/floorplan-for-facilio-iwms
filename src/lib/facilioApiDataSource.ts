@@ -136,14 +136,25 @@ export class FacilioApiDataSource implements FloorplanDataSource {
 
   async getClientContacts(): Promise<ClientContact[]> {
     this.assertConfigured();
-    // ONE page only (requested): the directory can run to thousands of people, and pulling all of
-    // it on every boot cost several round-trips before anything rendered. The pickers have a
-    // search box, and searching queries the SERVER (searchClientContacts) — so this is just the
-    // first page for an immediate list, not the whole directory. Assignees outside it still
-    // resolve through the per-record summary fetch on preview.
-    const res = await facilioApi.fetchAll('clientcontact', { page: 1, perPage: 200 });
-    if (res.error) throw new Error(`facilio-api: client contact fetch failed (${res.error.code ?? '?'} ${res.error.message ?? ''})`.trim());
-    return (res.list ?? []).map(mapClientContact);
+    // THE WHOLE DIRECTORY on first fetch (requested): a single page left every assignee outside
+    // it unresolvable, which is what printed "Occupied" instead of a name. Pages run in sequence
+    // until one comes back short; the cap is a runaway guard, not an expected limit. Server-side
+    // search (searchClientContacts) stays for typing — it now tops up an already-complete list.
+    const PER_PAGE = 500;
+    const MAX_PAGES = 20; // 10,000 people
+    const all: ClientContact[] = [];
+    for (let page = 1; page <= MAX_PAGES; page++) {
+      const res = await facilioApi.fetchAll('clientcontact', { page, perPage: PER_PAGE });
+      if (res.error) {
+        // A later page failing still leaves a usable directory; only page 1 is fatal.
+        if (page === 1) throw new Error(`facilio-api: client contact fetch failed (${res.error.code ?? '?'} ${res.error.message ?? ''})`.trim());
+        break;
+      }
+      const list = res.list ?? [];
+      all.push(...list.map(mapClientContact));
+      if (list.length < PER_PAGE) break;
+    }
+    return all;
   }
 
   async getAssets(): Promise<Asset[]> {
@@ -565,12 +576,65 @@ function parentSpaceName(rec: Record<string, any> | undefined): string | undefin
   return undefined;
 }
 
-/** The rooms module's roomType — enum string, enum twin, or lookup — as a display string. */
+/**
+ * ENUM label maps read from the org's own form metadata (`v2/forms/{module}`), keyed
+ * module:field. A record carries an enum as its INDEX (rooms.roomType = 1), and the labels are
+ * per-org — confirmed live: index 2 is "Store Room" on one org and "Closed Offices" on another —
+ * so they must be read, never hardcoded. One fetch per module, cached for the session.
+ */
+const enumLabelCache = new Map<string, Promise<Map<number, string>>>();
+export function fetchEnumLabels(moduleName: string, fieldName: string): Promise<Map<number, string>> {
+  const key = `${moduleName}:${fieldName}`;
+  const hit = enumLabelCache.get(key);
+  if (hit) return hit;
+  const promise = (async () => {
+    const out = new Map<number, string>();
+    if (!isFacilioApiConfigured) return out;
+    const body: any = await customGet(`v2/forms/${moduleName}`, { skipPermission: true }).catch(() => null);
+    const form = body?.form ?? body?.result?.form ?? body?.data?.form ?? null;
+    const fields: any[] = form?.fields ?? (form?.sections ?? form?.formSections ?? []).flatMap((sec: any) => sec?.fields ?? []);
+    const wanted = fieldName.toLowerCase();
+    const hitField = fields.find((f) => String(f?.name ?? f?.field?.name ?? '').toLowerCase() === wanted);
+    const fld = hitField?.field ?? hitField;
+    for (const v of fld?.values ?? []) {
+      const idx = Number(v?.index ?? v?.sequence);
+      if (Number.isFinite(idx) && typeof v?.value === 'string') out.set(idx, v.value);
+    }
+    // Fallback: the flattened `visibleOptions` list is 1-based in the same order.
+    if (!out.size && Array.isArray(fld?.visibleOptions)) fld.visibleOptions.forEach((v: string, i: number) => out.set(i + 1, v));
+    return out;
+  })();
+  promise.then((m) => {
+    if (!m.size) enumLabelCache.delete(key); // an empty map is a failed read — retry next time
+  });
+  enumLabelCache.set(key, promise);
+  return promise;
+}
+
+/** Resolved rooms.roomType labels, preloaded before room records are mapped. */
+let roomTypeLabels: Map<number, string> = new Map();
+export async function ensureRoomTypeLabels(): Promise<void> {
+  if (roomTypeLabels.size) return;
+  roomTypeLabels = await fetchEnumLabels(ROOM_RECORDS_MODULE, 'roomType').catch(() => new Map<number, string>());
+}
+
+/** The rooms module's roomType — enum INDEX, enum string, enum twin, or lookup — as a display string. */
 function roomTypeName(rec: Record<string, any> | undefined): string | undefined {
   const v = rec?.roomTypeEnum ?? rec?.roomType;
   if (typeof v === 'string' && v.trim()) return v.trim();
+  // The record carries the enum's INDEX; the label comes from the field's own values list.
+  if (typeof v === 'number' && Number.isFinite(v)) return roomTypeLabels.get(v);
   const n = v?.displayName ?? v?.name ?? v?.primaryValue;
   return typeof n === 'string' && n.trim() ? n.trim() : undefined;
+}
+
+/** The room's assignee as {id, name} when the record projects the lookup's display value. */
+function roomContactRef(rec: Record<string, any> | undefined): { id: string; name: string } | null {
+  const c = rec?.clientcontact_rooms;
+  const id = c?.id ?? c;
+  const name = c?.name ?? c?.primaryValue ?? c?.displayName;
+  const n = Number(id);
+  return Number.isFinite(n) && n > 0 && typeof name === 'string' && name.trim() ? { id: String(n), name: name.trim() } : null;
 }
 
 /** The record's department lookup as a display string, whichever shape the projection used. */
@@ -688,6 +752,8 @@ function fetchFloorRecordsRaw(moduleName: string, floorId: string): Promise<any[
 }
 
 async function fetchFloorModuleRecords(floorId: string): Promise<Unit[]> {
+  // Room type is an enum INDEX on the record — its labels must be in hand before mapping.
+  await ensureRoomTypeLabels();
   const results = await Promise.all(
     FLOOR_RECORD_MODULES.map(async ({ type, moduleName, plan }) => {
       const list = await fetchFloorRecordsRaw(moduleName, floorId).catch(() => null);
@@ -1124,8 +1190,20 @@ export async function saveFloorplanDefaultView(floorId: string, planId: PlanId, 
  * markers/zones) don't project these, so a preview used to fall back to a generic label ("Room
  * type: Room", reported). Fetched per selection; callers show a loader until it lands.
  */
-export async function fetchUnitRecordDetails(unit: Unit): Promise<Partial<Unit> | null> {
+export interface UnitRecordDetails {
+  patch: Partial<Unit>;
+  /**
+   * The assignee straight off the record's own lookup — `clientcontact_desks` /
+   * `clientcontact_rooms` / `employee` carry the full contact (confirmed live: `name`
+   * "Mohammed Alghofaili" and `primaryValue` on the nested object), so the name needs no second
+   * request and a held space stops printing the "Occupied" fallback.
+   */
+  contact: { id: string; name: string } | null;
+}
+
+export async function fetchUnitRecordDetails(unit: Unit): Promise<UnitRecordDetails | null> {
   if (!isFacilioApiConfigured) return null;
+  if (unit.type === 'room') await ensureRoomTypeLabels();
   const moduleName = unit.type === 'room' ? ROOM_RECORDS_MODULE : REAL_SPACE_MODULE[unit.type];
   if (!moduleName || !/^\d+$/.test(unit.id)) return null;
   const res: any = await facilioApi.fetchRecord<any>(moduleName, { id: Number(unit.id) }).catch(() => null);
@@ -1146,7 +1224,11 @@ export async function fetchUnitRecordDetails(unit: Unit): Promise<Partial<Unit> 
   // A record's own descriptive line (seat type etc.) when the org projects one.
   const secondary = [rec.seatType, rec.seattype, rec.description].find((v: unknown) => typeof v === 'string' && v.trim());
   if (secondary) patch.secondary = String(secondary).trim();
-  return Object.keys(patch).length ? patch : null;
+  const lk = rec.clientcontact_desks ?? rec.clientcontact_rooms ?? rec.employee ?? rec.clientContact ?? null;
+  const lkName = lk?.name ?? lk?.primaryValue ?? lk?.displayName;
+  const lkId = Number(lk?.id);
+  const contact = Number.isFinite(lkId) && lkId > 0 && typeof lkName === 'string' && lkName.trim() ? { id: String(lkId), name: lkName.trim() } : null;
+  return Object.keys(patch).length || contact ? { patch, contact } : null;
 }
 
 /**
@@ -2192,7 +2274,7 @@ export async function fetchUnitAssigneeFromSummary(unit: Unit): Promise<{ id: st
   const res = await facilioApi.fetchRecord<any>(ref.moduleName, { id: ref.recordId });
   const rec = res?.[ref.moduleName];
   if (res.error || !rec) return null;
-  const lookup = rec.clientcontact_desks ?? rec.employee ?? rec.clientContact ?? null;
+  const lookup = rec.clientcontact_desks ?? rec.clientcontact_rooms ?? rec.employee ?? rec.clientContact ?? null;
   const id = Number(lookup?.id ?? lookup);
   if (!Number.isFinite(id) || id <= 0) return null;
   const nameOf = (o: any): string =>
@@ -2465,6 +2547,7 @@ export function fetchOrgBookableResources(opts?: { force?: boolean }): Promise<U
   if (opts?.force) orgResourcesCache = null;
   if (!orgResourcesCache) {
     orgResourcesCache = (async () => {
+      await ensureRoomTypeLabels(); // enum labels before any room record is mapped
       const mods: { type: UnitType; moduleName: string; plan: PlanId }[] = [
         { type: 'workstation', moduleName: 'desks', plan: 'workstation' },
         { type: 'room', moduleName: 'rooms', plan: 'custom' },
