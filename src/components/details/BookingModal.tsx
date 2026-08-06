@@ -349,12 +349,14 @@ function BookingFormInner() {
     }
     let alive = true;
     const timer = window.setTimeout(() => {
-      fetchOrgBookingsForRange(slotDate, slotDate, { resourceField: effType === 'room' ? 'space' : 'desk' })
+      fetchOrgBookingsForRange(slotDate, slotDate, { resourceField: effType === 'room' ? 'space' : 'desk', resourceIds: [unit.id] })
         .then((rows) => {
           if (!alive) return;
           setConflicts(
             rows
-              .filter((b) => b.unitId === unit.id && b.date === slotDate && b.start < endMin && b.end > startMin)
+              // A CANCELLED booking doesn't hold the slot (requested) — the range fetch returns
+              // every row for the record, whatever state it's in.
+              .filter((b) => !/cancel/i.test(b.stateName ?? '') && b.unitId === unit.id && b.date === slotDate && b.start < endMin && b.end > startMin)
               .map((b) => ({ start: b.start, end: b.end, name: b.name }))
           );
         })
@@ -404,7 +406,14 @@ function BookingFormInner() {
   // For TODAY, slots that already started are off the table — the backend silently bumps a
   // past start to "now" (a 05:15 booking made at 08:16 came back as 08:19), so what you pick
   // must be what you get.
-  const slotSelectable = (m: number) => slotDate !== minDate || m >= nowOrg.minutes;
+  /**
+   * Is this start still in the future? Compared as ABSOLUTE org-zone epochs — the same call the
+   * payload uses — instead of "is the date string today, and is the minute past now". That string
+   * comparison disagreed with the org clock whenever the browser's day differed from the org's,
+   * which refused starts that were genuinely in the future (reported: couldn't submit a time after
+   * the current org time). One minute of grace so the current slot isn't lost on its own boundary.
+   */
+  const slotSelectable = (m: number) => epochAtInTz(slotDate, m, orgTimezone()) >= Date.now() - 60_000;
 
   const contactOptions = contacts.map((c) => ({ value: c.id, label: c.name, sublabel: c.client }));
 
@@ -593,7 +602,16 @@ function BookingFormInner() {
     .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }))
     .map((u) => ({ value: u.id, label: u.label, sublabel: u.room ?? u.secondary ?? undefined }));
 
+  /** The clash, as a small red line under the resource field (requested — no top banner). */
+  const conflictHint =
+    conflicts.length > 0 ? (
+      <div role="alert" style={{ marginTop: 5, font: '500 11.5px/1.4 var(--font-sans)', color: '#b3261e' }}>
+        Already booked {conflicts.map((c, i) => `${i ? ', ' : ''}${fmtTime(c.start)}–${fmtTime(c.end)}`).join('')} on this date — pick another time or {effType === 'room' ? 'space' : 'desk'}.
+      </div>
+    ) : null;
+
   const resourceControl = (
+    <>
     <Select
       value={unit && unit.type === effType ? resourceId : null}
       options={resourceOptions}
@@ -602,6 +620,8 @@ function BookingFormInner() {
       fullWidth
       aria-label={resourceFieldLabel}
     />
+    {conflictHint}
+    </>
   );
 
   const resourceRow = (
@@ -893,7 +913,6 @@ function BookingFormInner() {
             follows it. A context view has a single form and shows a static label instead. */}
         {/* CLASH BANNER at the top of the form (requested): the selected desk/space already has a
             booking in this window — fetched with the resource-scoped filter as the range changes. */}
-        {conflictNote}
         {canPickForm && formsForCurrentType.length > 1 && formId == null ? (
           <div style={{ padding: '28px 0', textAlign: 'center', font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--ink-500)' }}>
             Choose a booking form above to continue.

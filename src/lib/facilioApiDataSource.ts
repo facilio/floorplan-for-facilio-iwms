@@ -2420,7 +2420,7 @@ async function fetchSpaceBookingsForRange(
   startISO: string,
   endISO: string,
   floorId: string | null,
-  opts?: { forCurrentUser?: boolean; floorIds?: string[]; resourceField?: 'desk' | 'space' }
+  opts?: { forCurrentUser?: boolean; floorIds?: string[]; resourceField?: 'desk' | 'space'; /** Record ids to scope to — the clash check wants ONE desk/space, not every booked one. */ resourceIds?: string[] }
 ): Promise<Booking[]> {
     const tz = await fetchOrgTimezone().catch(() => null);
     const rangeStart = epochAtInTz(startISO, 0, tz);
@@ -2433,7 +2433,14 @@ async function fetchSpaceBookingsForRange(
       ...(reservedById != null ? { reservedBy: { operatorId: 36, value: [String(reservedById)] } } : {}),
       // CATEGORY scoping, server-side (requested): a desk booking has its `desk` lookup set, a
       // room booking its `space` lookup — "is not empty" (operatorId 2) selects per type.
-      ...(opts?.resourceField ? { [opts.resourceField]: { operatorId: 2, value: [] } } : {}),
+      // Scoped to the CHOSEN records when the caller names them (operatorId 36 = is): the clash
+      // check asked for "desk is not empty" — every desk booking in the range — and filtered in
+      // the browser, which is both a much larger response and wrong to rely on once paginated.
+      ...(opts?.resourceIds?.length
+        ? { [opts.resourceField ?? 'desk']: { operatorId: 36, value: opts.resourceIds.map(String) } }
+        : opts?.resourceField
+          ? { [opts.resourceField]: { operatorId: 2, value: [] } }
+          : {}),
     };
 
     const fetchPages = async (filters: Record<string, unknown>): Promise<any[]> => {
@@ -2609,7 +2616,7 @@ export function fetchOrgBookingsForDate(date: string): Promise<Booking[]> {
 export function fetchOrgBookingsForRange(
   startISO: string,
   endISO: string,
-  opts?: { forCurrentUser?: boolean; floorIds?: string[]; resourceField?: 'desk' | 'space' }
+  opts?: { forCurrentUser?: boolean; floorIds?: string[]; resourceField?: 'desk' | 'space'; /** Record ids to scope to — the clash check wants ONE desk/space, not every booked one. */ resourceIds?: string[] }
 ): Promise<Booking[]> {
   if (!isFacilioApiConfigured) return Promise.resolve([]);
   return fetchSpaceBookingsForRange(startISO, endISO, null, opts);
