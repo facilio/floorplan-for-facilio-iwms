@@ -119,7 +119,7 @@ export function MobileUnitSheet() {
               <span className={styles.nameSkeleton} />
             </div>
           ) : (
-            <div className={styles.assignedRow}>
+            <div className={styles.assignedRow} data-tip={contactName(state, contactId) || 'Occupied'}>
               <span className={styles.avatar}>{initials(contactName(state, contactId) || 'Occupied')}</span>
               <span className={styles.assignedName}>{contactName(state, contactId) || 'Occupied'}</span>
             </div>

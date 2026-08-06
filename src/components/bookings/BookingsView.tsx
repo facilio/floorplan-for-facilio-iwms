@@ -667,7 +667,8 @@ function CalendarGrid({ dates, bookingsFor, myId, snap, onCreate, onPreview, con
                         style={{ top, height, cursor: 'pointer', textAlign: 'left' }}
                         onMouseDown={(e) => e.stopPropagation()}
                         onClick={() => onPreview(d, cluster.map((b) => b.id))}
-                        title={`${cluster.length} overlapping bookings — click to preview`}
+                        data-tip={`${fmtTime(cStart)} – ${fmtTime(cEnd)} · ${cluster.length} overlapping bookings — click to preview`}
+                        data-tip-pos="top"
                       >
                         <div className={styles.blockTime}>{fmtTime(cStart)} - {fmtTime(cEnd)}</div>
                         <div className={styles.blockName}>{cluster.length} bookings</div>
@@ -685,7 +686,13 @@ function CalendarGrid({ dates, bookingsFor, myId, snap, onCreate, onPreview, con
                       style={{ top, height, cursor: 'pointer', ...(b.approvalPending ? { background: 'var(--warning-050)', borderColor: 'var(--warning-700)', color: 'var(--warning-700)' } : {}) }}
                       onMouseDown={(e) => e.stopPropagation()}
                       onClick={() => onPreview(d, [b.id])}
-                      title={(mine ? 'Your booking' : `Booked by ${contactNameOf(b.by) || 'someone'}`) + (b.approvalPending ? ' · pending approval' : '') + ' — click to preview'}
+                      data-tip={
+                        `${fmtTime(b.start)} – ${fmtTime(b.end)} · ` +
+                        (mine ? 'Your booking' : `Booked by ${contactNameOf(b.by) || 'someone'}`) +
+                        (b.approvalPending ? ' · pending approval' : '') +
+                        ' — click to preview'
+                      }
+                      data-tip-pos="top"
                     >
                       <div className={styles.blockTime}>{fmtTime(b.start)} - {fmtTime(b.end)}</div>
                       <div className={styles.blockName}>{mine ? 'Your booking' : contactNameOf(b.by) || 'Booked'}</div>

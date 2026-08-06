@@ -89,7 +89,11 @@ export function MobileApp({ mode, onClose }: MobileAppProps) {
 
           <div className={styles.header}>
             <div className={styles.headerRow}>
-              <button className={styles.floorSwitch} onClick={() => actions.setMobFloorOpen(true)}>
+              <button
+                className={styles.floorSwitch}
+                data-tip={meta ? `${meta.floor.name} · ${meta.building.name} · ${meta.site.name}` : ''}
+                onClick={() => actions.setMobFloorOpen(true)}
+              >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                   <rect x="4" y="2" width="16" height="20" rx="1" />
                   <path d="M4 8h16M4 13h16M4 18h16" />

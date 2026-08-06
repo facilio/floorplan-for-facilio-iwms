@@ -440,6 +440,8 @@ function MarkersTab() {
                   e.dataTransfer.effectAllowed = 'copy';
                   makeChipDragImage(e, def.color, true, (def.text ?? def.name.slice(0, 1)).slice(0, 2).toUpperCase());
                 }}
+                data-tip={def.name}
+                data-tip-align="center"
                 onClick={() => actions.setMarkerKind(def.id)}
               >
                 <span className={styles.markerChip} style={{ background: def.color }}>
@@ -877,14 +879,14 @@ function AssetListCard() {
                     <path d="M12 13v8" />
                   </svg>
                 </span>
-                <span className={styles.assetText}>
+                <span className={styles.assetText} data-tip={[a.name, a.category, a.detail].filter(Boolean).join(' · ')}>
                   <span className={styles.assetName}>{a.name}</span>
                   <span className={styles.assetDetail}>
                     {a.category} · {a.detail}
                   </span>
                 </span>
                 {placed && (
-                  <span className={styles.assetPlaced} title="Already on this plan (drag to move)">
+                  <span className={styles.assetPlaced} data-tip="Already on this plan (drag to move)" data-tip-align="end">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M20 6L9 17l-5-5" />
                     </svg>

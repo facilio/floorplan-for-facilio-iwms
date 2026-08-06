@@ -381,7 +381,8 @@
   right: 3px;
   border-radius: var(--radius-sm);
   padding: 4px 7px;
-  overflow: hidden;
+  /* NOT overflow:hidden — that clipped the block's own tooltip. Its two text lines already
+     ellipsize on their own (.blockTime/.blockName), so nothing spills. */
   cursor: default;
   z-index: 2;
   animation: blockIn 0.22s cubic-bezier(0.2, 0, 0, 1);

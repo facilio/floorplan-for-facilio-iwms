@@ -278,7 +278,7 @@ function DayTimeline({ unitId }: { unitId: string }) {
               borderColor: mine ? 'var(--blue-400)' : 'var(--danger-500)',
               color: mine ? 'var(--blue-700)' : 'var(--danger-700)',
             }}
-            title={[`${label} · ${fmtTime(b.start)}–${fmtTime(b.end)}`, contactName(state, b.by), b.purpose].filter(Boolean).join(' · ')}
+            data-tip={[`${label} · ${fmtTime(b.start)}–${fmtTime(b.end)}`, contactName(state, b.by), b.purpose].filter(Boolean).join(' · ')}
           >
             {h >= 22 && (
               <span className={styles.blockLabel}>

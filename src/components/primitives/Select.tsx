@@ -156,6 +156,9 @@ export function Select<T extends string = string>({
         ref={triggerRef}
         type="button"
         className={[styles.trigger, styles[size], open ? styles.triggerOpen : ''].join(' ')}
+        // The selected value clips inside the trigger — the tooltip carries it in full. Suppressed
+        // while the list is open so the bubble can't sit over the options.
+        data-tip={open ? '' : selected?.label ?? ''}
         onClick={() => !disabled && setOpen((o) => !o)}
         onKeyDown={onTriggerKeyDown}
         disabled={disabled}
@@ -238,7 +241,7 @@ export function Select<T extends string = string>({
                 onMouseEnter={() => setActiveIndex(i)}
                 onClick={() => commit(i)}
               >
-                <span className={styles.optionLabel}>
+                <span className={styles.optionLabel} data-tip={[opt.label, opt.sublabel].filter(Boolean).join(' · ')}>
                   <span>{opt.label}</span>
                   {opt.sublabel && <span className={styles.optionSub}>{opt.sublabel}</span>}
                 </span>

@@ -127,7 +127,7 @@ export function MobileFloorPicker() {
         </div>
         <div className={styles.list}>
           {rows.map((r) => (
-            <div key={r.id} className={styles.row} onClick={r.onTap}>
+            <div key={r.id} className={styles.row} data-tip={[r.name, r.sub].filter(Boolean).join(' · ')} onClick={r.onTap}>
               <LevelIcon kind={r.kind} />
               <div className={styles.rowText}>
                 <div className={[styles.rowName, r.active ? styles.rowNameActive : ''].join(' ')}>{r.name}</div>

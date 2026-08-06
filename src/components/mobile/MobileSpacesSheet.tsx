@@ -105,7 +105,14 @@ function SpaceRow({ unit, onShow, onClose }: { unit: Unit; onShow: () => void; o
 
   return (
     <div className={styles.row}>
-      <button className={styles.rowMain} onClick={onShow}>
+      <button
+        className={styles.rowMain}
+        // Row-anchored tooltip: the label/sub lines clip, and a clipping box cuts its own bubble.
+        data-tip={[unit.label, [TYPE_META[unit.type].name, unit.room].filter(Boolean).join(' · '), contactId ? contactName(state, contactId) || 'Occupied' : '']
+          .filter(Boolean)
+          .join(' · ')}
+        onClick={onShow}
+      >
         <span className={styles.typeDot} data-type={unit.type} />
         <span className={styles.rowText}>
           <span className={styles.rowLabel}>{unit.label}</span>

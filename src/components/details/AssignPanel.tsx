@@ -129,9 +129,11 @@ export function AssignPanel() {
               <div
                 key={contact.id}
                 className={styles.personRow}
-                // Anchored on the row — the name/dept lines clip, and a clipping box would cut
-                // its own tooltip off.
-                data-tip={[contact.name, contact.client].filter(Boolean).join(' · ')}
+                // Anchored on the ROW: the name/dept lines and the held-desk badge all clip, and a
+                // clipping box would cut its own tooltip off — so the row carries the full text.
+                data-tip={[contact.name, contact.client, held.length ? `Holds ${held.join(', ')}` : '']
+                  .filter(Boolean)
+                  .join(' · ')}
                 draggable
                 onDragStart={(e) => onDragStart(e, contact.id, contact.name)}
                 onDragEnd={onDragEnd}
@@ -143,11 +145,7 @@ export function AssignPanel() {
                   <div className={styles.personName}>{contact.name}</div>
                   <div className={styles.personDept}>{contact.client}</div>
                 </div>
-                {held.length > 0 && (
-                  <span className={styles.heldBadge} data-tip={held.join(', ')} data-tip-align="end">
-                    {held.join(', ')}
-                  </span>
-                )}
+                {held.length > 0 && <span className={styles.heldBadge}>{held.join(', ')}</span>}
                 {/* Record summary opens ONLY from this icon — a whole-row click used to redirect,
                     which made selecting/dragging a person too easy to misfire into a navigation. */}
                 {canOpen && (
