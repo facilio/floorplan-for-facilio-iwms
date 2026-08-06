@@ -75,10 +75,12 @@ export function PeoplePickerModal() {
               }}
             >
               <span className={styles.avatar}>{initials(c.name)}</span>
-              <span className={styles.personText}>
-                <span className={styles.personName}>{c.name}</span>
-                {c.client && <span className={styles.personDept}>{c.client}</span>}
-              </span>
+              {/* Same two-line structure as the directory list — as inline spans the name and
+                  department ran together ("Maria SilvaFinance"). */}
+              <div className={styles.personText}>
+                <div className={styles.personName}>{c.name}</div>
+                {c.client && <div className={styles.personDept}>{c.client}</div>}
+              </div>
               {c.id === currentId && <span className={card.helper}>Current</span>}
             </button>
           ))}

@@ -4,7 +4,6 @@ import { useFloorplan } from '../../state/FloorplanContext';
 import { contactName, initials, isAssignable, notAssignableReason, unitById } from '../../state/selectors';
 import { TYPE_META } from '../../lib/types';
 import { openRecordSummary } from '../../lib/facilioApi';
-import { Select } from '../primitives/Select';
 import { Button } from '../primitives/Button';
 import { SkeletonRows } from '../primitives/Skeleton';
 import { UnitStateflowSection } from './StateflowActions';
@@ -209,17 +208,15 @@ function AssignBody({ unitId }: { unitId: string }) {
     return <div>{assignedRow}</div>;
   }
 
+  // ONE way in, for desks and rooms alike (requested): the person lookup is its own popup, which
+  // searches the directory on the SERVER. The inline select could only offer what was already in
+  // memory — the first page of a 1,400-person directory.
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       {assignedRow}
-      <Select
-        value={reassigning ? null : contactId ?? null}
-        placeholder={reassigning ? '— Choose the new person —' : '— Choose a person —'}
-        options={state.clientContacts.map((c) => ({ value: c.id, label: c.name, sublabel: c.client }))}
-        onChange={(v) => actions.assign(v, unitId)}
-        fullWidth
-        aria-label={reassigning ? 'Reassign to' : 'Assign to'}
-      />
+      <Button variant={contactId ? 'secondary' : 'primary'} fullWidth onClick={() => actions.openPeoplePicker(unitId)}>
+        {contactId ? 'Re-assign' : 'Assign a person'}
+      </Button>
       <p className={styles.dragHint} style={{ marginTop: 8 }}>
         Or drag a person from the list below onto this space.
       </p>

@@ -1,4 +1,3 @@
-import { useMemo, useState } from 'react';
 import type { Unit } from '../../lib/types';
 import { useFloorplan } from '../../state/FloorplanContext';
 import { notAssignableReason, notBookableReason, contactName, initials, isAssignable, isBookable, unitById } from '../../state/selectors';
@@ -9,17 +8,12 @@ import { useSheetDrag } from './useSheetDrag';
 import { UnitStateflowSection } from '../details/StateflowActions';
 import styles from './MobileUnitSheet.module.css';
 
-/** Cap the rendered rows — the RCU directory is 1,400+ people; search narrows. */
-const MAX_ROWS = 60;
-
 export function MobileUnitSheet() {
   const { state, actions } = useFloorplan();
   const unit = unitById(state, state.mobSel);
-  const [contactQuery, setContactQuery] = useState('');
   const sheetRef = useSheetDrag(() => {
     actions.setMobSel(null);
     actions.setMobAssignEdit(false);
-    setContactQuery('');
   }, !!unit);
 
   const contactId = unit ? state.assignments[unit.id] : undefined;
@@ -27,18 +21,6 @@ export function MobileUnitSheet() {
   const isAmenity = unit?.type === 'amenity';
   const isAsset = isAmenity && !!unit?.assetId;
   const assignable = unit && !isAmenity ? isAssignable(unit) : false;
-  // Contact picking expands the sheet to near-full height with its own
-  // search — a plain dropdown was unusable against the full directory.
-  const picking = !!unit && !showBookTab && assignable && (!contactId || state.mobAssignEdit);
-
-  const filtered = useMemo(() => {
-    const q = contactQuery.trim().toLowerCase();
-    // Local narrowing of whatever the directory holds; the SERVER search (debounced, in
-    // FloorplanContext) tops it up with people outside the first page.
-    if (!q) return state.clientContacts;
-    return state.clientContacts.filter((c) => c.name.toLowerCase().includes(q) || c.client.toLowerCase().includes(q));
-  }, [state.clientContacts, contactQuery]);
-
   if (!unit) return null;
 
   const status = unitStatus(state, unit, (id) => contactName(state, id));
@@ -47,15 +29,13 @@ export function MobileUnitSheet() {
   function close() {
     actions.setMobSel(null);
     actions.setMobAssignEdit(false);
-    setContactQuery('');
   }
-
-  const shown = filtered.slice(0, MAX_ROWS);
 
   return (
     <>
       <div className={styles.backdrop} onClick={close} />
-      <div ref={sheetRef} className={[styles.sheet, picking ? styles.sheetTall : ''].join(' ')}>
+      {/* The sheet no longer grows for an inline directory — the person lookup is its own popup. */}
+      <div ref={sheetRef} className={styles.sheet}>
         <div className={styles.handle} />
         <div className={styles.headRow}>
           <div className={styles.headText}>
@@ -130,62 +110,20 @@ export function MobileUnitSheet() {
             the Book tab, and units that aren't assignable in the Assign tab. */}
         {!isAmenity && !state.mobAssignEdit && <UnitStateflowSection unit={unit} readOnly={showBookTab || !assignable} />}
 
-        {picking && (
-          <div className={styles.pickWrap}>
-            <div className={styles.assignLabel}>Assign to</div>
-            <input
-              className={styles.empSearch}
-              placeholder="Search people or departments"
-              value={contactQuery}
-              // Mirrored into the SHARED contactSearch so the debounced SERVER search runs (the
-              // whole directory is no longer fetched up front).
-              onChange={(e) => {
-                setContactQuery(e.target.value);
-                actions.setContactSearch(e.target.value);
-              }}
-            />
-            <div className={styles.empList}>
-              {shown.map((c) => (
-                <button
-                  key={c.id}
-                  className={styles.empRow}
-                  onClick={() => {
-                    actions.assign(c.id, unit.id);
-                    actions.setMobAssignEdit(false);
-                    setContactQuery('');
-                  }}
-                >
-                  <span className={styles.avatar}>{initials(c.name)}</span>
-                  <span className={styles.empText}>
-                    <span className={styles.empName}>{c.name}</span>
-                    <span className={styles.empDept}>{c.client}</span>
-                  </span>
-                  {contactId === c.id && (
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--blue-600)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M20 6L9 17l-5-5" />
-                    </svg>
-                  )}
-                </button>
-              ))}
-              {filtered.length > MAX_ROWS && (
-                <div className={styles.listNote}>
-                  Showing {MAX_ROWS} of {filtered.length} — keep typing to narrow down.
-                </div>
-              )}
-              {filtered.length === 0 && <div className={styles.listNote}>No people match “{contactQuery}”.</div>}
-            </div>
-            {state.mobAssignEdit && (
-              <button
-                className={styles.cancelPick}
-                onClick={() => {
-                  actions.setMobAssignEdit(false);
-                  setContactQuery('');
-                }}
-              >
-                Cancel
-              </button>
-            )}
-          </div>
+        {/* ONE assign button here too (requested — desks AND rooms, web AND mobile): the person
+            lookup is the shared popup, so the sheet no longer carries its own inline list. That
+            list also only filtered what was already in memory, while the popup searches the
+            directory on the server. */}
+        {!isAmenity && !showBookTab && assignable && (
+          <button
+            className={styles.primaryBtn}
+            onClick={() => {
+              actions.setMobAssignEdit(false);
+              actions.openPeoplePicker(unit.id);
+            }}
+          >
+            {contactId ? 'Re-assign' : 'Assign a person'}
+          </button>
         )}
       </div>
     </>
