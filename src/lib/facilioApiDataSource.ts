@@ -3447,6 +3447,51 @@ export interface BookingFormSummary {
   hideInList?: boolean | null;
 }
 
+/** lookupModule -> the unit type that lookup books. Mirrors the modal's own map. */
+const FORM_LOOKUP_TYPE: Record<string, UnitType> = {
+  desks: 'workstation',
+  desk: 'workstation',
+  rooms: 'room',
+  space: 'room',
+  basespace: 'room',
+  parkingstall: 'parking',
+  parkinglot: 'parking',
+  lockers: 'locker',
+};
+
+/**
+ * Which unit type a form actually books, read from the FORM'S OWN resource lookup field
+ * (`field.lookupModule`) rather than its link name. Link names differ per org — a desk form named
+ * without "desk" fell through to the default `/spacebooking/i` pattern, so desks and rooms both
+ * ended up on the SAME form (reported on mobile). Resolved once per form and cached; null when the
+ * form has no recognizable resource lookup (callers fall back to link-name matching).
+ */
+const formResourceTypeCache = new Map<string, UnitType | null>();
+export async function resolveFormResourceTypes(module: 'space' | 'facility', forms: BookingFormSummary[]): Promise<Map<number, UnitType | null>> {
+  const out = new Map<number, UnitType | null>();
+  await Promise.all(
+    forms.map(async (f) => {
+      const key = `${module}:${f.id}`;
+      if (formResourceTypeCache.has(key)) {
+        out.set(f.id, formResourceTypeCache.get(key)!);
+        return;
+      }
+      const meta = await fetchBookingFormById(module, f.id).catch(() => null);
+      let type: UnitType | null = null;
+      for (const field of meta?.fields ?? []) {
+        const lm = (field.lookupModule ?? '').toLowerCase();
+        if (lm && lm in FORM_LOOKUP_TYPE) {
+          type = FORM_LOOKUP_TYPE[lm];
+          break;
+        }
+      }
+      formResourceTypeCache.set(key, type);
+      out.set(f.id, type);
+    })
+  );
+  return out;
+}
+
 /**
  * EVERY form on the module that belongs to a unit type — the header's form dropdown lists these
  * (booking-enabled only: `hideInList` forms are excluded). Matching is on the LINK NAME, same

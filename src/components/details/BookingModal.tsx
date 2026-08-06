@@ -6,7 +6,7 @@ import { fmtTime } from '../../lib/geometry';
 import { epochAtInTz, orgTimezone, wallClockInTz } from '../../lib/orgTime';
 import { useOrgClock } from '../../hooks/useOrgClock';
 import { isFacilioApiConfigured } from '../../lib/facilioApi';
-import { bookingFormsForType, fetchBookingFormById, fetchBookingFormList, fetchOrgBookableResources, fetchOrgBookingsForRange, pickDefaultBookingForm } from '../../lib/facilioApiDataSource';
+import { bookingFormsForType, fetchBookingFormById, fetchBookingFormList, fetchOrgBookableResources, fetchOrgBookingsForRange, pickDefaultBookingForm, resolveFormResourceTypes } from '../../lib/facilioApiDataSource';
 import type { BookingFormFieldMeta, BookingFormMeta, BookingFormSummary } from '../../lib/facilioApiDataSource';
 import type { ClientContact, Unit, UnitType } from '../../lib/types';
 import { Modal, ModalFooter, ModalHeader } from '../primitives/Modal';
@@ -148,6 +148,11 @@ function BookingFormInner() {
   // switcher lets the user pick; the module's per-type default is auto-selected. Null/empty in
   // mock/offline mode or if the fetch fails — the built-in field list below stands in.
   const [formList, setFormList] = useState<BookingFormSummary[]>([]);
+  /**
+   * formId -> the unit type that form's OWN resource lookup books (from the form response). Link
+   * names differ per org, so name patterns alone put desks and rooms on the same form (reported).
+   */
+  const [formTypes, setFormTypes] = useState<Map<number, UnitType | null>>(new Map());
   const [formId, setFormId] = useState<number | null>(null);
   const [formMeta, setFormMeta] = useState<BookingFormMeta | null>(null);
   const [formLoading, setFormLoading] = useState<boolean>(isFacilioApiConfigured);
@@ -162,6 +167,13 @@ function BookingFormInner() {
     fetchBookingFormList(module).then((forms) => {
       if (!alive) return;
       setFormList(forms);
+      // Type each form by its own resource lookup — this is what makes a desk get the desk form
+      // and a room the space form on ANY org, regardless of how the forms are named.
+      void resolveFormResourceTypes(module, forms)
+        .then((types) => {
+          if (alive) setFormTypes(types);
+        })
+        .catch(() => {});
       const def = pickDefaultBookingForm(forms, module, unit.type);
       if (def) setFormId(def.id);
       else setFormLoading(false); // no forms — fall back to the built-in layout
@@ -176,18 +188,26 @@ function BookingFormInner() {
   // type's link-name key (deskbooking for desks, spacebooking for rooms/spaces).
   const formsForCurrentType = useMemo(() => {
     if (!unit) return [];
+    /** Forms whose OWN resource lookup books `t` — authoritative when the metadata resolved. */
+    const byLookup = (t: UnitType) => formList.filter((f) => formTypes.get(f.id) === t);
     // ALL SPACES mixes desks and rooms, so EVERY form for both keys is offered (requested — only
     // the space form was showing); a context view offers just its own key's forms.
     if (target.allowTypeSwitch) {
-      const both = [...bookingFormsForType(formList, module, 'workstation'), ...bookingFormsForType(formList, module, 'room')];
+      const both = [
+        ...(byLookup('workstation').length ? byLookup('workstation') : bookingFormsForType(formList, module, 'workstation')),
+        ...(byLookup('room').length ? byLookup('room') : bookingFormsForType(formList, module, 'room')),
+      ];
       const seen = new Set<number>();
       return both.filter((f) => (seen.has(f.id) ? false : (seen.add(f.id), true)));
     }
-    return bookingFormsForType(formList, module, effType);
-  }, [formList, module, effType, unit, target.allowTypeSwitch]);
+    const typed = byLookup(effType);
+    return typed.length ? typed : bookingFormsForType(formList, module, effType);
+  }, [formList, formTypes, module, effType, unit, target.allowTypeSwitch]);
 
   /** Which resource type a form belongs to — picking a form in All spaces switches to it. */
   const typeOfForm = (id: number): UnitType | null => {
+    const resolved = formTypes.get(id);
+    if (resolved) return resolved;
     if (bookingFormsForType(formList, module, 'workstation').some((f) => f.id === id)) return 'workstation';
     if (bookingFormsForType(formList, module, 'room').some((f) => f.id === id)) return 'room';
     return null;
