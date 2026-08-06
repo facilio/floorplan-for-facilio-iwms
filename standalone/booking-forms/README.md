@@ -10,7 +10,12 @@ That folder is the deployable app (HTML + CSS + JS, no build step): upload its `
 runs on its own. See its README for the deploy steps, the query-string contract
 (`form.html?unitType=room&resourceId=123&resourceLabel=…`) and the full behaviour spec.
 
-The copy that used to sit here has been removed so there's only one source of truth. The rules it
+Only `bookingForms.tsx` stays here — the TypeScript/JSX variant for codebases that already have a
+bundler. It's deliberately NOT in the deployable repo: the connected-app uploader accepts only
+`css, html, jpeg, jpg, js, json, png, svg, txt, pdf`, so a `.tsx` (or `.md`, or a dotfile) in that
+folder fails the upload with "File type not supported".
+
+The deployable copy that used to sit here has been removed so there's only one source of truth. The rules it
 implements are mirrored from this app's own booking form —
 `src/components/details/BookingModal.tsx` and `src/lib/facilioApiDataSource.ts` — so when a booking
 rule changes here, mirror it there (both its JS and TSX variants).
