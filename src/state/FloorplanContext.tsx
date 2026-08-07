@@ -1586,6 +1586,39 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
   // each bottom-nav view is a clean URL. Nav clicks push a history entry; back/forward come
   // back in via popstate. The reducer's SET_ACTIVE_VIEW is idempotent, so no loops. A legacy
   // #/x hash link resolves via viewFromLocation and gets normalized to its path form here.
+  /**
+   * LAST-RESORT NET for async failures (requested). The error boundaries only see RENDER errors —
+   * a rejected fetch never reaches them, and in the connected-app iframe an unhandled rejection
+   * can take the whole app down. Clicking a marker whose record no longer exists in Facilio does
+   * exactly that: the record read 404s and everything goes with it. Now the message surfaces as a
+   * toast and the app stays up (identical toasts are already deduped by the reducer).
+   */
+  useEffect(() => {
+    const describe = (v: unknown) => {
+      const m = v instanceof Error ? v.message : typeof v === 'string' ? v : (v as any)?.message;
+      const text = String(m ?? '').trim();
+      if (/\b404\b|not found|no record/i.test(text)) return "That record no longer exists in Facilio";
+      return text ? `Something went wrong: ${text.slice(0, 120)}` : 'Something went wrong';
+    };
+    const onRejection = (e: PromiseRejectionEvent) => {
+      // eslint-disable-next-line no-console
+      console.error('[unhandled rejection]', e.reason);
+      showToastVia(dispatch, describe(e.reason), { variant: 'error' });
+      e.preventDefault(); // keep it from bubbling out to the host page
+    };
+    const onError = (e: ErrorEvent) => {
+      // eslint-disable-next-line no-console
+      console.error('[uncaught error]', e.error ?? e.message);
+      showToastVia(dispatch, describe(e.error ?? e.message), { variant: 'error' });
+    };
+    window.addEventListener('unhandledrejection', onRejection);
+    window.addEventListener('error', onError);
+    return () => {
+      window.removeEventListener('unhandledrejection', onRejection);
+      window.removeEventListener('error', onError);
+    };
+  }, []);
+
   useEffect(() => {
     // The floor param rides along on every view path (see routes.floorFromLocation).
     const url = withFloorParam(pathForView(state.activeView), state.floorId);

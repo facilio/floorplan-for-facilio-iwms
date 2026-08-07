@@ -1206,7 +1206,14 @@ export async function fetchUnitRecordDetails(unit: Unit): Promise<UnitRecordDeta
   if (unit.type === 'room') await ensureRoomTypeLabels();
   const moduleName = unit.type === 'room' ? ROOM_RECORDS_MODULE : REAL_SPACE_MODULE[unit.type];
   if (!moduleName || !/^\d+$/.test(unit.id)) return null;
-  const res: any = await facilioApi.fetchRecord<any>(moduleName, { id: Number(unit.id) }).catch(() => null);
+  // A DELETED/missing record 404s. That is a normal answer here — the marker outlived its record
+  // — so it resolves to "no details" rather than throwing into the popup (reported: the whole app
+  // went down on clicking such a marker).
+  const res: any = await facilioApi.fetchRecord<any>(moduleName, { id: Number(unit.id) }).catch((err) => {
+    // eslint-disable-next-line no-console
+    console.warn(`[facilio-api] ${moduleName}/${unit.id} record read failed`, err);
+    return null;
+  });
   const rec = res && !res.error ? res[moduleName] ?? res.data ?? null : null;
   if (!rec) return null;
   const patch: Partial<Unit> = {};
