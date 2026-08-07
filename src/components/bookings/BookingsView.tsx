@@ -395,6 +395,10 @@ export function BookingsView() {
                 myId={state.bookBy}
                 snap={state.slotGranularity}
                 onCreate={openForm}
+                // ROOMS book a fixed 2h, so a drag can't select more than that; All spaces and
+                // Desks cap at the form's own 7-day ceiling. Switching the open form TO a room
+                // keeps only the start — the form derives the end (start + 2h) itself.
+                maxSpan={category === 'room' ? 120 : 7 * 24 * 60}
                 onPreview={(date, ids) => setPreview({ date, ids })}
                 contactNameOf={(id) => contactName(state, id)}
               />
@@ -552,14 +556,16 @@ interface CalendarGridProps {
   myId: string;
   snap: number;
   onCreate: (date: string, start: number, end: number) => void;
+  /** Longest window a drag may select — rooms are a fixed 2h, everything else caps at 7 days. */
+  maxSpan: number;
   onPreview: (date: string, ids: string[]) => void;
   contactNameOf: (id: string) => string;
 }
 
-function CalendarGrid({ dates, bookingsFor, myId, snap, onCreate, onPreview, contactNameOf }: CalendarGridProps) {
+function CalendarGrid({ dates, bookingsFor, myId, snap, onCreate, maxSpan, onPreview, contactNameOf }: CalendarGridProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<{ date: string; from: number; to: number } | null>(null);
-  const dragRef = useRef<{ date: string; colTop: number; from: number; to: number } | null>(null);
+  const dragRef = useRef<{ date: string; colTop: number; anchor: number; from: number; to: number } | null>(null);
   // Live "now" — ticks each minute so the current-time line stays accurate
   // while the view sits open (it was computed once at render before).
   const [now, setNow] = useState(nowMinutes());
@@ -594,7 +600,7 @@ function CalendarGrid({ dates, bookingsFor, myId, snap, onCreate, onPreview, con
     if (e.button !== 0) return;
     const colTop = e.currentTarget.getBoundingClientRect().top;
     const from = slotAt(colTop, e.clientY);
-    dragRef.current = { date, colTop, from, to: from + snap };
+    dragRef.current = { date, colTop, anchor: from, from, to: from + snap };
     setDrag({ date, from, to: from + snap });
     window.addEventListener('mousemove', onDragMove);
     window.addEventListener('mouseup', onDragUp);
@@ -602,10 +608,14 @@ function CalendarGrid({ dates, bookingsFor, myId, snap, onCreate, onPreview, con
   function onDragMove(e: MouseEvent) {
     const d = dragRef.current;
     if (!d) return;
-    // Dragging MOVES the one-slot selection; it never stretches it — bookings are slot-sized.
+    // Dragging STRETCHES the selection from where it started (requested) — either direction —
+    // and the window is capped: a room can only ever select its fixed 2h, everything else stops
+    // at 7 days, the same ceiling the form enforces. A plain click still selects one slot.
     const s = slotAt(d.colTop, e.clientY);
-    d.from = s;
-    d.to = s + snap;
+    const from = Math.min(d.anchor, s);
+    const to = Math.max(d.anchor, s) + snap;
+    d.from = from;
+    d.to = Math.min(to, from + maxSpan);
     setDrag({ date: d.date, from: d.from, to: d.to });
   }
   function onDragUp() {

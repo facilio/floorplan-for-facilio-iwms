@@ -631,6 +631,10 @@ function BookingFormInner() {
       options={resourceOptions}
       onChange={setResourceId}
       placeholder={resourcesLoading && resourceOptions.length === 0 ? 'Loading…' : `Select a ${resourceFieldLabel.toLowerCase()}`}
+      // Booking from the PLAN means the resource was already chosen by clicking it, so the
+      // lookup shows it read-only (requested). From the CALENDAR nothing has been picked yet —
+      // the lookup is how you choose, so it stays editable there.
+      disabled={state.activeView === 'map'}
       fullWidth
       aria-label={resourceFieldLabel}
     />

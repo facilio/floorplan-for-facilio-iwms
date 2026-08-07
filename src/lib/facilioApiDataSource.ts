@@ -2564,7 +2564,27 @@ export function fetchOrgBookableResources(opts?: { force?: boolean }): Promise<U
       await Promise.all(
         mods.map(async ({ type, moduleName, plan }) => {
           for (let page = 1; page <= 4; page++) {
-            const res: any = await facilioApi.fetchAll(moduleName, { page, perPage: 500, isArchived: false }).catch(() => null);
+            // The TYPE FILTER rides the request (requested): desks only hot/hotel (deskType
+            // enum 2/3), rooms only reservable ones — this pool feeds booking surfaces only, so
+            // there is nothing here that wants an assigned desk. FAIL SAFE: if the org rejects
+            // the filter shape or it returns nothing, refetch unfiltered — the client-side
+            // `lookupEligible` still guarantees what the picker offers, and an empty lookup is a
+            // far worse outcome than a larger response.
+            const typeFilter =
+              type === 'workstation'
+                ? { deskType: { operatorId: 9, value: ['2', '3'] } }
+                : type === 'room'
+                  ? { reservable: { operatorId: 9, value: ['true'] } }
+                  : null;
+            let res: any = typeFilter
+              ? await facilioApi.fetchAll(moduleName, { page, perPage: 500, isArchived: false, filters: JSON.stringify(typeFilter) }).catch(() => null)
+              : null;
+            if (typeFilter && (!res || res.error || !Array.isArray(res.list) || (page === 1 && res.list.length === 0))) {
+              // eslint-disable-next-line no-console
+              if (res?.error) console.warn(`[facilio-api] ${moduleName} type filter rejected — refetching unfiltered`, res.error);
+              res = await facilioApi.fetchAll(moduleName, { page, perPage: 500, isArchived: false }).catch(() => null);
+            }
+            if (!typeFilter) res = await facilioApi.fetchAll(moduleName, { page, perPage: 500, isArchived: false }).catch(() => null);
             const list = res?.list;
             if (res?.error || !Array.isArray(list)) break;
             for (const r of list as any[]) {
