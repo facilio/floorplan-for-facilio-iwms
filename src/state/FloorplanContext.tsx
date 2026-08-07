@@ -9,7 +9,8 @@ import type { AmenityIcon, Assignments, Booking, ClientContact, DefaultPlanView,
 import type { CadGroup } from '../lib/cadAnalyze';
 import type { Asset } from '../lib/assets';
 import { isFacilioApiConfigured } from '../lib/facilioApi';
-import { assignUnitReal, createRealBooking, fetchCurrentApp, fetchCurrentPeopleId, fetchFloorplanCustomization, fetchFloorplanImageResult, fetchMyDesk, fetchOrgTimezone, fetchPortalPlanFloors, fetchUnitAssigneeFromSummary, fetchUnitRecordDetails, findFloorParents, floorExists, findUnitIdForDeskRecord, getAnyFloor, getFloorPlanSummary, patchUnitContact, resolveHardcodedRolePerms, resolveModePermsForCurrentUser, saveFloorplanDefaultView, invalidateUnitRecordCaches, saveFloorplanMarkers, searchClientContacts, vacateUnitReal } from '../lib/facilioApiDataSource';
+import { runAssignTransition } from '../lib/stateflowApi';
+import { assignUnitReal, createRealBooking, fetchCurrentApp, fetchCurrentPeopleId, fetchFloorplanCustomization, fetchFloorplanImageResult, fetchMyDesk, fetchOrgTimezone, fetchPortalPlanFloors, fetchUnitAssigneeFromSummary, fetchUnitRecordDetails, findFloorParents, floorExists, findUnitIdForDeskRecord, getAnyFloor, getFloorPlanSummary, patchUnitContact, resolveHardcodedRolePerms, resolveModePermsForCurrentUser, saveFloorplanDefaultView, invalidateUnitRecordCaches, resolveUnitRecordRef, saveFloorplanMarkers, searchClientContacts, vacateUnitReal } from '../lib/facilioApiDataSource';
 import { listFloorplanFloorIds, loadFloorplanFile, persistFloorplanFile } from '../lib/floorplanFileStore';
 import { DEFAULT_PERMS_MODULE_NAME, loadEffectiveSettings, saveSettings, settingsFromState } from '../lib/settingsStore';
 import { floorFromLocation, pathForView, viewFromLocation, withFloorParam } from '../lib/routes';
@@ -1161,7 +1162,17 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
           // ASSIGN / RE-ASSIGN are RECORD WRITES, not transitions (requested): setting the
           // assignee above IS the action. Only the caches and the on-screen surfaces need to
           // catch up — VACATE is the one that calls the transition API (see stateflowVacated).
-          .then(() => {
+          .then(async () => {
+            // The write set WHO; this moves the record's STATE to match, so the flow starts
+            // offering Vacate and stops offering Assign. It runs only now — after a contact
+            // exists — never on a button press.
+            const ref = await resolveUnitRecordRef(target).catch(() => null);
+            if (ref) {
+              await runAssignTransition(ref.moduleName, ref.recordId).catch((err) => {
+                // eslint-disable-next-line no-console
+                console.warn('[assign] state transition after the write failed', err);
+              });
+            }
             invalidateUnitRecordCaches();
             dispatch({ type: 'UNIT_CHANGED' });
           });

@@ -63,6 +63,24 @@ export function isAssignTransition(t: TransitionOption): boolean {
   return /assign/i.test(t.name) && !/vacat|un-?assign|de-?assign|release/i.test(t.name);
 }
 
+/**
+ * Run the record's own assign transition IF its current state still offers one — called AFTER the
+ * assignee has actually been written (picker or drag-and-drop), never on a button click.
+ *
+ * Writing the field alone does not move the record's STATE: a desk stayed "Yet to Assign" with a
+ * holder on it, so the flow kept offering the unassigned actions and Vacate never appeared
+ * (reported). Returns the transition's name, or null when the state offers none — already
+ * occupied, no stateflow on the module, or local mode.
+ */
+export async function runAssignTransition(moduleName: string, recordId: number): Promise<string | null> {
+  if (!isFacilioApiConfigured) return null;
+  const flow = await fetchAvailableStates(moduleName, recordId).catch(() => null);
+  const t = (flow?.transitions ?? []).find(isAssignTransition);
+  if (!t) return null;
+  await executeStateTransition(moduleName, recordId, t.id);
+  return t.name;
+}
+
 function assertConfigured(): void {
   if (!isFacilioApiConfigured) throw new Error('facilio-api: not configured');
 }

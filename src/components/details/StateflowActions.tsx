@@ -288,13 +288,18 @@ export function UnitStateflowSection({ unit, readOnly, showStatusRow }: { unit: 
       // but renders OUR control: the app assigns by writing the record through the person picker,
       // not by firing the transition. No assign transition for this record and user -> no button
       // at all. Vacate is untouched: it stays a real transition button.
-      replaceTransition={(t) =>
-        !readOnly && isAssignTransition(t) ? (
-          <Button variant={state.assignments[unit.id] ? 'secondary' : 'primary'} onClick={() => actions.openPeoplePicker(unit.id)}>
-            {state.assignments[unit.id] ? 'Re-assign' : 'Assign a person'}
+      replaceTransition={(t) => {
+        if (readOnly || !isAssignTransition(t)) return null;
+        // The LABEL follows the transition the API offered (Re-Assign vs Assign) and falls back to
+        // the local map — reading the map alone showed "Assign a person" on a desk the record
+        // says is Occupied (reported).
+        const held = /re-?assign/i.test(t.name) || !!state.assignments[unit.id];
+        return (
+          <Button variant={held ? 'secondary' : 'primary'} onClick={() => actions.openPeoplePicker(unit.id)}>
+            {held ? 'Re-assign' : 'Assign a person'}
           </Button>
-        ) : null
-      }
+        );
+      }}
       // Belt and braces for a surface that DOES show an assign transition (a read-only one never
       // renders buttons, so today nothing does): it opens the person picker and stops there —
       // assigning is a record write, so the transition must not fire on the click.
