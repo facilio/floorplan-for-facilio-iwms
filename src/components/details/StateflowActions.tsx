@@ -9,6 +9,7 @@ import {
   fetchApprovalTransitions,
   fetchAvailableStates,
   isAssignTransition,
+  isVacateTransition,
   type FlowState,
   type TransitionOption,
 } from '../../lib/stateflowApi';
@@ -124,7 +125,11 @@ export function StateflowActions({
       if (kind === 'state') await executeStateTransition(moduleName, recordId, t.id, data);
       else await executeApprovalTransition(moduleName, recordId, t.id, data);
       if (!openedFollowUp) actions.showToast(`${t.name} done`);
-      setNonce((n) => n + 1); // refetch own state
+      // Refetch immediately, then ONCE more shortly after: the transition PATCH can return
+      // before the new state is readable, so the first read came back with the OLD state and the
+      // buttons stayed as they were (reported — "vacate is done but the details didn't update").
+      setNonce((n) => n + 1);
+      window.setTimeout(() => setNonce((n) => n + 1), 900);
       onTransitionDone?.(t);
       onChanged?.();
     } catch (err) {
@@ -314,7 +319,7 @@ export function UnitStateflowSection({ unit, readOnly, showStatusRow }: { unit: 
       // changes state) — clientcontact_moves: null on desks, employee: null on lockers/parking —
       // and drop the local assignment so the overlay updates immediately.
       onTransitionDone={(t) => {
-        if (/vacat|unassign/i.test(t.name)) actions.stateflowVacated(unit.id);
+        if (isVacateTransition(t)) actions.stateflowVacated(unit.id);
       }}
     />
   );

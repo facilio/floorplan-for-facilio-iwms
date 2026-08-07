@@ -81,6 +81,15 @@ export async function runAssignTransition(moduleName: string, recordId: number):
   return t.name;
 }
 
+/**
+ * A VACATE-ish transition — the mirror of isAssignTransition. Orgs name it differently (Vacate,
+ * Unassign, Release, Check Out, Free Desk), and matching only /vacat|unassign/ left the assignee
+ * on screen after any other spelling (reported: transition done, details not updated).
+ */
+export function isVacateTransition(t: TransitionOption): boolean {
+  return /vacat|un-?assign|de-?assign|release|check\s*out|free/i.test(t.name);
+}
+
 function assertConfigured(): void {
   if (!isFacilioApiConfigured) throw new Error('facilio-api: not configured');
 }

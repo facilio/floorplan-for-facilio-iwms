@@ -1230,6 +1230,12 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
     unitChanged: () => {
       invalidateUnitRecordCaches();
       dispatch({ type: 'UNIT_CHANGED' });
+      // Second pass for the same read-after-write lag the stateflow section allows for: the
+      // record can still answer with its pre-transition values on the first read.
+      window.setTimeout(() => {
+        invalidateUnitRecordCaches();
+        dispatch({ type: 'UNIT_CHANGED' });
+      }, 900);
     },
     /** Open the person lookup for an assign / re-assign in its own popup. */
     openPeoplePicker: (unitId: string) => {
