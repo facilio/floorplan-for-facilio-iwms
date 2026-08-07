@@ -395,10 +395,11 @@ export function BookingsView() {
                 myId={state.bookBy}
                 snap={state.slotGranularity}
                 onCreate={openForm}
-                // ROOMS book a fixed 2h, so a drag can't select more than that; All spaces and
-                // Desks cap at the form's own 7-day ceiling. Switching the open form TO a room
-                // keeps only the start — the form derives the end (start + 2h) itself.
-                maxSpan={category === 'room' ? 120 : 7 * 24 * 60}
+                // ROOMS: a FIXED 2h window the drag moves. All spaces / Desks: stretchable up to
+                // the form's own 7-day ceiling. Switching the open form TO a room keeps only the
+                // start — the form derives the end (start + 2h) itself.
+                maxSpan={7 * 24 * 60}
+                fixedSpan={category === 'room' ? 120 : undefined}
                 onPreview={(date, ids) => setPreview({ date, ids })}
                 contactNameOf={(id) => contactName(state, id)}
               />
@@ -556,13 +557,15 @@ interface CalendarGridProps {
   myId: string;
   snap: number;
   onCreate: (date: string, start: number, end: number) => void;
-  /** Longest window a drag may select — rooms are a fixed 2h, everything else caps at 7 days. */
+  /** Longest window a drag may STRETCH to (desks / all spaces). Ignored when fixedSpan is set. */
   maxSpan: number;
+  /** A window of exactly this length that the drag MOVES rather than resizes — rooms are 2h. */
+  fixedSpan?: number;
   onPreview: (date: string, ids: string[]) => void;
   contactNameOf: (id: string) => string;
 }
 
-function CalendarGrid({ dates, bookingsFor, myId, snap, onCreate, maxSpan, onPreview, contactNameOf }: CalendarGridProps) {
+function CalendarGrid({ dates, bookingsFor, myId, snap, onCreate, maxSpan, fixedSpan, onPreview, contactNameOf }: CalendarGridProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<{ date: string; from: number; to: number } | null>(null);
   const dragRef = useRef<{ date: string; colTop: number; anchor: number; from: number; to: number } | null>(null);
@@ -600,8 +603,8 @@ function CalendarGrid({ dates, bookingsFor, myId, snap, onCreate, maxSpan, onPre
     if (e.button !== 0) return;
     const colTop = e.currentTarget.getBoundingClientRect().top;
     const from = slotAt(colTop, e.clientY);
-    dragRef.current = { date, colTop, anchor: from, from, to: from + snap };
-    setDrag({ date, from, to: from + snap });
+    dragRef.current = { date, colTop, anchor: from, from, to: from + (fixedSpan ?? snap) };
+    setDrag({ date, from, to: from + (fixedSpan ?? snap) });
     window.addEventListener('mousemove', onDragMove);
     window.addEventListener('mouseup', onDragUp);
   }
@@ -612,10 +615,18 @@ function CalendarGrid({ dates, bookingsFor, myId, snap, onCreate, maxSpan, onPre
     // and the window is capped: a room can only ever select its fixed 2h, everything else stops
     // at 7 days, the same ceiling the form enforces. A plain click still selects one slot.
     const s = slotAt(d.colTop, e.clientY);
-    const from = Math.min(d.anchor, s);
-    const to = Math.max(d.anchor, s) + snap;
-    d.from = from;
-    d.to = Math.min(to, from + maxSpan);
+    if (fixedSpan) {
+      // ROOMS book a window of EXACTLY this length (2h) — dragging MOVES it down or up the day,
+      // it never resizes it (requested: not a cap, a fixed window).
+      d.from = s;
+      d.to = s + fixedSpan;
+    } else {
+      // Everything else stretches from where the drag started, in either direction, stopping at
+      // the form's own 7-day ceiling.
+      const from = Math.min(d.anchor, s);
+      d.from = from;
+      d.to = Math.min(Math.max(d.anchor, s) + snap, from + maxSpan);
+    }
     setDrag({ date: d.date, from: d.from, to: d.to });
   }
   function onDragUp() {
