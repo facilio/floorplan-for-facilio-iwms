@@ -166,6 +166,10 @@ export interface ClientContact {
 }
 
 export interface Booking {
+  /** Multi-day bookings arrive as ONE SEGMENT PER DAY sharing the record id — 0-based. */
+  segIndex?: number;
+  /** How many days the record spans (segments); absent for a same-day booking. */
+  segCount?: number;
   id: string;
   unitId: string;
   /**

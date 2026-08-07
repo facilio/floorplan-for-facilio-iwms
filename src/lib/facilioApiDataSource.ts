@@ -619,6 +619,13 @@ export async function ensureRoomTypeLabels(): Promise<void> {
 }
 
 /** The rooms module's roomType — enum INDEX, enum string, enum twin, or lookup — as a display string. */
+/** yyyy-mm-dd + n days, calendar-safe (month/year rollover). */
+function isoPlusDays(iso: string, n: number): string {
+  const d = new Date(`${iso}T00:00:00`);
+  d.setDate(d.getDate() + n);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function roomTypeName(rec: Record<string, any> | undefined): string | undefined {
   const v = rec?.roomTypeEnum ?? rec?.roomType;
   if (typeof v === 'string' && v.trim()) return v.trim();
@@ -2503,7 +2510,7 @@ async function fetchSpaceBookingsForRange(
       : [[], [], []];
     const onFloor = new Set([...desks, ...spaces, ...stalls].map((r: any) => String(r.id)));
     return rows
-      .map((b: any): Booking | null => {
+      .map((b: any): Booking[] | null => {
         const unitId = b.desk?.id ?? b.space?.id ?? b.parkingStall?.id;
         if (!unitId || !Number.isFinite(b.bookingStartTime)) return null;
         // Stateflow/approval read-side: pending when the record is approval-enabled
@@ -2523,22 +2530,33 @@ async function fetchSpaceBookingsForRange(
         // Each row lands on ITS OWN day (org wall clock) — the whole point of the range fetch.
         const wc = wallClockInTz(b.bookingStartTime, tz);
         const durMin = Math.max(0, Math.round(((b.bookingEndTime ?? b.bookingStartTime) - b.bookingStartTime) / 60_000));
-        return {
+        // A booking that RUNS PAST MIDNIGHT is one record spanning several days. It used to be
+        // filed under its start day and cut at midnight, so a 7-day desk booking rendered as
+        // "17:30–24:00" on day one and vanished for the rest (reported). It becomes one SEGMENT
+        // per covered day — 17:30→24:00, then whole days, then 00:00→17:30 — all carrying the
+        // same record id, with segIndex/segCount so list views can collapse them back to one.
+        const spanDays = Math.floor((wc.minutes + durMin - 1) / 1440);
+        const base = {
           id: String(b.id),
           unitId: String(unitId),
           floorId: floorId ?? '',
-          date: wc.dateISO,
-          start: wc.minutes,
-          end: Math.min(24 * 60, wc.minutes + durMin),
           by: b.reservedBy?.id != null ? String(b.reservedBy.id) : '',
           purpose: b.name ?? '',
-          module: 'space',
+          module: 'space' as const,
           name: b.name ?? '',
           approvalPending,
           approvalStatusName,
           stateName: recordStateName,
         };
+        return Array.from({ length: spanDays + 1 }, (_, i) => ({
+          ...base,
+          date: i === 0 ? wc.dateISO : isoPlusDays(wc.dateISO, i),
+          start: i === 0 ? wc.minutes : 0,
+          end: Math.min(1440, wc.minutes + durMin - i * 1440),
+          ...(spanDays > 0 ? { segIndex: i, segCount: spanDays + 1 } : {}),
+        }));
       })
+      .flat() // one row per covered day; same record id on each segment
       // An EMPTY floor set can also mean the record fetches failed — showing the unscoped rows
       // beats silently blanking real bookings in that case.
       .filter((b: Booking | null): b is Booking => b !== null && (floorId == null || onFloor.size === 0 || onFloor.has(b.unitId)));

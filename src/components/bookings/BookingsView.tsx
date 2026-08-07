@@ -189,8 +189,14 @@ export function BookingsView() {
 
   const myBookingsInRange = useMemo(() => {
     const mine: Booking[] = [];
+    // A MULTI-DAY booking arrives as one segment per day sharing the record id — it is ONE
+    // booking in this list, listed on the day it starts, not seven.
+    const listed = new Set<string>();
     for (const d of visibleDates) {
       for (const b of bookingsByDate[d] ?? []) {
+        if (b.segCount && b.segIndex !== 0) continue;
+        if (listed.has(b.id)) continue;
+        listed.add(b.id);
         // PORTALS: the range fetch is already scoped SERVER-SIDE to this client contact
         // (reservedBy = the session's people id), so every fetched row is theirs — matching on
         // `by` again would drop rows whose reservedBy the list projection didn't return.
