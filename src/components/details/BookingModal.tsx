@@ -77,6 +77,26 @@ const PEOPLE_LOOKUPS = new Set(['people', 'employee', 'clientcontact', 'users'])
  * states are untouched): DESKS list hot/hotel records, ROOMS list only what the org flagged
  * reservable. `isBookable`'s legacy "reservable unset -> bookable" default is too loose here.
  */
+/**
+ * Which resource a FORM books, from its own lookup fields. Forms carry MORE THAN ONE mapped
+ * lookup — the org's "Meeting Room Booking" has a desks lookup beside meeting_rooms_spacebooking
+ * — so taking the first match typed that form as a DESK and left the body on the desk field and
+ * the desk window while the header said Meeting Room (reported). The most SPECIFIC lookup wins:
+ * a dedicated rooms/parking/locker lookup outranks desks, and the generic space lookup ranks last.
+ */
+const LOOKUP_SPECIFICITY: Record<string, number> = { rooms: 0, parkingstall: 1, parkinglot: 1, lockers: 2, desks: 3, desk: 3, space: 4, basespace: 4 };
+export function typeFromFormFields(fields: { lookupModule?: string }[]): UnitType | null {
+  let best: { rank: number; type: UnitType } | null = null;
+  for (const f of fields) {
+    const lm = (f.lookupModule ?? '').toLowerCase();
+    const type = lm ? RESOURCE_LOOKUP_TYPE[lm] : undefined;
+    if (!type) continue;
+    const rank = LOOKUP_SPECIFICITY[lm] ?? 5;
+    if (!best || rank < best.rank) best = { rank, type };
+  }
+  return best?.type ?? null;
+}
+
 function lookupEligible(u: Unit): boolean {
   if (u.type === 'workstation') return u.deskType === 'HOT' || u.deskType === 'HOTEL';
   if (u.type === 'room') return u.isReservable === true;
@@ -327,14 +347,8 @@ function BookingFormInner() {
    */
   useEffect(() => {
     if (!canPickForm || !formMeta) return;
-    for (const f of formMeta.fields) {
-      const lm = (f.lookupModule ?? '').toLowerCase();
-      const t = lm ? RESOURCE_LOOKUP_TYPE[lm] : undefined;
-      if (t) {
-        if (t !== effType) setTypeOverride(t);
-        return;
-      }
-    }
+    const t = typeFromFormFields(formMeta.fields);
+    if (t && t !== effType) setTypeOverride(t);
   }, [formMeta, canPickForm, effType]);
 
   // Booking-date window + "now" on the ORG clock (reactive — re-renders when the zone resolves).

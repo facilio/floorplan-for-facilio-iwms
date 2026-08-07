@@ -3622,12 +3622,18 @@ export async function resolveFormResourceTypes(module: 'space' | 'facility', for
         return;
       }
       const meta = await fetchBookingFormById(module, f.id).catch(() => null);
+      // MOST SPECIFIC lookup wins, not the first one: a room form that also carries a desks
+      // lookup was being typed as a desk form (reported).
+      const SPECIFICITY: Record<string, number> = { rooms: 0, parkingstall: 1, parkinglot: 1, lockers: 2, desks: 3, desk: 3, space: 4, basespace: 4 };
       let type: UnitType | null = null;
+      let bestRank = Number.POSITIVE_INFINITY;
       for (const field of meta?.fields ?? []) {
         const lm = (field.lookupModule ?? '').toLowerCase();
-        if (lm && lm in FORM_LOOKUP_TYPE) {
+        if (!lm || !(lm in FORM_LOOKUP_TYPE)) continue;
+        const rank = SPECIFICITY[lm] ?? 5;
+        if (rank < bestRank) {
+          bestRank = rank;
           type = FORM_LOOKUP_TYPE[lm];
-          break;
         }
       }
       formResourceTypeCache.set(key, type);
