@@ -90,7 +90,11 @@ export function Tooltip() {
           <div className={[styles.skelLine, styles.eyebrowLine].join(' ')} />
           <div className={[styles.skelLine, styles.valueLine].join(' ')} />
           <div className={[styles.skelLine, styles.pillLine].join(' ')} />
-          <div className={[styles.skelLine, styles.btnLine].join(' ')} />
+          {/* A ROOM's popup fills with more (room type, who holds it, its actions), so its
+              placeholder is taller. A DESK settles into a couple of lines — reserving a
+              button-sized block for it made the loading state bigger than the result
+              (requested: smaller for desks, rooms are fine as they are). */}
+          {isRoomUnit && <div className={[styles.skelLine, styles.btnLine].join(' ')} />}
           <div className={[styles.caret, place.below ? styles.caretBelow : styles.caretAbove].join(' ')} />
         </div>
       ) : (
