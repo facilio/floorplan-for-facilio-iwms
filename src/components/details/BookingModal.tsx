@@ -71,6 +71,8 @@ const RESOURCE_LOOKUP_TYPE: Record<string, UnitType> = {
   lockers: 'locker',
 };
 const PEOPLE_LOOKUPS = new Set(['people', 'employee', 'clientcontact', 'users']);
+/** A room books a FIXED window of this length; the end follows the start and can't be edited. */
+const ROOM_LEN = 120;
 
 /**
  * What a booking FORM'S resource lookup offers (requested, form scope only — the plan's own
@@ -362,17 +364,35 @@ function BookingFormInner() {
       setConflicts([]);
       return;
     }
+    // The window ACTUALLY BEING BOOKED, not the raw picker values (requested). A ROOM submits
+    // start + 2h and its End control is disabled, so `endMin` never moves off whatever the form
+    // opened with — checking that compared the wrong hours. A DESK window can END ON ANOTHER DAY,
+    // and only day one was ever looked at.
+    const isRoomSel = effType === 'room';
+    const roomEndAbs = startMin + ROOM_LEN;
+    const winEndDate = isRoomSel ? (roomEndAbs >= 1440 ? addDaysIso(slotDate, 1) : slotDate) : endDate;
+    const winEndMin = isRoomSel ? (roomEndAbs % 1440 || 1440) : endMin;
+    /** Minutes from the window's first midnight — lets an overnight/multi-day window compare. */
+    const dayOffset = (iso: string) => Math.round((Date.parse(`${iso}T00:00:00`) - Date.parse(`${slotDate}T00:00:00`)) / 86_400_000);
+    const winStart = startMin;
+    const winEnd = dayOffset(winEndDate) * 1440 + winEndMin;
     let alive = true;
     const timer = window.setTimeout(() => {
-      fetchOrgBookingsForRange(slotDate, slotDate, { resourceField: effType === 'room' ? 'space' : 'desk', resourceIds: [unit.id] })
+      // Fetch every day the window touches, not just its first.
+      fetchOrgBookingsForRange(slotDate, winEndDate, { resourceField: isRoomSel ? 'space' : 'desk', resourceIds: [unit.id] })
         .then((rows) => {
           if (!alive) return;
           setConflicts(
             rows
               // A CANCELLED booking doesn't hold the slot (requested) — the range fetch returns
               // every row for the record, whatever state it's in.
-              .filter((b) => !/cancel/i.test(b.stateName ?? '') && b.unitId === unit.id && b.date === slotDate && b.start < endMin && b.end > startMin)
-              .map((b) => ({ start: b.start, end: b.end, name: b.name }))
+              .filter((b) => !/cancel/i.test(b.stateName ?? '') && b.unitId === unit.id)
+              .map((b) => {
+                const off = dayOffset(b.date) * 1440;
+                return { start: off + b.start, end: off + b.end, date: b.date, rawStart: b.start, rawEnd: b.end, name: b.name };
+              })
+              .filter((b) => b.start < winEnd && b.end > winStart)
+              .map((b) => ({ start: b.rawStart, end: b.rawEnd, name: b.name }))
           );
         })
         .catch(() => alive && setConflicts([]));
@@ -382,7 +402,7 @@ function BookingFormInner() {
       window.clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [unit?.id, resourceId, slotDate, startMin, endMin, effType, state.bookingsNonce]);
+  }, [unit?.id, resourceId, slotDate, startMin, endMin, endDate, effType, state.bookingsNonce]);
 
   if (!unit) return null;
 
@@ -394,7 +414,6 @@ function BookingFormInner() {
   // ROOMS book a HARDCODED 2-HOUR window: the START is free on 30-minute steps (1:30, 2:00,
   // 3:30 …) and the END is DERIVED as start + 2h and shown read-only (requested — the slot chips
   // are gone). Everything else books a free start/end window.
-  const ROOM_LEN = 120;
   // Desk start/end options — full day, half-hour steps, cross-filtered so end stays after start.
   const TIME_OPTIONS = Array.from({ length: 1440 / 30 + 1 }, (_, i) => i * 30).map((m) => ({ value: String(m), label: fmtTime(m) }));
 
