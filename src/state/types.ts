@@ -109,7 +109,7 @@ export interface AppState {
   bookNotes: string;
   bookModalOpen: boolean;
   /** The booking form's current target (resource + window). When set, the shared BookingModal is open. Both the calendar and the sidebar populate this. */
-  bookForm: { unitId: string; date: string; start: number; end: number; allowTypeSwitch?: boolean; resourceUnit?: Unit; /** Floors the calendar's top filter is limited to — the form's lookups follow it. */ floorIds?: string[] } | null;
+  bookForm: { unitId: string; date: string; start: number; end: number; allowTypeSwitch?: boolean; resourceUnit?: Unit; /** Floors the calendar's top filter is limited to — the form's lookups follow it. */ floorIds?: string[]; /** Multi-day drag: the day the window ENDS on (omitted = same day). */ endDate?: string } | null;
   /** Which real Facilio module bookings target. Mutually exclusive — set in Settings. */
   bookingModule: 'space' | 'facility';
   /** Bumped on every booking add/cancel so surfaces holding their own booking cache (the calendar) know to refetch. */

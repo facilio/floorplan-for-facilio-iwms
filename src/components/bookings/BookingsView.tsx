@@ -215,7 +215,7 @@ export function BookingsView() {
 
   // Dragging a window opens the shared booking form (prefilled) rather than booking instantly —
   // the actual create happens on form submit, and the nonce-driven effect above refetches.
-  function openForm(date: string, start: number, end: number) {
+  function openForm(date: string, start: number, end: number, endDate?: string) {
     if (!catDef.bookable) return;
     // No bookable resource of this category: silently no-op (toast removed on request) —
     // the All-spaces form's own switch is the way to change type.
@@ -260,6 +260,8 @@ export function BookingsView() {
       // With NO top filter the form's lookups stay org-wide; with one applied they follow it
       // (requested), so the picker offers the same floors the calendar is showing.
       ...(floorFilter.length ? { floorIds: floorFilter.map((f) => f.id) } : {}),
+      // A drag that crossed into later days opens the form on that whole window.
+      ...(endDate && endDate !== date ? { endDate } : {}),
     });
   }
 
@@ -556,7 +558,7 @@ interface CalendarGridProps {
   bookingsFor: (date: string) => Booking[];
   myId: string;
   snap: number;
-  onCreate: (date: string, start: number, end: number) => void;
+  onCreate: (date: string, start: number, end: number, endDate?: string) => void;
   /** Longest window a drag may STRETCH to (desks / all spaces). Ignored when fixedSpan is set. */
   maxSpan: number;
   /** A window of exactly this length that the drag MOVES rather than resizes — rooms are 2h. */
@@ -567,8 +569,13 @@ interface CalendarGridProps {
 
 function CalendarGrid({ dates, bookingsFor, myId, snap, onCreate, maxSpan, fixedSpan, onPreview, contactNameOf }: CalendarGridProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [drag, setDrag] = useState<{ date: string; from: number; to: number } | null>(null);
-  const dragRef = useRef<{ date: string; colTop: number; anchor: number; from: number; to: number } | null>(null);
+  const [drag, setDrag] = useState<{ date: string; from: number; to: number; endDate?: string } | null>(null);
+  const dragRef = useRef<{
+    date: string; colTop: number; anchor: number; from: number; to: number;
+    /** Day columns captured at mousedown, so the drag can cross into them. */
+    cols: { date: string; left: number; right: number }[];
+    anchorDate: string; endDate: string;
+  } | null>(null);
   // Live "now" — ticks each minute so the current-time line stays accurate
   // while the view sits open (it was computed once at render before).
   const [now, setNow] = useState(nowMinutes());
@@ -601,9 +608,16 @@ function CalendarGrid({ dates, bookingsFor, myId, snap, onCreate, maxSpan, fixed
 
   function onColMouseDown(date: string, e: ReactMouseEvent) {
     if (e.button !== 0) return;
-    const colTop = e.currentTarget.getBoundingClientRect().top;
+    const colEl = e.currentTarget as HTMLElement;
+    const colTop = colEl.getBoundingClientRect().top;
+    // Every day column's x-range, so a drag can cross into the next day (requested) — rooms
+    // excepted, their window is a fixed 2h on ONE day.
+    const cols = Array.from(colEl.parentElement?.querySelectorAll<HTMLElement>('[data-daycol]') ?? []).map((el) => {
+      const r = el.getBoundingClientRect();
+      return { date: el.dataset.daycol as string, left: r.left, right: r.right };
+    });
     const from = slotAt(colTop, e.clientY);
-    dragRef.current = { date, colTop, anchor: from, from, to: from + (fixedSpan ?? snap) };
+    dragRef.current = { date, colTop, anchor: from, from, to: from + (fixedSpan ?? snap), cols, anchorDate: date, endDate: date };
     setDrag({ date, from, to: from + (fixedSpan ?? snap) });
     window.addEventListener('mousemove', onDragMove);
     window.addEventListener('mouseup', onDragUp);
@@ -615,6 +629,37 @@ function CalendarGrid({ dates, bookingsFor, myId, snap, onCreate, maxSpan, fixed
     // and the window is capped: a room can only ever select its fixed 2h, everything else stops
     // at 7 days, the same ceiling the form enforces. A plain click still selects one slot.
     const s = slotAt(d.colTop, e.clientY);
+    // Which DAY is the pointer over? (Rooms stay on their own day.)
+    const overDate = fixedSpan
+      ? d.anchorDate
+      : (d.cols.find((c) => e.clientX >= c.left && e.clientX < c.right)?.date ??
+         (d.cols.length && e.clientX < d.cols[0].left ? d.cols[0].date : d.cols[d.cols.length - 1]?.date) ??
+         d.anchorDate);
+    if (!fixedSpan && overDate !== d.anchorDate) {
+      // ACROSS DATES: earlier edge is the start, later edge the end, and the whole span is held
+      // to the form's 7-day ceiling.
+      const forward = overDate > d.anchorDate;
+      const startDate = forward ? d.anchorDate : overDate;
+      const endDate = forward ? overDate : d.anchorDate;
+      const startMin = forward ? d.anchor : s;
+      const endMin = forward ? s + snap : d.anchor + snap;
+      const days = Math.round((Date.parse(`${endDate}T00:00:00`) - Date.parse(`${startDate}T00:00:00`)) / 86_400_000);
+      const total = days * 1440 + endMin - startMin;
+      d.date = startDate;
+      d.from = startMin;
+      if (total > maxSpan) {
+        const capped = startMin + maxSpan;
+        d.endDate = addDays(startDate, Math.floor(capped / 1440));
+        d.to = capped % 1440 || 1440;
+      } else {
+        d.endDate = endDate;
+        d.to = endMin;
+      }
+      setDrag({ date: d.date, from: d.from, to: d.to, endDate: d.endDate });
+      return;
+    }
+    d.date = d.anchorDate;
+    d.endDate = d.anchorDate;
     if (fixedSpan) {
       // ROOMS book a window of EXACTLY this length (2h) — dragging MOVES it down or up the day,
       // it never resizes it (requested: not a cap, a fixed window).
@@ -638,7 +683,7 @@ function CalendarGrid({ dates, bookingsFor, myId, snap, onCreate, maxSpan, fixed
     // The create side-effect lives OUTSIDE any setState updater — React StrictMode double-
     // invokes updaters to check purity, which would otherwise fire the booking twice.
     // Clicking a slot books that slot (the form still confirms before anything is created).
-    if (d) onCreate(d.date, d.from, d.to);
+    if (d) onCreate(d.date, d.from, d.to, d.endDate !== d.date ? d.endDate : undefined);
   }
 
   return (
@@ -671,7 +716,7 @@ function CalendarGrid({ dates, bookingsFor, myId, snap, onCreate, maxSpan, fixed
             const isToday = d === todayIso;
             const blocks = bookingsFor(d);
             return (
-              <div key={d} className={styles.dayCol} onMouseDown={(e) => onColMouseDown(d, e)}>
+              <div key={d} data-daycol={d} className={styles.dayCol} onMouseDown={(e) => onColMouseDown(d, e)}>
                 {Array.from({ length: (dayEnd - dayStart) / 60 }, (_, i) => (
                   <div key={i} className={styles.hourCell} style={{ top: (i + 1) * PX_PER_HOUR }} />
                 ))}
@@ -723,12 +768,19 @@ function CalendarGrid({ dates, bookingsFor, myId, snap, onCreate, maxSpan, fixed
                     </div>
                   );
                 })}
-                {drag && drag.date === d && (
+                {drag && (drag.endDate && drag.endDate !== drag.date ? d >= drag.date && d <= drag.endDate : drag.date === d) && (
                   <div
                     className={styles.selBlock}
                     style={{
-                      top: (Math.min(drag.from, drag.to) - dayStart) * PX_PER_MIN,
-                      height: Math.max(2, Math.abs(drag.to - drag.from) * PX_PER_MIN),
+                      // A multi-day selection paints from its start time on day one, whole days
+                      // in between, and up to the end time on the last day.
+                      top: ((drag.endDate && d > drag.date ? dayStart : Math.min(drag.from, drag.to)) - dayStart) * PX_PER_MIN,
+                      height: Math.max(
+                        2,
+                        ((drag.endDate && drag.endDate !== drag.date
+                          ? (d === drag.endDate ? drag.to : dayEnd) - (d === drag.date ? drag.from : dayStart)
+                          : Math.abs(drag.to - drag.from))) * PX_PER_MIN
+                      ),
                     }}
                   >
                     <span className={styles.selLabel}>{fmtTime(Math.min(drag.from, drag.to))} - {fmtTime(Math.max(drag.from, drag.to))}</span>

@@ -196,7 +196,8 @@ function BookingFormInner() {
   const [endMin, setEndMin] = useState(Math.max(target.end, target.start + 15));
   // Desk/parking windows can SPAN DAYS (requested: any duration up to 7 days), so the end carries
   // its own date. Rooms keep the single slotDate + 2h slot.
-  const [endDate, setEndDate] = useState(target.date);
+  // A calendar drag can hand over a window that ends on a LATER DAY (requested).
+  const [endDate, setEndDate] = useState(target.endDate ?? target.date);
   const [submitting, setSubmitting] = useState(false);
   // Values of org-form fields the app doesn't model natively, keyed by field name.
   const [extras, setExtras] = useState<Record<string, string>>({});
