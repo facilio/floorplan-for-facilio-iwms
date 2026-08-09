@@ -28,14 +28,25 @@ export function initials(name: string): string {
     .toUpperCase();
 }
 
-/** Units with any booking overlapping [start,end) on `date`. */
+/**
+ * A CANCELLED booking doesn't hold the slot. Every row carries the record's own state name
+ * (spacebooking `moduleState`), so this needs no extra request — and it works whatever the org
+ * calls the state, which a hardcoded state id wouldn't. The booking form already ignored these;
+ * the plan and the submit pre-flight didn't, so a cancelled booking still greyed a desk out.
+ */
+export function isCancelledBooking(b: Booking): boolean {
+  return /cancel/i.test(b.stateName ?? '');
+}
+
+/** Units with any LIVE booking overlapping [start,end) on `date`. */
 export function conflictsFor(bookings: Booking[], unitId: string, date: string, start: number, end: number): Booking[] {
-  return bookings.filter((b) => b.unitId === unitId && b.date === date && b.start < end && b.end > start);
+  return bookings.filter((b) => !isCancelledBooking(b) && b.unitId === unitId && b.date === date && b.start < end && b.end > start);
 }
 
 export function bookedUnitIds(state: AppState): Set<string> {
   const set = new Set<string>();
   for (const b of state.bookings) {
+    if (isCancelledBooking(b)) continue;
     if (b.date === state.date && b.start < state.end && b.end > state.start) set.add(b.unitId);
   }
   return set;
