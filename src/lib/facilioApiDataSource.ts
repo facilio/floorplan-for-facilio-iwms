@@ -2592,7 +2592,7 @@ async function fetchSpaceBookingsForRange(
  * The client-side name check (isCancelledBooking) stays regardless — it is what makes this safe
  * when neither source has an id yet, and when the criteria is rejected.
  */
-const CONFIGURED_CANCELLED_STATE_IDS: string[] = [];
+const CONFIGURED_CANCELLED_STATE_IDS: string[] = ['4060']; // spacebooking 'Cancelled' (org-supplied)
 const cancelledStateIds = new Set<string>(CONFIGURED_CANCELLED_STATE_IDS);
 
 let orgResourcesCache: Promise<Unit[]> | null = null;
