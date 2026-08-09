@@ -2457,10 +2457,24 @@ async function fetchSpaceBookingsForRange(
           : {}),
     };
 
+    // Once a cancelled row has been seen, its state id is known and the NEXT request can exclude
+    // those rows server-side — no per-org configuration, learned from the data itself.
+    const excludeCancelled = cancelledStateIds.size ? { moduleState: { operatorId: 10, value: [...cancelledStateIds] } } : null;
     const fetchPages = async (filters: Record<string, unknown>): Promise<any[]> => {
       const acc: any[] = [];
+      // FAIL SAFE, as with the desk/room type filters: if the org rejects the state criteria the
+      // request is retried without it, and the client-side name check still excludes them.
+      let withState = !!excludeCancelled;
       for (let page = 1; page <= 6; page++) {
-        const res = await facilioApi.fetchAll('spacebooking', { page, perPage: 500, filters: JSON.stringify(filters) });
+        const sent = withState ? { ...filters, ...excludeCancelled } : filters;
+        let res = await facilioApi.fetchAll('spacebooking', { page, perPage: 500, filters: JSON.stringify(sent) });
+        if (res.error && withState) {
+          // eslint-disable-next-line no-console
+          console.warn('[facilio-api] cancelled-state filter rejected — refetching without it', res.error);
+          withState = false;
+          cancelledStateIds.clear();
+          res = await facilioApi.fetchAll('spacebooking', { page, perPage: 500, filters: JSON.stringify(filters) });
+        }
         if (res.error) {
           if (page === 1) throw new Error(`facilio-api: spacebooking fetch failed (${res.error.code ?? '?'} ${res.error.message ?? ''})`.trim());
           break;
@@ -2525,6 +2539,8 @@ async function fetchSpaceBookingsForRange(
         const approvalEnabled = b.approvalFlowId != null && b.approvalFlowId !== -1 && b.approvalStatus != null && typeof b.approvalStatus === 'object';
         const approvalPending = approvalEnabled && (approvalStatusName === null || isPendingApprovalName(approvalStatusName));
         const recordStateName = stateName(b.moduleState);
+        // Remember the id behind a CANCELLED state so later requests can filter it out at source.
+        if (recordStateName && /cancel/i.test(recordStateName) && b.moduleState?.id != null) cancelledStateIds.add(String(b.moduleState.id));
         // Dead states beyond literal "cancel" — orgs name them Terminated/Declined/Void too.
         if (recordStateName && /cancel|reject|terminat|declin|void/i.test(recordStateName)) return null;
         // Each row lands on ITS OWN day (org wall clock) — the whole point of the range fetch.
@@ -2567,6 +2583,18 @@ async function fetchSpaceBookingsForRange(
  * Units (the bookings view lists org-wide, not per-floor; callers still apply isBookable).
  * Paginated per module (up to 2000 records each), session-cached.
  */
+/**
+ * Spacebooking state ids that mean CANCELLED, used as a server-side criteria so those rows never
+ * arrive. Two sources, and either alone is enough:
+ *  - CONFIGURED below: put the org's id(s) here and the very first request already excludes them.
+ *  - LEARNED at runtime: any fetched row whose state name reads as cancelled contributes its id,
+ *    so an unconfigured org starts filtering from its second request onward.
+ * The client-side name check (isCancelledBooking) stays regardless — it is what makes this safe
+ * when neither source has an id yet, and when the criteria is rejected.
+ */
+const CONFIGURED_CANCELLED_STATE_IDS: string[] = [];
+const cancelledStateIds = new Set<string>(CONFIGURED_CANCELLED_STATE_IDS);
+
 let orgResourcesCache: Promise<Unit[]> | null = null;
 /**
  * `force` re-reads the modules instead of replaying the session cache — the booking form asks for
