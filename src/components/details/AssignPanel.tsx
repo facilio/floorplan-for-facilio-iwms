@@ -65,6 +65,13 @@ export function AssignPanel() {
           <div className={card.cardHead}>
             <h3 className={card.cardTitle}>
               {sel.label} <span className={styles.typeTag}>{TYPE_META[sel.type].name}</span>
+              {/* Record id here too (requested) — same chip as the list rows, the booking lookup,
+                  the marker popup and the location picker. Real backend records only. */}
+              {/^\d+$/.test(sel.id) && (
+                <span className={styles.idChip} title={`Record id ${sel.id}`}>
+                  #{sel.id}
+                </span>
+              )}
             </h3>
           </div>
           <div className={card.cardBody}>
