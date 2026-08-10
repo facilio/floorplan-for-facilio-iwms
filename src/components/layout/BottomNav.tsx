@@ -49,7 +49,8 @@ export function BottomNav() {
         icon={<path d="M9 3L4 5v16l5-2 6 2 5-2V3l-5 2-6-2z M9 3v16M15 5v16" />}
       />
       {/* Bookings shows only with the booking mode-permission (same rule as the Booking tab). */}
-      {state.modePerms.book && (
+      {/* Same rule as the toolbar tabs: nothing perm-gated renders before the org answers. */}
+      {state.modePermsResolved && state.modePerms.book && (
       <NavBtn
         active={view === 'bookings'}
         label="Bookings"

@@ -133,7 +133,9 @@ export function MobileApp({ mode, onClose }: MobileAppProps) {
             </div>
 
             {/* Tabs are PERMISSION-gated like the web toolbar; none allowed -> no tab bar. */}
-            {(state.modePerms.book || state.modePerms.assign) && (
+            {/* Book/Assign tabs wait for the permission answer too — they flashed both and then
+                retracted to the user's scope. */}
+            {state.modePermsResolved && (state.modePerms.book || state.modePerms.assign) && (
               <div className={styles.tabs}>
                 {state.modePerms.book && (
                   <button className={state.mobileTab === 'book' ? styles.tabActive : styles.tab} onClick={() => actions.setMobileTab('book')}>

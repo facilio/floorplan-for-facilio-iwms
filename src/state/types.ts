@@ -133,6 +133,9 @@ export interface AppState {
   modePerms: ModePerms;
   /** True when modePerms came from a module record (defaults-toggles then don't overwrite it). */
   modePermsFromModule: boolean;
+  /** False until the org has ANSWERED on permissions — the tabs stay hidden rather than showing
+   *  every mode and then retracting to the user's real scope (reported as a glimpse). */
+  modePermsResolved: boolean;
 
   activeView: 'map' | 'settings' | 'bookings' | 'people';
   settingsTab: 'permissions' | 'bookings' | 'module' | UnitType;

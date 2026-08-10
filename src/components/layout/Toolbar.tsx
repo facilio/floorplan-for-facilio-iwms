@@ -6,6 +6,10 @@ export function Toolbar({ leftPad, rightPad }: { leftPad: number; rightPad: numb
   const { state, actions } = useFloorplan();
   // No mode tabs at all -> no floating bar. A view-only user just gets the plan.
   if (!state.modePerms.edit && !state.modePerms.assign && !state.modePerms.book) return null;
+  // Until the org has ANSWERED on permissions the tab group stays out: rendering the permissive
+  // defaults first showed Assignment + Booking + Edit to everyone for a moment and then retracted
+  // to the user's real scope (reported as a glimpse). Everything else in the toolbar still shows.
+  const permsPending = !state.modePermsResolved;
   const myUnit = myAssignedUnit(state);
   // Mock tier derives "my desk" from local assignments; the real backend provides it via
   // servicePortalHome (state.myDesk). Either one lights the button up — except a ROOM
@@ -23,7 +27,7 @@ export function Toolbar({ leftPad, rightPad }: { leftPad: number; rightPad: numb
         {/* Mode tabs are PERMISSION-gated: state.modePerms resolves from the org's
             role-permissions module (by the session user's role), falling back to the Settings
             defaults — see Settings › Permissions. */}
-        {(state.modePerms.assign || state.modePerms.book) && (
+        {!permsPending && (state.modePerms.assign || state.modePerms.book) && (
           <div className={styles.segment}>
             {state.modePerms.assign && (
               <button className={[styles.segBtn, state.mode === 'assign' ? styles.segBtnActive : ''].join(' ')} onClick={() => actions.setMode('assign')}>
@@ -38,7 +42,7 @@ export function Toolbar({ leftPad, rightPad }: { leftPad: number; rightPad: numb
           </div>
         )}
 
-        {state.modePerms.edit && (
+        {!permsPending && state.modePerms.edit && (
           <button
             className={[styles.editBtn, state.mode === 'edit' ? styles.editBtnActive : ''].join(' ')}
             data-tip={state.mode === 'edit' ? 'Exit edit mode' : 'Edit floorplan'}

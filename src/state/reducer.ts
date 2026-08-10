@@ -119,6 +119,8 @@ export function buildInitialState(): AppState {
     defaultModePerms: { ...ALL_MODES_ALLOWED },
     modePerms: { ...ALL_MODES_ALLOWED },
     modePermsFromModule: false,
+    // Local mode has no org to ask, so nothing is pending there.
+    modePermsResolved: !isFacilioApiConfigured,
 
     // Each bottom-nav view is a path route (see lib/routes.ts) — boot straight into whatever
     // the URL says, so a refresh/deep link on /bookings etc. lands on that tab.
@@ -610,13 +612,14 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, defaultModePerms: defaults, ...(state.modePermsFromModule ? {} : { modePerms: defaults }) };
     }
     case 'SET_MODE_PERMS': {
+      // Whatever the answer is — module record, role fallback or defaults — it has arrived.
       const perms = action.perms;
       const modeKey = state.mode === 'edit' ? 'edit' : state.mode === 'book' ? 'book' : 'assign';
       // The active mode must stay a VISIBLE one — kick to the first allowed tab otherwise.
       const mode = perms[modeKey] ? state.mode : perms.assign ? 'assign' : perms.book ? 'book' : perms.edit ? 'edit' : state.mode;
       // Same rule for the mobile Book/Assign tab.
       const mobileTab = perms[state.mobileTab === 'book' ? 'book' : 'assign'] ? state.mobileTab : perms.book ? ('book' as const) : perms.assign ? ('assign' as const) : state.mobileTab;
-      return { ...state, modePerms: perms, modePermsFromModule: action.fromModule, mode, mobileTab };
+      return { ...state, modePerms: perms, modePermsFromModule: action.fromModule, modePermsResolved: true, mode, mobileTab };
     }
 
     case 'SET_ACTIVE_VIEW':
