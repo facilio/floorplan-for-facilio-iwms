@@ -124,7 +124,16 @@ export function BookPanel() {
         <div className={card.card}>
           <div className={card.cardHead} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flexWrap: 'wrap' }}>
-              <h3 className={card.cardTitle} style={{ margin: 0 }}>{sel.label}</h3>
+              <h3 className={card.cardTitle} style={{ margin: 0 }}>
+                {sel.label}
+                {/* Record id here too — the Booking view's card was the one surface still without
+                    it, and it's where you start a booking. Real backend records only. */}
+                {/^\d+$/.test(sel.id) && (
+                  <span className={styles.idChip} title={`Record id ${sel.id}`}>
+                    #{sel.id}
+                  </span>
+                )}
+              </h3>
               {/* Status pills NEXT TO the name (readOnly = pills only, no buttons). */}
               <UnitStateflowSection unit={sel} readOnly />
             </div>
