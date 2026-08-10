@@ -268,3 +268,45 @@ button {
 [data-tip-side='right']:focus-visible::before {
   transform: none;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   TOOLTIP: one fixed node under <body> (see lib/tooltipLayer.ts), not a
+   pseudo-element inside the anchor. The CSS-only version was clipped by any
+   scrolling ancestor — the portfolio tree's scroll area cut the site-name bubble
+   in half (reported). The `data-tip*` authoring API is unchanged; these rules
+   retire the in-flow rendering and style the shared node instead.
+   ──────────────────────────────────────────────────────────────────────────── */
+[data-tip]::after,
+[data-tip]::before {
+  content: none !important;
+  display: none !important;
+}
+.fp-tip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 9000; /* above panels (42), modals (200/320) and the toast stack (500) */
+  max-width: var(--tip-max, 280px);
+  width: max-content;
+  padding: var(--tip-pad, 6px 9px);
+  border-radius: var(--tip-radius, 6px);
+  background: var(--tip-bg, #1c2733);
+  color: var(--tip-fg, #fff);
+  font: var(--tip-font, 500 11.5px/1.4 var(--font-sans));
+  text-align: left;
+  white-space: normal;
+  box-shadow: var(--tip-shadow, 0 6px 18px rgba(15, 26, 40, 0.22));
+  opacity: 0;
+  transform: translateY(-3px);
+  transition: opacity var(--tip-in, 120ms) ease, transform var(--tip-in, 120ms) ease;
+  pointer-events: none; /* never intercepts the pointer */
+}
+.fp-tip-on {
+  opacity: 1;
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fp-tip {
+    transition: none;
+  }
+}

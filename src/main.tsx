@@ -1,5 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { installTooltipLayer } from './lib/tooltipLayer';
 import App from './App';
 import './styles/global.css';
 
@@ -10,6 +11,9 @@ import './styles/global.css';
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').catch(() => {});
 }
+
+// One tooltip node for the app, outside every panel and scroll box.
+installTooltipLayer();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
