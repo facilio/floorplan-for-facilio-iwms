@@ -74,7 +74,17 @@ export function Tooltip() {
       <div className={styles.head}>
         <div className={styles.headText}>
           <div className={styles.eyebrow}>{primaryLabel}</div>
-          <div className={styles.name}>{primary}</div>
+          <div className={styles.name}>
+            {primary}
+            {/* The RECORD ID beside the name (requested), same as the list rows and the booking
+                lookup — two spaces can share a name, and this popup is where you act on one.
+                Real backend records only; this is the SPACE's id, never the assignee's. */}
+            {/^\d+$/.test(unit.id) && (
+              <span className={styles.idChip} title={`Record id ${unit.id}`}>
+                #{unit.id}
+              </span>
+            )}
+          </div>
         </div>
         <button className={styles.close} title="Close" onClick={() => actions.selectUnit(null)}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
