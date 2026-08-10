@@ -203,11 +203,12 @@ function SpaceRow({ unit, unplaced }: { unit: Unit; unplaced?: boolean }) {
         {/* Both lines ellipsize — the global [data-tip] tooltip (200ms) carries the full text. */}
         <div className={styles.rowLabel}>
           <span className={styles.rowLabelText}>{unit.label}</span>
-          {/* EDIT mode's unplaced list shows the RECORD ID (requested): two records can share a
-              name, and this is the only way to tell them apart when placing. Ids appear ONLY here
-              — never in the booking/assignment previews — and only for real backend records
-              (a locally-created, unsaved unit has no id to show). */}
-          {unplaced && /^\d+$/.test(unit.id) && (
+          {/* The RECORD ID rides every row in this list now (requested — desks AND rooms), not
+              just edit mode's unplaced ones: two records can share a name, so the id is what tells
+              them apart when picking. Real backend records only — a locally created, unsaved unit
+              has no id to show, and the standing rule against ids in the ASSIGNEE previews is
+              untouched. */}
+          {/^\d+$/.test(unit.id) && (
             <span className={styles.idChip} title={`Record id ${unit.id}`}>
               #{unit.id}
             </span>

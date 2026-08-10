@@ -634,7 +634,13 @@ function BookingFormInner() {
   const resourceOptions = unitPool
     .filter((u) => u.type === effType && lookupEligible(u))
     .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }))
-    .map((u) => ({ value: u.id, label: u.label, sublabel: u.room ?? u.secondary ?? undefined }));
+    // The record ID rides each option (requested): two desks/rooms can carry the same name, and
+    // the lookup is where picking the wrong one costs the most. Real records only.
+    .map((u) => ({
+      value: u.id,
+      label: u.label,
+      sublabel: [u.room ?? u.secondary ?? '', /^\d+$/.test(u.id) ? `#${u.id}` : ''].filter(Boolean).join(' · ') || undefined,
+    }));
 
   /** The clash, as a small red line under the resource field (requested — no top banner). */
   const conflictHint =
