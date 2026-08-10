@@ -203,17 +203,20 @@ function SpaceRow({ unit, unplaced }: { unit: Unit; unplaced?: boolean }) {
         {/* Both lines ellipsize — the global [data-tip] tooltip (200ms) carries the full text. */}
         <div className={styles.rowLabel}>
           <span className={styles.rowLabelText}>{unit.label}</span>
-          {/* The RECORD ID rides every row in this list now (requested — desks AND rooms), not
-              just edit mode's unplaced ones: two records can share a name, so the id is what tells
-              them apart when picking. Real backend records only — a locally created, unsaved unit
-              has no id to show, and the standing rule against ids in the ASSIGNEE previews is
-              untouched. */}
-          {/^\d+$/.test(unit.id) && (
+          {/* EDIT mode's UNPLACED list keeps the record id (the original request, approved as
+              Option A): two unplaced records can share a name and the id is the only way to tell
+              which one you're placing. Those rows have no assignee pill competing for width, which
+              is why the chip fits there and crushed the label in the main list. */}
+          {unplaced && /^\d+$/.test(unit.id) && (
             <span className={styles.idChip} title={`Record id ${unit.id}`}>
               #{unit.id}
             </span>
           )}
         </div>
+        {/* NO record id in this sidebar (requested): the panel is narrow, the rows are scanned by
+            name, and the id belongs where you're picking or acting on a specific record — the
+            booking lookup, the marker popup, the panel cards. Edit mode's UNPLACED list keeps its
+            own chip (above), which is where same-named records first mattered. */}
         <div className={styles.rowSub}>
           {unit.secondary || [unit.type === 'workstation' ? 'Desk' : unit.type, unit.room].filter(Boolean).join(' · ')}
         </div>
