@@ -287,6 +287,14 @@ export function PortfolioTree() {
               )}
               {/* Long names ellipsize — the row's tooltip shows them in full on hover. */}
               <span className={styles.name}>{r.name}</span>
+              {/* FLOOR rows carry the record id (requested, same as the spaces list, the booking
+                  lookup and the details popup): floors repeat their names across buildings, so the
+                  id is what identifies the one you're switching to. Real backend records only. */}
+              {r.kind === 'floor' && /^\d+$/.test(r.id) && (
+                <span className={styles.idChip} title={`Record id ${r.id}`}>
+                  #{r.id}
+                </span>
+              )}
               {/* Collapsible in-branch search: the icon on an EXPANDED site/building toggles its
                   scoped search bar (buildings within this site / floors within this building). */}
               {r.hasChildren && r.expanded && (
