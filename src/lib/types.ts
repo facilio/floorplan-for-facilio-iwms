@@ -113,9 +113,14 @@ export type UnitGeom = PointGeom | PolyGeom;
  * is the INTEGER — writes go through DESK_TYPE_NUM in facilioApiDataSource.
  */
 export type DeskType = 'ASSIGNED' | 'HOTEL' | 'HOT';
+/**
+ * PICKER options. HOTEL is deliberately absent (requested): the org doesn't use it, so offering it
+ * only invites a desk that behaves like a hot desk under a name nobody recognises. The TYPE keeps
+ * 'HOTEL' — existing records carry deskType 3 and must still read, book and display correctly
+ * (isBookable treats HOT and HOTEL alike); this list is only what an editor can CHOOSE.
+ */
 export const DESK_TYPES: { id: DeskType; name: string }[] = [
   { id: 'ASSIGNED', name: 'Assigned' },
-  { id: 'HOTEL', name: 'Hotel' },
   { id: 'HOT', name: 'Hot' },
 ];
 
