@@ -1455,6 +1455,11 @@ export async function uploadFloorplanFile(
     }
     if (attachRes.error) throw new Error(attachRes.error.message || `code ${attachRes.error.code}`);
     attachedToFloorPlan = true;
+    // The record set just changed (a new record, or an existing one re-pointed at a new file), so
+    // NOTHING downstream may keep the pre-upload answer: the very next marker save must resolve
+    // which record to write against from the server, not from this session's cache.
+    floorplanDetailsCache.delete(floorId);
+    viewerDataCache.clear();
     if (!existing) {
       // FIRST plan record for this floor+type: stamp the FLOOR's indoorFloorPlanId when the
       // floor doesn't carry one yet (requested) — the portal visibility filter keys on that
@@ -1539,9 +1544,22 @@ export async function saveFloorplanMarkers(floorId: string, planId: PlanId, unit
       ((u.geom.kind === 'point' && (u.type === 'workstation' || u.type === 'locker' || u.type === 'parking' || u.type === 'amenity')) ||
         (u.geom.kind === 'poly' && u.type === 'room'))
   );
+  // Resolve WHICH indoorfloorplan record to write FRESH — never from the session cache. A plan
+  // uploaded moments ago creates a NEW record, and a cached answer from before that upload points
+  // at the old record (or at none): the markers then went to a record nothing reads, or nowhere at
+  // all, while this function returned as if it had saved. That is the "mapped all desks, saved,
+  // refreshed, everything gone" report — no error, because the write itself succeeded.
+  floorplanDetailsCache.delete(floorId);
   const byType = await getFloorplanDetailsByType(floorId).catch(() => ({}) as Record<string, any>);
   const summary = byType[String(targetType)];
-  if (!summary?.id) return;
+  // And FAIL LOUDLY when there's no record to write to. Returning silently is what let a save
+  // that wrote nothing look successful.
+  if (!summary?.id) {
+    throw new Error(`No floorplan record for this floor's ${planId} plan — nothing was saved. Re-upload the plan, then save again.`);
+  }
+  // The write echoes the whole record back, so its snapshot must be current too: a read served
+  // from the 15s cache would carry a pre-upload `markers` array and drop what was just mapped.
+  indoorPlanReadCache.delete(Number(summary.id));
 
   // Deliberately NOT caught here — a failed sync must reject so persistUnits' failure toast can
   // actually fire; swallowing it here (as this used to) meant the UI always reported "saved".
