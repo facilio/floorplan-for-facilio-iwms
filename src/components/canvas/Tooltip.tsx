@@ -6,12 +6,23 @@ import { unitStatus } from '../../lib/unitStatus';
 import { StatusPill } from '../primitives/StatusPill';
 import { Button } from '../primitives/Button';
 import { UnitStateflowSection } from '../details/StateflowActions';
+import { useDelayedFlag } from '../../hooks/useDelayedFlag';
 import { resolveMarkerDef, TYPE_META } from '../../lib/types';
 import styles from './Tooltip.module.css';
 
 export function Tooltip() {
   const { state, actions } = useFloorplan();
   const unit = unitById(state, state.selected);
+  // Hooks run BEFORE the early returns below — the popup unmounts on deselect and in edit mode, and
+  // a hook after those would be a conditional call.
+  //
+  // DELAYED, because both of the reads this waits on are usually answered from cache within a frame
+  // or two: painting the skeleton immediately made it flash and vanish, which reads as flickering
+  // rather than loading. Sticky per unit as well, so a flag raised again for a unit already showing
+  // real content (the panel and the popup each mount a stateflow section for it) can't pull that
+  // content back out.
+  const detailPending = !!unit && (state.unitDetailLoading === unit.id || state.flowPendingUnitId === unit.id);
+  const detailLoading = useDelayedFlag(detailPending, { key: unit?.id, sticky: true });
   if (!unit) return null;
   // EDIT mode: no popover. It floated right over the selected room and its corner handles,
   // blocking dimension edits — and closing it deselected the unit, which killed the handles
@@ -57,10 +68,12 @@ export function Tooltip() {
       : // DESKS/lockers/stalls: seat type when the record has one, else the ROOM they sit in —
         // never the bare type name, which just repeated the eyebrow above ("DESK / Type: Desk").
         unit.secondary || unit.room || '';
-  /** The record summary is still loading — show a shimmer rather than a value that will change. */
-  // The WHOLE popup waits for BOTH reads — its own record summary and the stateflow section's
-  // state/transitions — so it never renders half of itself and then shifts (requested).
-  const detailLoading = state.unitDetailLoading === unit.id || state.flowPendingUnitId === unit.id;
+  /**
+   * The record summary is still loading — show a shimmer rather than a value that will change. The
+   * WHOLE popup waits for BOTH reads (its own record summary and the stateflow section's
+   * state/transitions) so it never renders half of itself and then shifts (requested). Resolved
+   * above, before this component's early returns — see `detailLoading`.
+   */
 
   const bookable = isBookable(unit);
   const assignable = isAssignable(unit);

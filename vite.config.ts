@@ -37,6 +37,13 @@ export default defineConfig(({ mode }) => {
           }
         : {}),
     },
+    // `npm test` — jsdom so component/hook behaviour (loading states, timers) can be asserted
+    // without a backend. Added because the popup's shimmer bugs were shipped twice on reasoning
+    // alone: dev has no org configured, so those code paths never ran locally.
+    test: {
+      environment: 'jsdom',
+      include: ['src/**/*.test.{ts,tsx}'],
+    },
     build: {
       outDir: 'dist',
       emptyOutDir: true,
