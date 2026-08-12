@@ -41,6 +41,7 @@ export function StateflowActions({
   hideTransition,
   replaceTransition,
   refreshKey,
+  unitId,
 }: {
   moduleName: string;
   recordId: number;
@@ -63,6 +64,8 @@ export function StateflowActions({
   refreshKey?: number;
   /** Called after a transition executes successfully, with the transition that ran — for callers that mirror specific transitions into app state (e.g. a desk Vacate clearing the assignee). */
   onTransitionDone?: (t: TransitionOption) => void;
+  /** The unit this record belongs to, when mounted for one — scopes the popup loader flag this clears. */
+  unitId?: string;
 }) {
   const { actions } = useFloorplan();
   const [flow, setFlow] = useState<FlowState | null>(null);
@@ -70,10 +73,29 @@ export function StateflowActions({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [nonce, setNonce] = useState(0);
+  const [readsSettled, setReadsSettled] = useState(false);
+
+  /**
+   * SELF-HEALING clear for the popup's loader flag.
+   *
+   * Several surfaces mount a section for the SAME unit at once — the assignment panel and the map
+   * popup, most commonly. Each new section sets the flag on mount, but this component's read effect
+   * only clears it when its own deps change, so a section mounting AFTER these reads settled (the
+   * popup opening over an already-loaded panel) set a flag nothing was left to clear: the panel
+   * showed the record in full while the popup shimmered forever beside it.
+   *
+   * Running on every render once the reads have settled makes stranding it impossible, whatever the
+   * mount order. It's a no-op — and provokes no re-render, since the reducer returns the same state
+   * — unless the flag is actually set for this unit.
+   */
+  useEffect(() => {
+    if (readsSettled && unitId) actions.setFlowPending(null, unitId);
+  });
 
   useEffect(() => {
     if (!isFacilioApiConfigured) return;
     let cancelled = false;
+    setReadsSettled(false);
     const flowRead = fetchAvailableStates(moduleName, recordId)
       .then((f) => {
         if (!cancelled) setFlow(f);
@@ -96,9 +118,12 @@ export function StateflowActions({
         });
     }
     // Cleared once BOTH reads have settled — that is the moment the section can render its final
-    // shape, and therefore the moment the popup may stop loading.
+    // shape, and therefore the moment the popup may stop loading. Scoped to this unit when we know
+    // it, so a late-settling read for one unit can't stop another unit's loader early.
     Promise.allSettled([flowRead, approvalRead]).then(() => {
-      if (!cancelled) actions.setFlowPending(null);
+      if (cancelled) return;
+      setReadsSettled(true);
+      actions.setFlowPending(null, unitId);
     });
     return () => {
       cancelled = true;
@@ -306,6 +331,8 @@ export function UnitStateflowSection({ unit, readOnly, showStatusRow }: { unit: 
       recordId={ref.recordId}
       readOnly={readOnly}
       showStatusRow={showStatusRow}
+      // Scopes the loader flag this clears — several surfaces mount a section for the same unit.
+      unitId={unit.id}
       // Re-read the record's state after ANY action on this unit (assign, vacate, a transition
       // run elsewhere) so the popup never shows the pre-action state.
       refreshKey={state.unitNonce}
