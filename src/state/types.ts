@@ -177,6 +177,9 @@ export interface AppState {
   floorsWithPlans: Record<string, true>;
   /** Unit id whose record summary is being fetched for the preview — drives a loader, not a flicker. */
   unitDetailLoading: string | null;
+  /** Unit whose STATEFLOW read is still in flight — the popup's loader waits for this too, so the
+   *  state pill and the action buttons don't appear a beat after everything else. */
+  flowPendingUnitId: string | null;
   /** True when running inside a non-maintenance (portal) app — resolved from fetchCurrentApp. */
   isPortalApp: boolean;
   /**

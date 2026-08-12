@@ -1237,6 +1237,10 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
      * Something changed on a record (a stateflow transition ran) — drop the cached reads and
      * re-read everything on screen: the side panel's list AND the open details viewer.
      */
+    /** The unit's stateflow read is in flight (or has settled) — the popup's loader waits on it. */
+    setFlowPending: (unitId: string | null) => {
+      dispatch({ type: 'SET_FLOW_PENDING', unitId });
+    },
     unitChanged: () => {
       invalidateUnitRecordCaches();
       dispatch({ type: 'UNIT_CHANGED' });

@@ -58,7 +58,9 @@ export function Tooltip() {
         // never the bare type name, which just repeated the eyebrow above ("DESK / Type: Desk").
         unit.secondary || unit.room || '';
   /** The record summary is still loading — show a shimmer rather than a value that will change. */
-  const detailLoading = state.unitDetailLoading === unit.id;
+  // The WHOLE popup waits for BOTH reads — its own record summary and the stateflow section's
+  // state/transitions — so it never renders half of itself and then shifts (requested).
+  const detailLoading = state.unitDetailLoading === unit.id || state.flowPendingUnitId === unit.id;
 
   const bookable = isBookable(unit);
   const assignable = isAssignable(unit);

@@ -74,7 +74,7 @@ export function StateflowActions({
   useEffect(() => {
     if (!isFacilioApiConfigured) return;
     let cancelled = false;
-    fetchAvailableStates(moduleName, recordId)
+    const flowRead = fetchAvailableStates(moduleName, recordId)
       .then((f) => {
         if (!cancelled) setFlow(f);
       })
@@ -83,8 +83,9 @@ export function StateflowActions({
         console.warn(`[stateflow] getAvailableState failed for ${moduleName}/${recordId}`, err);
         if (!cancelled) setFlow(null);
       });
+    let approvalRead: Promise<unknown> = Promise.resolve();
     if (showApproval) {
-      fetchApprovalTransitions(moduleName, recordId)
+      approvalRead = fetchApprovalTransitions(moduleName, recordId)
         .then((f) => {
           if (!cancelled) setApproval(f);
         })
@@ -94,6 +95,11 @@ export function StateflowActions({
           if (!cancelled) setApproval(null);
         });
     }
+    // Cleared once BOTH reads have settled — that is the moment the section can render its final
+    // shape, and therefore the moment the popup may stop loading.
+    Promise.allSettled([flowRead, approvalRead]).then(() => {
+      if (!cancelled) actions.setFlowPending(null);
+    });
     return () => {
       cancelled = true;
     };
@@ -265,6 +271,9 @@ export function UnitStateflowSection({ unit, readOnly, showStatusRow }: { unit: 
     let cancelled = false;
     setRef(null);
     if (!isFacilioApiConfigured) return;
+    // Tell the surfaces that this unit's stateflow read is in flight, so the popup's loader can
+    // cover it: the state pill and the action buttons used to land a beat after the rest.
+    actions.setFlowPending(unit.id);
     resolveUnitRecordRef(unit)
       .then((r) => {
         if (!cancelled) setRef(r);
