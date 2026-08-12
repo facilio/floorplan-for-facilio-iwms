@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
 import { isFacilioApiConfigured } from '../../lib/facilioApi';
-import { searchBranchChildren, searchSiteIds } from '../../lib/facilioApiDataSource';
+import { floorMeta } from '../../state/selectors';
+import { findFloorParents, searchBranchChildren, searchSiteIds } from '../../lib/facilioApiDataSource';
 import styles from './PortfolioTree.module.css';
 
 interface FlatNode {
@@ -32,6 +33,50 @@ const DEBOUNCE_MS = 300;
 
 export function PortfolioTree() {
   const { state, actions } = useFloorplan();
+
+  /**
+   * REVEAL WHERE YOU ARE. The tree opened collapsed, so after switching floors you had to hunt or
+   * search for your own site again (reported). On open, the current floor's site and building are
+   * expanded and the active row is scrolled into view.
+   *
+   * Mount-only: doing it on every render would yank the list while you browse other sites, and
+   * EXPAND_NODE is idempotent so a manual collapse afterwards still sticks.
+   */
+  const activeRowRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    // toggleNode both expands AND fetches that level's children, so reuse it rather than a
+    // parallel action — guarded so an already-open branch isn't toggled shut.
+    const reveal = (id: string) => {
+      if (!state.expanded[id]) actions.toggleNode(id);
+    };
+    const meta = floorMeta(state, state.floorId);
+    if (meta) {
+      reveal(meta.site.id);
+      reveal(meta.building.id);
+      return;
+    }
+    // Ancestors not in the loaded portfolio yet — ask the backend which site/building this floor
+    // belongs to, then expand those (children load on expand).
+    let alive = true;
+    findFloorParents(state.floorId)
+      .then((p) => {
+        if (!alive || !p) return;
+        if (p.siteId) reveal(String(p.siteId));
+        if (p.buildingId) reveal(String(p.buildingId));
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Scroll once the active row actually EXISTS — it only renders after its branch expanded and
+  // that branch's children arrived, so this can't run in the effect above.
+  useEffect(() => {
+    if (!activeRowRef.current) return;
+    activeRowRef.current.scrollIntoView({ block: 'center' });
+  }, [state.floorId, state.expanded]);
 
   // Top search — SITES ONLY (buildings/floors search inside their own branch below). API-backed
   // when configured (ids filter the loaded portfolio), plain name filter in local mode.
@@ -246,6 +291,7 @@ export function PortfolioTree() {
           ) : (
             <div
               key={r.id}
+              ref={r.active ? activeRowRef : undefined}
               className={[styles.row, r.active ? styles.rowActive : ''].join(' ')}
               // Row-anchored: the name ellipsizes, and a clipping box would cut its own tooltip.
               data-tip={r.name}
