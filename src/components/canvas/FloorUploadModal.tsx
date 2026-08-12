@@ -79,6 +79,11 @@ export function FloorUploadModal() {
     setPhase(isFacilioApiConfigured ? 'uploading' : 'rendering');
     setStatus('working');
     setError(null);
+    // Declared OUTSIDE the try so the catch can report what actually happened. Kept inside, the
+    // catch could only guess, and it guessed "CAD render failed" for every error a CAD file hit —
+    // including an upload that never reached Facilio.
+    let uploadedFileId: number | null = null;
+    let uploadFailedMsg: string | null = null;
     try {
       // A plain raster's size is readable with a FileReader + <img> — no parser that can stall — so
       // it still rides along with the create and the record gets its exact quad first time.
@@ -92,7 +97,6 @@ export function FloorUploadModal() {
 
       // ---- STEPS 1-4: file → plan record → floor link → read-back ----
       let upload: FloorplanFileUploadResult | null = null;
-      let uploadFailedMsg: string | null = null;
       if (isFacilioApiConfigured) {
         try {
           upload = await uploadFloorplanFile(state.floorId, state.planId, file, dimensions);
@@ -104,7 +108,7 @@ export function FloorUploadModal() {
           console.warn('[FloorUploadModal] Facilio upload failed', uploadErr);
         }
       }
-      const uploadedFileId = upload?.fileId ?? null;
+      uploadedFileId = upload?.fileId ?? null;
       const attachedToFloorPlan = upload?.attachedToFloorPlan ?? false;
       if (upload && !upload.attachedToFloorPlan) {
         // eslint-disable-next-line no-console
@@ -171,7 +175,21 @@ export function FloorUploadModal() {
 
       // Nothing renderable and nothing stored → the only true failure. (A stored-but-not-
       // renderable file is reported below, not thrown, so the upload isn't lost.)
+      //
+      // NAME THE REAL CAUSE. When the upload failed, THAT is why there is nothing to show — the
+      // render is a side issue. This used to throw straight past the upload-failure branch below,
+      // so a rejected upload was reported as "could not render this CAD file... you can still store
+      // it", which blamed the wrong step and promised a file the org never received.
       if (!previewUrl && uploadedFileId == null) {
+        if (uploadFailedMsg) {
+          setStatus('error');
+          setError(
+            `Upload to Facilio failed: ${uploadFailedMsg}. Nothing was saved — retry.` +
+              (cad ? " This CAD file couldn't be rendered here either, so there's no local preview to fall back on." : '')
+          );
+          actions.showToast('Floorplan NOT uploaded', { variant: 'error', description: uploadFailedMsg });
+          return; // keep the modal open for a retry
+        }
         throw new Error(cad ? 'cad-render-failed' : 'Could not read this file.');
       }
 
@@ -231,9 +249,15 @@ export function FloorUploadModal() {
     } catch (err) {
       setStatus('error');
       const msg = (err as Error).message;
+      // Never claim the file is safe unless a file id came back. The old text ended "You can still
+      // store it and view it in AutoCAD" on EVERY error a CAD file hit — including ones where the
+      // upload had failed and nothing was stored at all.
+      const stored = uploadedFileId != null;
       setError(
         cad || msg === 'cad-render-failed'
-          ? 'Could not render this CAD file in the browser, and the server has no image for it. You can still store it and view it in AutoCAD.'
+          ? stored
+            ? `Stored to Facilio (file #${uploadedFileId}), but this CAD file couldn't be rendered — open it in AutoCAD, or upload a PDF/PNG export of the plan.`
+            : "Could not render this CAD file in the browser, and Facilio has no image for it. Nothing was saved — try uploading a PDF or PNG export of the plan."
           : msg || 'Could not read this file.'
       );
     } finally {
