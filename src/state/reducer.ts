@@ -212,7 +212,7 @@ export type Action =
   | { type: 'ASSIGN'; unitId: string; contactId: string; assignments: AppState['assignments'] }
   | { type: 'VACATE'; unitId: string; assignments: AppState['assignments'] }
   | { type: 'UNIT_CHANGED' }
-  | { type: 'SET_FLOW_PENDING'; unitId: string | null }
+  | { type: 'SET_FLOW_PENDING'; unitId: string | null; forUnitId?: string }
   | { type: 'SET_REFRESHING'; value: boolean }
   | { type: 'SET_WEB_REASSIGN'; id: string | null }
   | { type: 'SET_PEOPLE_PICKER'; id: string | null }
@@ -547,6 +547,9 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'SET_REFRESHING':
       return { ...state, refreshing: action.value };
     case 'SET_FLOW_PENDING':
+      // A CONDITIONAL clear (`forUnitId`) only applies while that unit is still the pending one —
+      // a section unmounting after the next unit's read started must not cancel that unit's loader.
+      if (action.unitId === null && action.forUnitId && state.flowPendingUnitId !== action.forUnitId) return state;
       return { ...state, flowPendingUnitId: action.unitId };
     case 'UNIT_CHANGED':
       return { ...state, unitNonce: state.unitNonce + 1 };

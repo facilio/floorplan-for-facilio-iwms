@@ -274,15 +274,28 @@ export function UnitStateflowSection({ unit, readOnly, showStatusRow }: { unit: 
     // Tell the surfaces that this unit's stateflow read is in flight, so the popup's loader can
     // cover it: the state pill and the action buttons used to land a beat after the rest.
     actions.setFlowPending(unit.id);
+    // WHOEVER SETS THE FLAG CLEARS IT. `StateflowActions` clears it once its own reads settle, but
+    // it only MOUNTS when a record ref resolved — so a unit that resolves to no record (a room or
+    // amenity with nothing behind it, a marker whose record was deleted) left the flag set with
+    // nothing left running to clear it, and the popup shimmered forever with every response already
+    // in. Reported as "the room data keeps on loading", and the same for desks.
     resolveUnitRecordRef(unit)
       .then((r) => {
-        if (!cancelled) setRef(r);
+        if (cancelled) return;
+        setRef(r);
+        if (!r) actions.setFlowPending(null, unit.id);
       })
       .catch(() => {
-        if (!cancelled) setRef(null);
+        if (cancelled) return;
+        setRef(null);
+        actions.setFlowPending(null, unit.id);
       });
     return () => {
       cancelled = true;
+      // Torn down mid-read (popup closed, another unit picked): the read that would have cleared
+      // this is now abandoned, so the flag must not outlive the section that set it. Conditional,
+      // so it can't cancel the loader of a unit whose read started after this one.
+      actions.setFlowPending(null, unit.id);
     };
   }, [unit.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
