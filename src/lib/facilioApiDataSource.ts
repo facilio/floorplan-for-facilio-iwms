@@ -333,6 +333,85 @@ function pruneExpired<K, T extends { at: number }>(cache: Map<K, T>, ttl: number
   for (const [k, v] of cache) if (now - v.at >= ttl) cache.delete(k);
 }
 
+// ---------------------------------------------------------------------------
+// EDIT MODE READS NEVER COME FROM A CACHE
+//
+// Requested verbatim: "don't do any cache business in edit mode - it is leading to data loss."
+//
+// The concrete incident: a CACHED plan-summary read made `saveFloorplanMarkers` write markers to an
+// indoorfloorplan record nothing reads, so every desk mapped after a fresh plan upload vanished on
+// refresh — no error, because the write itself succeeded. That single case is fixed, but the class
+// isn't: a stale read anywhere in an edit session can send a write to the wrong record.
+//
+// Enforced HERE, in the data layer, rather than by asking each call site to remember to invalidate
+// first: call-site invalidation is the weaker form of the same idea and has already drifted twice.
+// ONE switch (setBypassReadCaches, mirrored off state.mode — see FloorplanProvider) is consulted by
+// EVERY cache-read guard in this file, so a new read added later is covered by default.
+//
+// The one thing still shared while bypassing is an IN-FLIGHT request: two callers awaiting the same
+// unsettled promise both get the server's current answer (that's what the promise caches are for —
+// one floor load's getUnits+getAssignments would otherwise double every request), while anything
+// already SETTLED is re-fetched. Nothing is ever served from a completed earlier read.
+// ---------------------------------------------------------------------------
+let bypassReadCaches = false;
+
+/** Mirrors edit mode into this module. Entering also DROPS what's already cached (see clearReadCaches). */
+export function setBypassReadCaches(bypass: boolean): void {
+  if (bypass === bypassReadCaches) return;
+  bypassReadCaches = bypass;
+  if (bypass) clearReadCaches();
+}
+
+export function isBypassingReadCaches(): boolean {
+  return bypassReadCaches;
+}
+
+/**
+ * Everything a read can be served from. Cleared on ENTERING edit mode so the first read of the
+ * session can't be answered by something fetched minutes earlier in a viewing mode — the bypass
+ * alone would cover it, but leaving stale entries around for the moment edit mode is left again is
+ * exactly the kind of residue this is meant to remove.
+ */
+function clearReadCaches(): void {
+  floorplanDetailsCache.clear();
+  viewerDataCache.clear();
+  floorRecordsCache.clear();
+  indoorPlanReadCache.clear();
+  realSpaceRecordCache.clear();
+  orgResourcesCache = null;
+  orgResourcesSettled = false;
+}
+
+/** A cached in-flight/completed read. `settled` is what the edit-mode bypass keys on (see above). */
+interface ReadCacheEntry<T> {
+  at: number;
+  promise: Promise<T>;
+  settled?: boolean;
+}
+
+/**
+ * The cached read for `key`, or null when the caller must go to the server. Every read cache in
+ * this file goes through this — that's what makes the edit-mode rule impossible to forget.
+ */
+function cachedRead<K, T>(cache: Map<K, ReadCacheEntry<T>>, key: K, ttlMs?: number): Promise<T> | null {
+  const hit = cache.get(key);
+  if (!hit) return null;
+  if (bypassReadCaches) return hit.settled ? null : hit.promise;
+  if (ttlMs != null && Date.now() - hit.at >= ttlMs) return null;
+  return hit.promise;
+}
+
+/** Records a read and tracks when it settles (see cachedRead). Returns the same promise for chaining. */
+function rememberRead<K, T>(cache: Map<K, ReadCacheEntry<T>>, key: K, promise: Promise<T>): Promise<T> {
+  const entry: ReadCacheEntry<T> = { at: Date.now(), promise };
+  cache.set(key, entry);
+  const settle = () => {
+    entry.settled = true;
+  };
+  promise.then(settle, settle);
+  return promise;
+}
+
 /**
  * Session-long (not TTL'd): the floor -> plan-type -> indoorfloorplan-record-id mapping only ever
  * changes when an upload creates a NEW plan record for the floor — and that one write path
@@ -340,11 +419,11 @@ function pruneExpired<K, T extends { at: number }>(cache: Map<K, T>, ttl: number
  * session-long means "Save changes" doesn't re-call getFloorplanDetailsByType on every save just
  * to re-derive an id that can't have changed.
  */
-const floorplanDetailsCache = new Map<string, { at: number; promise: Promise<Record<string, any>> }>();
+const floorplanDetailsCache = new Map<string, ReadCacheEntry<Record<string, any>>>();
 
 function getFloorplanDetailsByType(floorId: string): Promise<Record<string, any>> {
-  const hit = floorplanDetailsCache.get(floorId);
-  if (hit) return hit.promise;
+  const hit = cachedRead(floorplanDetailsCache, floorId);
+  if (hit) return hit;
   const promise = (async () => {
     const body = await customGet('v3/floorplan/getFloorplanDetailsByType', { floorId });
     if (body?.code !== 0) throw new Error(body?.message || `code ${body?.code ?? '?'}`);
@@ -353,8 +432,7 @@ function getFloorplanDetailsByType(floorId: string): Promise<Record<string, any>
   promise.catch(() => {
     if (floorplanDetailsCache.get(floorId)?.promise === promise) floorplanDetailsCache.delete(floorId);
   });
-  floorplanDetailsCache.set(floorId, { at: Date.now(), promise });
-  return promise;
+  return rememberRead(floorplanDetailsCache, floorId, promise);
 }
 
 // ---------------------------------------------------------------------------
@@ -399,12 +477,12 @@ const DESK_TYPE_NUM: Record<DeskType, number> = { ASSIGNED: 1, HOT: 2, HOTEL: 3 
  * re-fetches; evicted on failure so a retry isn't stuck replaying a rejection.
  */
 const VIEWER_DATA_TTL_MS = 20_000;
-const viewerDataCache = new Map<string, { at: number; promise: Promise<any> }>();
+const viewerDataCache = new Map<string, ReadCacheEntry<any>>();
 
 function fetchViewerData(floorplanId: number, mode: ViewerMode, opts: ViewerDataOpts = {}): Promise<any> {
   const key = `${floorplanId}:${mode}:${opts.startTime ?? ''}:${opts.endTime ?? ''}`;
-  const hit = viewerDataCache.get(key);
-  if (hit && Date.now() - hit.at < VIEWER_DATA_TTL_MS) return hit.promise;
+  const hit = cachedRead(viewerDataCache, key, VIEWER_DATA_TTL_MS);
+  if (hit) return hit;
 
   const promise = (async () => {
     const body: Record<string, unknown> = {
@@ -424,8 +502,7 @@ function fetchViewerData(floorplanId: number, mode: ViewerMode, opts: ViewerData
     if (viewerDataCache.get(key)?.promise === promise) viewerDataCache.delete(key);
   });
   pruneExpired(viewerDataCache, VIEWER_DATA_TTL_MS);
-  viewerDataCache.set(key, { at: Date.now(), promise });
-  return promise;
+  return rememberRead(viewerDataCache, key, promise);
 }
 
 interface ViewerMarkerFeature {
@@ -721,7 +798,7 @@ const FLOOR_RECORD_MODULES: { type: UnitType; moduleName: string; plan: PlanId }
  * them into one request, same discipline as viewerDataCache.
  */
 const FLOOR_RECORDS_TTL_MS = 20_000;
-const floorRecordsCache = new Map<string, { at: number; promise: Promise<any[]> }>();
+const floorRecordsCache = new Map<string, ReadCacheEntry<any[]>>();
 
 /**
  * Drop every cached read that an action on a unit can invalidate, so the surfaces re-reading after
@@ -745,8 +822,8 @@ export function invalidateUnitRecordCaches(): void {
 
 function fetchFloorRecordsRaw(moduleName: string, floorId: string): Promise<any[]> {
   const key = `${floorId}:${moduleName}`;
-  const hit = floorRecordsCache.get(key);
-  if (hit && Date.now() - hit.at < FLOOR_RECORDS_TTL_MS) return hit.promise;
+  const hit = cachedRead(floorRecordsCache, key, FLOOR_RECORDS_TTL_MS);
+  if (hit) return hit;
   pruneExpired(floorRecordsCache, FLOOR_RECORDS_TTL_MS);
   const promise = (async () => {
     const res: any = await facilioApi.fetchAll(moduleName, {
@@ -761,8 +838,7 @@ function fetchFloorRecordsRaw(moduleName: string, floorId: string): Promise<any[
   promise.catch(() => {
     if (floorRecordsCache.get(key)?.promise === promise) floorRecordsCache.delete(key);
   });
-  floorRecordsCache.set(key, { at: Date.now(), promise });
-  return promise;
+  return rememberRead(floorRecordsCache, key, promise);
 }
 
 async function fetchFloorModuleRecords(floorId: string): Promise<Unit[]> {
@@ -1327,6 +1403,16 @@ export async function getAnyFloor(): Promise<{ id: string; name: string } | null
   return { id: String(f.id), name: f.name };
 }
 
+/**
+ * The plan size assumed when the real raster hasn't been measured yet: the CAD renderer's base
+ * raster (see `cadPreview.renderCadToDataUrl`), which this app already treats as the plan size
+ * everywhere. Only the ASPECT of this matters — `computeSyntheticGeometry` normalizes every plan to
+ * the same real-world span — so for a CAD snapshot (rendered at exactly this aspect, at any device
+ * pixel ratio) the default quad is not an approximation, it IS the right one.
+ */
+const DEFAULT_PLAN_SIZE = { width: 1492, height: 1054 };
+const DEFAULT_PLAN_GEOMETRY = quadToGeometryString(computeSyntheticGeometry(DEFAULT_PLAN_SIZE.width, DEFAULT_PLAN_SIZE.height));
+
 export interface FloorplanFileUploadResult {
   fileId: number;
   /** Object URL of the ORIGINAL uploaded bytes (a valid <img> src only for plain images). */
@@ -1342,6 +1428,18 @@ export interface FloorplanFileUploadResult {
   /** False when the fileId couldn't be attached to an `indoorfloorplan` record (e.g. `floorId` isn't a real floor id) — the upload+preview still succeeded. */
   attachedToFloorPlan: boolean;
   attachError?: string;
+  /** The `indoorfloorplan` record this file is now attached to, as resolved by the read-back (step 4). */
+  indoorFloorPlanId: number | null;
+  /**
+   * The record as the SERVER returns it after the write — the source of truth for everything that
+   * follows (preview render, geometry refinement, auto-map, marker saves), rather than what this
+   * code believes it just wrote.
+   */
+  planRecord: Record<string, any> | null;
+  /** Whether that read-back record carries a usable geo-reference quad (markers can't be positioned without one). */
+  hasGeometry: boolean;
+  /** Set when the read-back disagreed with the write (e.g. a different fileId) — the upload stands, but something is off. */
+  readBackWarning?: string;
 }
 
 /**
@@ -1382,11 +1480,23 @@ export async function fetchRenderedFileImage(fileId: number): Promise<string | n
  * a bad `floorId` (e.g. one that doesn't correspond to a real floor record) fails the attach
  * without discarding the (real, working) uploaded file/preview.
  *
- * `imageDimensions`, when known (the caller already rendered a preview to measure), seeds a
- * synthetic geo-reference quad (`indoorfloorplan.geometry` — see `geoReference.ts`) sized to the
- * image's actual aspect ratio, so `saveFloorplanMarkers` has something to convert this plan's
- * unit-fraction positions against later. Always overwritten on re-upload to stay in sync with
- * whatever image is currently attached.
+ * ORDER MATTERS, and this is the ORDER (requested): (1) upload the file, (2) create/update the
+ * `indoorfloorplan` record with that fileId, (3) stamp the FLOOR's `indoorFloorPlanId`, (4) GET the
+ * floor's plan data back — that read-back is the source of truth for everything the caller does
+ * next (render the preview, refine the geometry, analyse the CAD, auto-map). NOTHING in steps 1-4
+ * touches a renderer or parser. It used to: the caller rendered/analysed the file FIRST and only
+ * then called this, so a DWG whose parser never settled (see CAD_TIMEOUT_MS) meant the upload
+ * request was never even sent — no error, nothing in the network tab, the file simply never left
+ * the browser.
+ *
+ * `imageDimensions` is therefore OPTIONAL and usually absent now (the raster size is only known
+ * after a render, which happens after this returns). The record must never exist WITHOUT a
+ * geo-reference quad — marker positions are converted against it, so markers would save and then be
+ * unpositionable — so a create with no measurement seeds the default quad (`DEFAULT_PLAN_SIZE`, the
+ * CAD renderer's base raster and this app's assumed plan size), and `updateFloorplanGeometry`
+ * refines it once the real dimensions are known. A REPLACE keeps whatever quad the record already
+ * has unless a measurement says otherwise — overwriting a good quad with the default, even
+ * briefly, would shift every marker already on that record.
  */
 export async function uploadFloorplanFile(
   floorId: string,
@@ -1396,6 +1506,7 @@ export async function uploadFloorplanFile(
 ): Promise<FloorplanFileUploadResult> {
   if (!isFacilioApiConfigured) throw new Error('facilio-api: not configured');
 
+  // ---- STEP 1: the file itself ----
   const uploadRes = await facilioApi.uploadFiles([file]);
   if (uploadRes.error || !uploadRes.ids?.length) {
     throw new Error(uploadRes.error?.message || 'facilio-api: file upload failed');
@@ -1410,6 +1521,9 @@ export async function uploadFloorplanFile(
 
   let attachedToFloorPlan = false;
   let attachError: string | undefined;
+  let indoorFloorPlanId: number | null = null;
+  let planRecord: Record<string, any> | null = null;
+  let readBackWarning: string | undefined;
   try {
     // `fetchRecord`'s resolved value nests the record under `res[moduleName]` (e.g. `res.floor`),
     // NOT `res.data` — confirmed live: `res.data` is always undefined, which silently failed
@@ -1422,7 +1536,7 @@ export async function uploadFloorplanFile(
     if (!siteId || !buildingId) throw new Error('floor record has no site/building lookup');
 
     const floorPlanType = FLOOR_PLAN_TYPE[planId];
-    const geometry = imageDimensions ? quadToGeometryString(computeSyntheticGeometry(imageDimensions.width, imageDimensions.height)) : undefined;
+    const measuredGeometry = imageDimensions ? quadToGeometryString(computeSyntheticGeometry(imageDimensions.width, imageDimensions.height)) : undefined;
     // Resolve the plan-type mapping FRESH, never from the session cache — a record created or
     // deleted elsewhere (another tab/user) would otherwise send this down the wrong branch
     // (creating a duplicate indoorfloorplan, or updating a ghost).
@@ -1430,6 +1544,7 @@ export async function uploadFloorplanFile(
     const existingByType = await getFloorplanDetailsByType(floorId);
     const existing = existingByType[String(floorPlanType)];
     let attachRes;
+    // ---- STEP 2: the indoorfloorplan record ----
     if (existing) {
       // REPLACE = full-record round trip, same rule as every other indoorfloorplan write: a
       // partial {fileId} patch risks the backend treating it as a replace and WIPING the
@@ -1437,6 +1552,9 @@ export async function uploadFloorplanFile(
       // fields changed — including the markedZones zoneModuleId repair (the GET omits it).
       const record = await fetchIndoorFloorPlanRecord(existing.id);
       if (!record) throw new Error(`indoorfloorplan ${existing.id} fetch failed before re-attach`);
+      // Geometry on a replace: the measurement when we have one, the DEFAULT quad when the record
+      // has none at all (that record can't position a marker), and otherwise untouched.
+      const geometry = measuredGeometry ?? (geometryStringToQuad(record.geometry) ? undefined : DEFAULT_PLAN_GEOMETRY);
       attachRes = await facilioApi.updateRecord('indoorfloorplan', {
         id: existing.id,
         data: {
@@ -1447,6 +1565,7 @@ export async function uploadFloorplanFile(
           ...(geometry ? { geometry } : {}),
         },
       });
+      indoorFloorPlanId = Number(existing.id) || null;
     } else {
       attachRes = await facilioApi.createRecord('indoorfloorplan', {
         data: {
@@ -1456,7 +1575,8 @@ export async function uploadFloorplanFile(
           fileId,
           name: file.name,
           floorPlanType,
-          ...(geometry ? { geometry } : {}),
+          // NEVER create without a quad — see this function's doc comment.
+          geometry: measuredGeometry ?? DEFAULT_PLAN_GEOMETRY,
         },
       });
     }
@@ -1464,50 +1584,144 @@ export async function uploadFloorplanFile(
     attachedToFloorPlan = true;
     // The record set just changed (a new record, or an existing one re-pointed at a new file), so
     // NOTHING downstream may keep the pre-upload answer: the very next marker save must resolve
-    // which record to write against from the server, not from this session's cache.
-    floorplanDetailsCache.delete(floorId);
-    viewerDataCache.clear();
-    if (!existing) {
-      // FIRST plan record for this floor+type: stamp the FLOOR's indoorFloorPlanId when the
-      // floor doesn't carry one yet (requested) — the portal visibility filter keys on that
-      // field ({"indoorFloorPlanId":{"operatorId":2,"value":[]}}), so a floor whose first plan
-      // was uploaded through this app would otherwise stay invisible in portals. Best-effort:
-      // the plan is already attached, so a failed stamp only warns.
-      const createdId = Number((attachRes as any)?.indoorfloorplan?.id);
-      const existingLink = Number(floorRec?.indoorFloorPlanId ?? 0);
-      if (createdId > 0 && !(existingLink > 0)) {
-        // PATCH (requested) — v3/modules/floor/{id} patches ONLY the sent field, no full-record
-        // echo. Connected-mode PATCH bridging is unverified (same caveat as stateflow), so a
-        // thrown transport error falls back to the SDK updateRecord with the same partial data.
-        try {
-          await customPatch(`v3/modules/floor/${floorId}`, { id: Number(floorId), data: { indoorFloorPlanId: createdId }, moduleName: 'floor' });
-        } catch (patchErr) {
-          const linkRes = await facilioApi.updateRecord('floor', { id: floorId, data: { indoorFloorPlanId: createdId } }).catch((e) => ({ error: { message: String(e) } }) as any);
-          if (linkRes?.error) {
-            // eslint-disable-next-line no-console
-            console.warn(`[facilio-api] couldn't set indoorFloorPlanId=${createdId} on floor ${floorId}`, patchErr, linkRes.error);
-          }
-        }
-      }
-    }
-    // The plan record just changed — drop every session cache that could serve the OLD plan:
-    // the plan-type mapping (a create changes it), viewerData (geometry/file changed), and the
-    // CAD source file (auto-map + hi-res zoom tiers must use the NEW drawing, not the one
-    // cached at the last image fetch).
+    // which record to write against from the server, not from this session's cache. Also drop the
+    // cached plan image and the cached CAD source (auto-map + hi-res zoom tiers must use the NEW
+    // drawing, not the one cached at the last image fetch).
     floorplanDetailsCache.delete(floorId);
     viewerDataCache.clear();
     sessionImageCache.delete(`${floorId}:${planId}`);
-    if (existing?.id) indoorPlanReadCache.delete(existing.id);
+    if (existing?.id) indoorPlanReadCache.delete(Number(existing.id));
     const cadKey = `${floorId}:${planId}`;
     if (/\.(dwg|dxf)$/i.test(file.name)) cadSourceFileCache.set(cadKey, file);
     else cadSourceFileCache.delete(cadKey);
+
+    // ---- STEP 3: the floor's indoorFloorPlanId ----
+    // Stamped when the floor doesn't carry one yet (requested) — the portal visibility filter keys
+    // on that field ({"indoorFloorPlanId":{"operatorId":2,"value":[]}}), so a floor whose plan was
+    // uploaded through this app would otherwise stay invisible in portals. Best-effort: the plan is
+    // already attached, so a failed stamp only warns. Covers the replace branch too (a pre-existing
+    // plan record on a floor that was never linked).
+    const attachedId = Number((attachRes as any)?.indoorfloorplan?.id) || Number(existing?.id) || 0;
+    const existingLink = Number(floorRec?.indoorFloorPlanId ?? 0);
+    if (attachedId > 0 && !(existingLink > 0)) {
+      // PATCH (requested) — v3/modules/floor/{id} patches ONLY the sent field, no full-record
+      // echo. Connected-mode PATCH bridging is unverified (same caveat as stateflow), so a
+      // thrown transport error falls back to the SDK updateRecord with the same partial data.
+      try {
+        await customPatch(`v3/modules/floor/${floorId}`, { id: Number(floorId), data: { indoorFloorPlanId: attachedId }, moduleName: 'floor' });
+      } catch (patchErr) {
+        const linkRes = await facilioApi.updateRecord('floor', { id: floorId, data: { indoorFloorPlanId: attachedId } }).catch((e) => ({ error: { message: String(e) } }) as any);
+        if (linkRes?.error) {
+          // eslint-disable-next-line no-console
+          console.warn(`[facilio-api] couldn't set indoorFloorPlanId=${attachedId} on floor ${floorId}`, patchErr, linkRes.error);
+        }
+      }
+    }
+
+    // ---- STEP 4: read the floor's plan data BACK; that answer is the truth from here on ----
+    floorplanDetailsCache.delete(floorId);
+    const readBackByType = await getFloorplanDetailsByType(floorId).catch(() => ({}) as Record<string, any>);
+    const planRecordId = Number(readBackByType[String(floorPlanType)]?.id) || attachedId || indoorFloorPlanId || 0;
+    indoorFloorPlanId = planRecordId || null;
+    if (planRecordId) {
+      indoorPlanReadCache.delete(planRecordId);
+      planRecord = await fetchIndoorFloorPlanRecord(planRecordId);
+    }
+    if (planRecord) {
+      // The record must point at THIS file. A mismatch means the write didn't land the way it
+      // reported, and the plan the org sees is not the one just uploaded — say so rather than let
+      // the caller render a preview of a file the record doesn't reference.
+      if (isValidFileId(Number(planRecord.fileId)) && Number(planRecord.fileId) !== fileId) {
+        readBackWarning = `the plan record still points at file #${planRecord.fileId}, not #${fileId}`;
+        // eslint-disable-next-line no-console
+        console.warn(`[facilio-api] read-back mismatch on indoorfloorplan ${indoorFloorPlanId}: ${readBackWarning}`);
+      }
+      // Last line of defence on the "record with no geometry" hole: if the server didn't keep the
+      // quad we just sent, set it now, and report honestly if that fails too.
+      if (!geometryStringToQuad(planRecord.geometry)) {
+        const patched = await updateFloorplanGeometry(planRecordId, imageDimensions ?? DEFAULT_PLAN_SIZE);
+        if (patched === 'failed') {
+          readBackWarning = 'the plan record has no geo-reference, so markers on it cannot be positioned';
+          // eslint-disable-next-line no-console
+          console.warn(`[facilio-api] indoorfloorplan ${planRecordId} came back with no geometry and could not be patched`);
+        } else {
+          indoorPlanReadCache.delete(planRecordId);
+          planRecord = (await fetchIndoorFloorPlanRecord(planRecordId)) ?? planRecord;
+        }
+      }
+    }
   } catch (err) {
     attachError = (err as Error).message || 'attach failed';
     // A failed attach may itself be a stale-mapping symptom — clear it so a retry re-resolves.
     floorplanDetailsCache.delete(floorId);
   }
 
-  return { fileId, previewUrl, serverImageUrl, attachedToFloorPlan, attachError };
+  return {
+    fileId,
+    previewUrl,
+    serverImageUrl,
+    attachedToFloorPlan,
+    attachError,
+    indoorFloorPlanId,
+    planRecord,
+    hasGeometry: !!geometryStringToQuad(planRecord?.geometry),
+    readBackWarning,
+  };
+}
+
+/**
+ * Sets/refines the plan record's synthetic geo-reference quad from the plan raster's REAL pixel
+ * size — the step that lands geometry when `uploadFloorplanFile` couldn't know the size yet
+ * (the render happens after the upload now; see that function's ORDER note).
+ *
+ * ASPECT-ONLY, deliberately: `computeSyntheticGeometry` normalizes every plan to the same 60m span,
+ * so the quad it produces depends on the aspect ratio alone. A re-measure of the same aspect is
+ * therefore a no-op and is skipped — no pointless write, and no needless re-scaling of the fractions
+ * of markers already on the record (their stored lng/lat is fixed; moving the quad moves them).
+ *
+ * Full-record echo like every other `indoorfloorplan` write (a partial patch risks wiping
+ * markers/markedZones/customization), including the markedZones `zoneModuleId` repair.
+ */
+export async function updateFloorplanGeometry(
+  indoorFloorPlanId: number,
+  imageDimensions: { width: number; height: number }
+): Promise<'set' | 'unchanged' | 'failed'> {
+  if (!isFacilioApiConfigured || !(indoorFloorPlanId > 0)) return 'failed';
+  const { width, height } = imageDimensions;
+  // Implausible measurements (an SVG with no width/height attributes measures 0×0 or a browser
+  // default) must never size a quad.
+  if (!(width > 10) || !(height > 10)) return 'failed';
+  const record = await fetchIndoorFloorPlanRecord(indoorFloorPlanId);
+  if (!record) return 'failed';
+  const target = computeSyntheticGeometry(width, height);
+  const current = geometryStringToQuad(record.geometry);
+  if (current && sameQuadShape(current, target)) return 'unchanged';
+  const res = await facilioApi
+    .updateRecord('indoorfloorplan', {
+      id: indoorFloorPlanId,
+      data: { ...record, markedZones: repairZoneModuleIds(record), geometry: quadToGeometryString(target) },
+    })
+    .catch((e) => ({ error: { message: String(e) } }) as any);
+  if (res?.error) {
+    // eslint-disable-next-line no-console
+    console.warn(`[facilio-api] couldn't set geometry on indoorfloorplan ${indoorFloorPlanId}`, res.error);
+    return 'failed';
+  }
+  indoorPlanReadCache.delete(indoorFloorPlanId);
+  viewerDataCache.clear();
+  return 'set';
+}
+
+/** Same footprint shape (within 0.5%) — see updateFloorplanGeometry on why aspect is the whole comparison. */
+function sameQuadShape(a: GeoQuad, b: GeoQuad): boolean {
+  const aspect = (q: GeoQuad) => {
+    const w = Math.abs(q.tr[0] - q.tl[0]);
+    const h = Math.abs(q.tl[1] - q.bl[1]);
+    return h > 0 ? w / h : 0;
+  };
+  const [x, y] = [aspect(a), aspect(b)];
+  if (!x || !y) return false;
+  return Math.abs(x - y) / Math.max(x, y) < 0.005;
 }
 
 /**
@@ -1600,15 +1814,14 @@ async function fetchIndoorFloorPlanRecord(indoorFloorPlanId: number): Promise<an
  * is why this wraps only the read helper.
  */
 const INDOOR_PLAN_READ_TTL_MS = 15_000;
-const indoorPlanReadCache = new Map<number, { at: number; promise: Promise<any | null> }>();
+const indoorPlanReadCache = new Map<number, ReadCacheEntry<any | null>>();
 function readIndoorFloorPlanRecord(indoorFloorPlanId: number): Promise<any | null> {
-  const hit = indoorPlanReadCache.get(indoorFloorPlanId);
-  if (hit && Date.now() - hit.at < INDOOR_PLAN_READ_TTL_MS) return hit.promise;
+  const hit = cachedRead(indoorPlanReadCache, indoorFloorPlanId, INDOOR_PLAN_READ_TTL_MS);
+  if (hit) return hit;
   const promise = fetchIndoorFloorPlanRecord(indoorFloorPlanId);
   promise.catch(() => indoorPlanReadCache.delete(indoorFloorPlanId));
   pruneExpired(indoorPlanReadCache, INDOOR_PLAN_READ_TTL_MS);
-  indoorPlanReadCache.set(indoorFloorPlanId, { at: Date.now(), promise });
-  return promise;
+  return rememberRead(indoorPlanReadCache, indoorFloorPlanId, promise);
 }
 
 /**
@@ -1690,7 +1903,7 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
   let quad = geometryStringToQuad(record.geometry);
   let geometryPatch: string | undefined;
   if (!quad) {
-    quad = computeSyntheticGeometry(1492, 1054);
+    quad = computeSyntheticGeometry(DEFAULT_PLAN_SIZE.width, DEFAULT_PLAN_SIZE.height);
     geometryPatch = quadToGeometryString(quad);
   }
 
@@ -2101,6 +2314,16 @@ async function createRealZoneSpaceRecord(unit: Unit): Promise<{ recordId: number
 const realSpaceRecordCache = new Map<string, RealSpaceRef>();
 
 /**
+ * The remembered ref for a unit, or null in edit mode (see setBypassReadCaches) — re-resolving is
+ * safe and idempotent: the lookup below matches an existing marker by `geoId`/`recordId` and only
+ * creates a record when there is genuinely none, so a bypassed read can't mint a duplicate.
+ */
+function cachedSpaceRecord(unitId: string): RealSpaceRef | null {
+  if (bypassReadCaches) return null;
+  return realSpaceRecordCache.get(unitId) ?? null;
+}
+
+/**
  * Finds the real desks/lockers/parkingstall record backing a placed unit — joined via the
  * unit's `floorplanmarker.recordId` (set here the first time a unit is actually assigned; units
  * that are never assigned never get a real space record, only their marker). If the marker
@@ -2112,7 +2335,7 @@ async function ensureRealSpaceRecord(unit: Unit): Promise<RealSpaceRef | null> {
   if (unit.type === 'room') return ensureRealZoneRecord(unit);
   const moduleName = REAL_SPACE_MODULE[unit.type];
   if (!moduleName) return null;
-  const cached = realSpaceRecordCache.get(unit.id);
+  const cached = cachedSpaceRecord(unit.id);
   if (cached) return cached;
 
   const byType = await getFloorplanDetailsByType(unit.floor).catch(() => ({}) as Record<string, any>);
@@ -2202,7 +2425,7 @@ async function ensureRealSpaceRecord(unit: Unit): Promise<RealSpaceRef | null> {
  * room booked before ever hitting "Save changes" still gets a real record.
  */
 async function ensureRealZoneRecord(unit: Unit): Promise<RealSpaceRef | null> {
-  const cached = realSpaceRecordCache.get(unit.id);
+  const cached = cachedSpaceRecord(unit.id);
   if (cached) return cached;
 
   const byType = await getFloorplanDetailsByType(unit.floor).catch(() => ({}) as Record<string, any>);
@@ -2269,7 +2492,7 @@ export async function resolveUnitRecordRef(unit: Unit): Promise<{ moduleName: st
   const moduleName = unit.type === 'room' ? ROOM_RECORDS_MODULE : REAL_SPACE_MODULE[unit.type];
   if (!moduleName) return null;
 
-  const cached = realSpaceRecordCache.get(unit.id)?.recordId;
+  const cached = cachedSpaceRecord(unit.id)?.recordId;
   if (cached) return { moduleName, recordId: cached };
   // viewerData-sourced units: the unit id IS the backend record id.
   if (/^\d+$/.test(unit.id)) return { moduleName, recordId: Number(unit.id) };
@@ -2621,6 +2844,8 @@ const CONFIGURED_CANCELLED_STATE_IDS: string[] = ['4060']; // spacebooking 'Canc
 const cancelledStateIds = new Set<string>(CONFIGURED_CANCELLED_STATE_IDS);
 
 let orgResourcesCache: Promise<Unit[]> | null = null;
+/** Whether `orgResourcesCache` has finished — the edit-mode bypass still shares an in-flight fetch, never a completed one. */
+let orgResourcesSettled = false;
 /**
  * `force` re-reads the modules instead of replaying the session cache — the booking form asks for
  * that every time it OPENS and every time its form/type SWITCHES (requested), so a lookup can't
@@ -2629,8 +2854,9 @@ let orgResourcesCache: Promise<Unit[]> | null = null;
  */
 export function fetchOrgBookableResources(opts?: { force?: boolean }): Promise<Unit[]> {
   if (!isFacilioApiConfigured) return Promise.resolve([]);
-  if (opts?.force) orgResourcesCache = null;
+  if (opts?.force || (bypassReadCaches && orgResourcesSettled)) orgResourcesCache = null;
   if (!orgResourcesCache) {
+    orgResourcesSettled = false;
     orgResourcesCache = (async () => {
       await ensureRoomTypeLabels(); // enum labels before any room record is mapped
       const mods: { type: UnitType; moduleName: string; plan: PlanId }[] = [
@@ -2694,9 +2920,11 @@ export function fetchOrgBookableResources(opts?: { force?: boolean }): Promise<U
     })();
     orgResourcesCache
       .then((rows) => {
+        orgResourcesSettled = true;
         if (!rows.length) orgResourcesCache = null; // never cache "nothing" — retry next open
       })
       .catch(() => {
+        orgResourcesSettled = true;
         orgResourcesCache = null;
       });
   }

@@ -10,7 +10,7 @@ import type { CadGroup } from '../lib/cadAnalyze';
 import type { Asset } from '../lib/assets';
 import { isFacilioApiConfigured } from '../lib/facilioApi';
 import { runAssignTransition } from '../lib/stateflowApi';
-import { assignUnitReal, createRealBooking, fetchCurrentApp, fetchCurrentPeopleId, fetchFloorplanCustomization, fetchFloorplanImageResult, fetchMyDesk, fetchOrgTimezone, fetchPortalPlanFloors, fetchUnitAssigneeFromSummary, fetchUnitRecordDetails, findFloorParents, floorExists, findUnitIdForDeskRecord, getAnyFloor, getFloorPlanSummary, patchUnitContact, resolveHardcodedRolePerms, resolveModePermsForCurrentUser, saveFloorplanDefaultView, invalidateFloorCaches, invalidateUnitRecordCaches, resolveUnitRecordRef, saveFloorplanMarkers, searchClientContacts, vacateUnitReal } from '../lib/facilioApiDataSource';
+import { assignUnitReal, createRealBooking, fetchCurrentApp, fetchCurrentPeopleId, fetchFloorplanCustomization, fetchFloorplanImageResult, fetchMyDesk, fetchOrgTimezone, fetchPortalPlanFloors, fetchUnitAssigneeFromSummary, fetchUnitRecordDetails, findFloorParents, floorExists, findUnitIdForDeskRecord, getAnyFloor, getFloorPlanSummary, patchUnitContact, resolveHardcodedRolePerms, resolveModePermsForCurrentUser, saveFloorplanDefaultView, invalidateFloorCaches, invalidateUnitRecordCaches, resolveUnitRecordRef, saveFloorplanMarkers, searchClientContacts, setBypassReadCaches, vacateUnitReal } from '../lib/facilioApiDataSource';
 import { listFloorplanFloorIds, loadFloorplanFile, persistFloorplanFile } from '../lib/floorplanFileStore';
 import { DEFAULT_PERMS_MODULE_NAME, loadEffectiveSettings, saveSettings, settingsFromState } from '../lib/settingsStore';
 import { floorFromLocation, pathForView, viewFromLocation, withFloorParam } from '../lib/routes';
@@ -1662,6 +1662,17 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
       window.removeEventListener('error', onError);
     };
   }, []);
+
+  /**
+   * Edit mode reads STRAIGHT FROM THE SERVER — never from a cache (see setBypassReadCaches).
+   * Mirrored here off `state.mode` rather than at each `setMode` call site: mode is changed from
+   * several places (the tab, the unsaved-changes prompt's save AND discard paths, permission
+   * resolution), and one of them forgetting is exactly how a stale read reaches a write and sends
+   * markers to a record nothing reads.
+   */
+  useEffect(() => {
+    setBypassReadCaches(state.mode === 'edit');
+  }, [state.mode]);
 
   useEffect(() => {
     // The floor param rides along on every view path (see routes.floorFromLocation).
