@@ -283,6 +283,39 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
     });
   }
 
+  /**
+   * Bring EVERY surface back in line after a write to a unit — assign, re-assign, vacate, or a
+   * stateflow transition. The sidebar list, the plan markers and the open popup all read from the
+   * floor's units/assignments, so a per-unit re-read alone left the other two showing the old
+   * answer; this re-reads the floor itself, exactly as the refresh button does.
+   *
+   * Safe on the CURRENT floor specifically: SELECT_FLOOR_START early-returns when the floor hasn't
+   * changed, so the selection, the open popup and the camera all survive — the refresh button
+   * relies on the same property.
+   *
+   * TWICE, and that is the point. A read issued immediately after a write can still be answered
+   * with the record's PRE-write values, so a single pass happens to be correct only when the
+   * backend has already caught up. That is the reported "sometimes it updates, sometimes it
+   * doesn't". The second pass is silent — no loader — so the correction never looks like a reload.
+   */
+  async function refreshUnitReads(): Promise<void> {
+    const floorId = state.floorId;
+    const pass = async () => {
+      invalidateUnitRecordCaches();
+      invalidateFloorCaches(floorId);
+      dispatch({ type: 'UNIT_CHANGED' });
+      await loadFloor(floorId).catch((err) => {
+        // Never let a refresh failure escape into the action that triggered it — the write already
+        // succeeded, and the optimistic state on screen is still the better answer than a crash.
+        // eslint-disable-next-line no-console
+        console.warn('[refreshUnitReads] floor re-read failed', err);
+        return [] as Unit[];
+      });
+    };
+    await pass();
+    window.setTimeout(() => void pass(), 900);
+  }
+
   async function loadFloor(floorId: string): Promise<Unit[]> {
     dispatch({ type: 'SELECT_FLOOR_START', floorId });
     // Flag the image load NOW, not when loadFloorPlanTypesAndImage eventually starts — the
@@ -1201,8 +1234,12 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
                 console.warn('[assign] state transition after the write failed', err);
               });
             }
-            invalidateUnitRecordCaches();
-            dispatch({ type: 'UNIT_CHANGED' }); // now the summary re-read reflects both writes
+            // Both writes are in — re-read every surface. Via the shared helper so this gets the
+            // floor re-read (sidebar + markers, not just this unit) AND the delayed second pass:
+            // the single immediate invalidation this used to do refreshed things only when the
+            // backend had already caught up, which is why a re-assign updated sometimes and not
+            // others. Awaited, so the loader below is still held while it happens.
+            await refreshUnitReads();
           })
           .finally(() => {
             // Whatever happened, stop holding the loader — a failed write must not freeze the
@@ -1229,10 +1266,25 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
         console.debug('[vacate] local-store write unavailable (real vacate still runs)', err);
       });
       if (isFacilioApiConfigured && target && prevContactId) {
-        vacateUnitReal(target, prevContactId).catch((err) => {
-          // eslint-disable-next-line no-console
-          console.warn('[facilio-api] real vacate failed', err);
-        });
+        // Hold the loader across the write AND the re-read, the same way assign does — the surfaces
+        // then go straight from loading to the settled truth instead of showing the pre-vacate
+        // status in between.
+        dispatch({ type: 'SET_UNIT_DETAIL_LOADING', unitId });
+        vacateUnitReal(target, prevContactId)
+          .catch((err) => {
+            // eslint-disable-next-line no-console
+            console.warn('[facilio-api] real vacate failed', err);
+          })
+          // Vacate did neither this nor a cache drop, so the record-derived fields and the
+          // stateflow section kept serving the pre-vacate answer — the desk still read as occupied
+          // until something else forced a read. Runs even when the write failed: the caches are
+          // suspect either way, and a re-read is what reveals the record's real state rather than
+          // leaving the optimistic one on screen.
+          .then(() => refreshUnitReads())
+          .finally(() => {
+            // A failed write must not freeze the surfaces in a loader.
+            dispatch({ type: 'SET_UNIT_DETAIL_LOADING', unitId: null });
+          });
       }
       const prevName = prevContactId ? state.clientContacts.find((c) => c.id === prevContactId)?.name : null;
       if (target) showToast(`${target.label} vacated` + (prevName ? ` — ${prevName} unassigned` : ''));
@@ -1251,10 +1303,16 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       dispatch({ type: 'VACATE', unitId, assignments: next });
       void dataSource.vacateUnit(unitId).catch(() => {});
       if (isFacilioApiConfigured && target) {
-        patchUnitContact(target, null).catch((err) => {
-          // eslint-disable-next-line no-console
-          console.warn('[facilio-api] assignee clear after stateflow vacate failed', err);
-        });
+        dispatch({ type: 'SET_UNIT_DETAIL_LOADING', unitId });
+        patchUnitContact(target, null)
+          .catch((err) => {
+            // eslint-disable-next-line no-console
+            console.warn('[facilio-api] assignee clear after stateflow vacate failed', err);
+          })
+          // Same re-read as the plain vacate above — the transition moved the record's STATE and
+          // this cleared its assignee, so every cached read of it is now stale.
+          .then(() => refreshUnitReads())
+          .finally(() => dispatch({ type: 'SET_UNIT_DETAIL_LOADING', unitId: null }));
       }
     },
     /**
@@ -1270,16 +1328,7 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
     setFlowPending: (unitId: string | null, forUnitId?: string) => {
       dispatch({ type: 'SET_FLOW_PENDING', unitId, forUnitId });
     },
-    unitChanged: () => {
-      invalidateUnitRecordCaches();
-      dispatch({ type: 'UNIT_CHANGED' });
-      // Second pass for the same read-after-write lag the stateflow section allows for: the
-      // record can still answer with its pre-transition values on the first read.
-      window.setTimeout(() => {
-        invalidateUnitRecordCaches();
-        dispatch({ type: 'UNIT_CHANGED' });
-      }, 900);
-    },
+    unitChanged: () => void refreshUnitReads(),
     /** Open the person lookup for an assign / re-assign in its own popup. */
     openPeoplePicker: (unitId: string) => {
       dispatch({ type: 'SET_CONTACT_SEARCH', value: '' });
