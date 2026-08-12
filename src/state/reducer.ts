@@ -533,7 +533,10 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'DRAG_OVER_UNIT':
       return { ...state, dragOverId: action.id };
     case 'ASSIGN':
-      return { ...state, assignments: action.assignments, dragOverId: null, dragContactId: null, selected: action.unitId, webReassign: null, peoplePicker: null, unitNonce: state.unitNonce + 1 };
+      // NO unitNonce bump here: this is the OPTIMISTIC local update, and bumping it kicked off a
+      // record re-read that raced the write + transition and answered with the PREVIOUS status
+      // (reported after drag-and-drop). `assign()` bumps it once the real writes have landed.
+      return { ...state, assignments: action.assignments, dragOverId: null, dragContactId: null, selected: action.unitId, webReassign: null, peoplePicker: null };
     case 'VACATE':
       return { ...state, assignments: action.assignments, unitNonce: state.unitNonce + 1 };
     // Any other action on a record (a stateflow transition) — re-read what's on screen.

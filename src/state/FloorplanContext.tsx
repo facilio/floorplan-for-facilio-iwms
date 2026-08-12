@@ -1133,6 +1133,10 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       const prevContactId = next[unitId];
       next[unitId] = contactId;
       dispatch({ type: 'ASSIGN', unitId, contactId, assignments: next });
+      // The unit stays in its LOADING state until the record write, the state transition and the
+      // cache invalidation have all finished (requested) — the previews then go straight from the
+      // loader to the settled truth instead of showing the pre-assign status in between.
+      dispatch({ type: 'SET_UNIT_DETAIL_LOADING', unitId });
       // Local-store write is BEST-EFFORT: with local fallback off there's no tier that stores
       // assignments (the API tier deliberately throws — its real write is the Moves flow below),
       // and that throw must not abort the action before assignUnitReal runs. In-memory state is
@@ -1174,11 +1178,17 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
               });
             }
             invalidateUnitRecordCaches();
-            dispatch({ type: 'UNIT_CHANGED' });
+            dispatch({ type: 'UNIT_CHANGED' }); // now the summary re-read reflects both writes
+          })
+          .finally(() => {
+            // Whatever happened, stop holding the loader — a failed write must not freeze the
+            // preview in a spinner.
+            dispatch({ type: 'SET_UNIT_DETAIL_LOADING', unitId: null });
           });
       }
       // Resolve names from the LIVE contact directory, not the mock seed — real contacts have
       // numeric ids the mock list can't know, which used to toast the raw id ("8830421 assigned").
+      if (!isFacilioApiConfigured) dispatch({ type: 'SET_UNIT_DETAIL_LOADING', unitId: null });
       const contactName = state.clientContacts.find((c) => c.id === contactId)?.name ?? contactId;
       const prevName = prevContactId ? state.clientContacts.find((c) => c.id === prevContactId)?.name : null;
       showToast(`${contactName} assigned to ${target.label}` + (prevName ? ` — replaced ${prevName}` : ''));
