@@ -310,10 +310,37 @@ async function crudFetchAllRelatedList<T = any>(
   return devFetchAllRelatedList<T>(opts, params);
 }
 
+/** Human-readable file size, so an upload error can state the size that was actually attempted. */
+function fileSizeLabel(bytes: number): string {
+  return bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)}MB` : `${Math.round(bytes / 1024)}KB`;
+}
+
+/**
+ * The SDK bridges the upload to the host org over postMessage, and a large file is the case most
+ * likely to fail there (the bytes are base64'd for the hop, inflating them by about a third).
+ *
+ * Every failure detail is preserved: this used to collapse both a thrown rejection and a
+ * fileId-less response into a bare "upload failed", so the modal had nothing to report and the
+ * cause had to be guessed. The size rides along because it is the first thing worth checking.
+ */
 async function connectedUploadSingleFile(file: File): Promise<{ fileId: number } | { error: Error }> {
   const app = await facilioAppReady();
-  const res = await app.api.uploadFile(file);
-  if (!res?.fileId) return { error: new Error('facilio-api: upload failed') };
+  const where = `${file.name}, ${fileSizeLabel(file.size)}`;
+  let res: { fileId?: string | number; message?: string; error?: unknown } | undefined;
+  try {
+    res = await app.api.uploadFile(file);
+  } catch (err) {
+    return { error: new Error(`the Facilio SDK rejected the upload (${where}): ${(err as Error)?.message || String(err)}`) };
+  }
+  if (!res?.fileId) {
+    let detail: string;
+    try {
+      detail = res?.message || (res?.error ? String(res.error) : res ? JSON.stringify(res).slice(0, 200) : 'no response from the SDK');
+    } catch {
+      detail = 'no response from the SDK';
+    }
+    return { error: new Error(`the upload returned no file id (${where}): ${detail}`) };
+  }
   return { fileId: Number(res.fileId) };
 }
 
