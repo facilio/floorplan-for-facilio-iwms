@@ -29,16 +29,21 @@ export function cadWorkerUrls() {
  * Fixing DWG parsing is a separate job; this only guarantees the wait ENDS, with a rejection a
  * caller can turn into "couldn't read this CAD file".
  *
- * One budget for the whole pass rather than a timeout per await, so the total can't add up past it
- * however slow each step is.
+ * TWO bounds, because the two stalls have very different legitimate durations:
  *
- * SIZED FROM THE PARTS, deliberately: the lazy engine import is ~13MB (a slow cold fetch is easily
- * 10-15s and is NOT the failure being caught here), `waitForCadEntities` allows itself 15s, and the
- * camera-settle sleeps add a fixed 1.5s. A budget under ~35s would therefore start REJECTING real
- * building-scale drawings that were merely slow — trading a hang for a false failure. This catches
- * "never", not "slow", so it is set well above the sum of the legitimate parts.
+ *  - CAD_ENGINE_LOAD_MS covers the lazy ~13MB engine import ALONE. A cold fetch over a slow link is
+ *    legitimately 10-20s and is NOT the failure being caught here, so it gets its own generous
+ *    allowance and is deliberately NOT charged against the budget below.
+ *  - CAD_TIMEOUT_MS covers the document pass (open + the 15s entity settle + 1.5s of camera-settle
+ *    sleeps). 30s (the requested 20-30s window) is what turns "the parser never answered" into an
+ *    error the user can act on while it's still plausibly their problem to retry. The risk this
+ *    accepts, stated plainly: a genuinely enormous drawing that would have parsed in 40s now fails
+ *    as unreadable — and it still reaches the org, because the upload no longer waits on the render
+ *    at all (see FloorUploadModal). That trade is the whole point of the ordering fix; raise this
+ *    only if real drawings are seen failing on time rather than on content.
  */
-export const CAD_TIMEOUT_MS = 60_000;
+export const CAD_ENGINE_LOAD_MS = 45_000;
+export const CAD_TIMEOUT_MS = 30_000;
 
 /** Rejects `promise` if it hasn't settled within `ms`, naming the stage. `cad-timeout:` prefixed so callers can word it differently from a parse failure. */
 export function withCadTimeout<T>(promise: Promise<T>, ms: number, what: string): Promise<T> {
@@ -75,6 +80,14 @@ export function cadBudget(ms = CAD_TIMEOUT_MS): CadBudget {
     remainingMs: () => deadline - Date.now(),
     guard: <T,>(work: Promise<T>, label: string) => withCadTimeout(work, deadline - Date.now(), label),
   };
+}
+
+/**
+ * The CAD engine module, bounded separately from the document pass (see CAD_ENGINE_LOAD_MS) — and
+ * loaded BEFORE the pass budget starts, so a cold 13MB fetch can't eat the parse's allowance.
+ */
+export function loadCadEngine(): Promise<typeof import('@mlightcad/cad-simple-viewer')> {
+  return withCadTimeout(import('@mlightcad/cad-simple-viewer'), CAD_ENGINE_LOAD_MS, 'loading the CAD engine');
 }
 
 /**
@@ -123,10 +136,11 @@ export async function waitForCadEntities(view: any, budget: CadBudget): Promise<
  * higher-scale render frames the identical content — only sharper.
  */
 export async function renderCadToDataUrl(file: File, scale = 1): Promise<string> {
-  // Every await below draws from ONE deadline (see CAD_TIMEOUT_MS) — an engine or parser that
-  // never answers rejects instead of hanging the caller forever.
+  // Time-bounded throughout (see CAD_TIMEOUT_MS): an engine or parser that never answers rejects
+  // instead of hanging the caller forever. The engine load is bounded on its own; the document pass
+  // that follows shares one deadline.
+  const mod = await loadCadEngine();
   const budget = cadBudget();
-  const mod = await budget.guard(import('@mlightcad/cad-simple-viewer'), 'loading the CAD engine');
   const { AcApDocManager, AcApOpenViewMode } = mod;
 
   const w = Math.round(1492 * scale);

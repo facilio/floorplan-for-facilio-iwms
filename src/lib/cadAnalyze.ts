@@ -1,5 +1,5 @@
 import type { UnitType } from './types';
-import { cadBudget, cadCanvasToLightSnapshot, cadWorkerUrls, openCadDocument, pinCadCamera, waitForCadEntities } from './cadPreview';
+import { cadBudget, cadCanvasToLightSnapshot, cadWorkerUrls, loadCadEngine, openCadDocument, pinCadCamera, waitForCadEntities } from './cadPreview';
 
 /**
  * Opens a DWG/DXF once and produces BOTH the rendered preview snapshot and
@@ -64,10 +64,10 @@ interface WorldPoint {
 }
 
 export async function analyzeCadFile(file: File): Promise<CadAnalysis> {
-  // Same single-deadline discipline as renderCadToDataUrl — see CAD_TIMEOUT_MS for the DWG hang
-  // this exists to end.
+  // Same time-bounding discipline as renderCadToDataUrl — see CAD_TIMEOUT_MS for the DWG hang this
+  // exists to end.
+  const mod = await loadCadEngine();
   const budget = cadBudget();
-  const mod = await budget.guard(import('@mlightcad/cad-simple-viewer'), 'loading the CAD engine');
   const { AcApDocManager, AcApOpenViewMode } = mod;
 
   const container = document.createElement('div');
