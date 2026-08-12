@@ -21,8 +21,12 @@ export function Tooltip() {
   // rather than loading. Sticky per unit as well, so a flag raised again for a unit already showing
   // real content (the panel and the popup each mount a stateflow section for it) can't pull that
   // content back out.
+  // 400ms measured from the report, not guessed: frames of a real selection show the skeleton still
+  // up at 1.5s and the content in place by 1.7s, i.e. these reads land around 250-400ms. A shorter
+  // threshold flashes on exactly the common case. Nothing is hidden meanwhile — the popup already
+  // has the unit's name and type from the plan feed; only record-derived fields wait.
   const detailPending = !!unit && (state.unitDetailLoading === unit.id || state.flowPendingUnitId === unit.id);
-  const detailLoading = useDelayedFlag(detailPending, { key: unit?.id, sticky: true });
+  const detailLoading = useDelayedFlag(detailPending, { key: unit?.id, sticky: true, delayMs: 400 });
   if (!unit) return null;
   // EDIT mode: no popover. It floated right over the selected room and its corner handles,
   // blocking dimension edits — and closing it deselected the unit, which killed the handles

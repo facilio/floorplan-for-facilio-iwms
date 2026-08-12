@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
 import { isFacilioApiConfigured } from '../../lib/facilioApi';
@@ -91,6 +91,32 @@ export function StateflowActions({
   useEffect(() => {
     if (readsSettled && unitId) actions.setFlowPending(null, unitId);
   });
+
+  /**
+   * DROP THE PREVIOUS RECORD'S ANSWERS THE MOMENT THE RECORD CHANGES.
+   *
+   * `flow`/`approval` used to survive until the new read resolved, so selecting a different unit
+   * rendered the OLD record's state pill and transition buttons under the NEW record's name — a
+   * free room showed "Assigned" with a Re-assign button for as long as the read took, then swapped
+   * to "Assignable / Assign a person". That swap is what reads as flickering, and it is not merely
+   * cosmetic: those buttons were live, so a click acted on the newly selected record using a
+   * transition offered for the previous one.
+   *
+   * Adjusted during render (React's supported pattern for state derived from changing props) rather
+   * than in an effect, because an effect would still let one frame paint the stale answer — exactly
+   * the frame captured in the report.
+   *
+   * Keyed on record IDENTITY only: `refreshKey`/`nonce` re-read the SAME record after an action, and
+   * blanking the section on those would replace one flicker with another.
+   */
+  const identity = `${moduleName}:${recordId}`;
+  const lastIdentity = useRef(identity);
+  if (lastIdentity.current !== identity) {
+    lastIdentity.current = identity;
+    setFlow(null);
+    setApproval(null);
+    setReadsSettled(false);
+  }
 
   useEffect(() => {
     if (!isFacilioApiConfigured) return;
