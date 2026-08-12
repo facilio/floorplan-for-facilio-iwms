@@ -180,6 +180,8 @@ export interface AppState {
   /** Unit whose STATEFLOW read is still in flight — the popup's loader waits for this too, so the
    *  state pill and the action buttons don't appear a beat after everything else. */
   flowPendingUnitId: string | null;
+  /** True while the manual "refresh this floor" re-read is in flight. */
+  refreshing: boolean;
   /** True when running inside a non-maintenance (portal) app — resolved from fetchCurrentApp. */
   isPortalApp: boolean;
   /**

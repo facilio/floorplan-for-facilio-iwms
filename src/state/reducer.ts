@@ -148,6 +148,7 @@ export function buildInitialState(): AppState {
     floorsWithPlans: {},
     unitDetailLoading: null,
     flowPendingUnitId: null,
+    refreshing: false,
     isPortalApp: false,
     portalPlanFloors: null,
     floorPlanTypes: {},
@@ -212,6 +213,7 @@ export type Action =
   | { type: 'VACATE'; unitId: string; assignments: AppState['assignments'] }
   | { type: 'UNIT_CHANGED' }
   | { type: 'SET_FLOW_PENDING'; unitId: string | null }
+  | { type: 'SET_REFRESHING'; value: boolean }
   | { type: 'SET_WEB_REASSIGN'; id: string | null }
   | { type: 'SET_PEOPLE_PICKER'; id: string | null }
   | { type: 'SET_DATE'; value: string; bookings: Booking[] }
@@ -542,6 +544,8 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'VACATE':
       return { ...state, assignments: action.assignments, unitNonce: state.unitNonce + 1 };
     // Any other action on a record (a stateflow transition) — re-read what's on screen.
+    case 'SET_REFRESHING':
+      return { ...state, refreshing: action.value };
     case 'SET_FLOW_PENDING':
       return { ...state, flowPendingUnitId: action.unitId };
     case 'UNIT_CHANGED':

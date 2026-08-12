@@ -69,6 +69,34 @@ export function Toolbar({ leftPad, rightPad }: { leftPad: number; rightPad: numb
           </button>
         )}
 
+        {/* REFRESH the floor already on screen — plan image, desks/rooms/stalls, assignments and
+            the day's bookings. Never re-resolves WHICH floor (see actions.refreshFloor), so it
+            can't move you, and it leaves the camera alone so zoom/pan survive. */}
+        <button
+          className={styles.iconToggle}
+          data-tip={state.refreshing ? 'Refreshing…' : 'Refresh this floor'}
+          data-tip-align="center"
+          data-tip-pos="top"
+          aria-label="Refresh this floor"
+          disabled={state.refreshing}
+          onClick={() => void actions.refreshFloor()}
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            style={state.refreshing ? { animation: 'fp-spin 720ms linear infinite', color: 'var(--blue-600)' } : undefined}
+          >
+            <path d="M21 12a9 9 0 1 1-3.5-7.1" />
+            <path d="M21 4v5h-5" />
+          </svg>
+        </button>
+
         <button
           className={[styles.iconToggle, state.panels.details.open ? styles.iconToggleActive : ''].join(' ')}
           data-tip="Toggle details panel"

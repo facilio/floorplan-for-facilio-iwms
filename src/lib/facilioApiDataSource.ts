@@ -730,6 +730,13 @@ const floorRecordsCache = new Map<string, { at: number; promise: Promise<any[]> 
  * rows are overlaid LAST in viewerDataAssignmentsForFloor (they're treated as the authority), so
  * clearing only viewerDataCache let a stale row win over a fresh feed.
  */
+/** Everything keyed to ONE floor — the manual refresh drops this before re-reading. */
+export function invalidateFloorCaches(floorId: string): void {
+  floorplanDetailsCache.delete(floorId);
+  viewerDataCache.clear();
+  floorRecordsCache.clear();
+}
+
 export function invalidateUnitRecordCaches(): void {
   viewerDataCache.clear();
   floorRecordsCache.clear();

@@ -10,7 +10,7 @@ import type { CadGroup } from '../lib/cadAnalyze';
 import type { Asset } from '../lib/assets';
 import { isFacilioApiConfigured } from '../lib/facilioApi';
 import { runAssignTransition } from '../lib/stateflowApi';
-import { assignUnitReal, createRealBooking, fetchCurrentApp, fetchCurrentPeopleId, fetchFloorplanCustomization, fetchFloorplanImageResult, fetchMyDesk, fetchOrgTimezone, fetchPortalPlanFloors, fetchUnitAssigneeFromSummary, fetchUnitRecordDetails, findFloorParents, floorExists, findUnitIdForDeskRecord, getAnyFloor, getFloorPlanSummary, patchUnitContact, resolveHardcodedRolePerms, resolveModePermsForCurrentUser, saveFloorplanDefaultView, invalidateUnitRecordCaches, resolveUnitRecordRef, saveFloorplanMarkers, searchClientContacts, vacateUnitReal } from '../lib/facilioApiDataSource';
+import { assignUnitReal, createRealBooking, fetchCurrentApp, fetchCurrentPeopleId, fetchFloorplanCustomization, fetchFloorplanImageResult, fetchMyDesk, fetchOrgTimezone, fetchPortalPlanFloors, fetchUnitAssigneeFromSummary, fetchUnitRecordDetails, findFloorParents, floorExists, findUnitIdForDeskRecord, getAnyFloor, getFloorPlanSummary, patchUnitContact, resolveHardcodedRolePerms, resolveModePermsForCurrentUser, saveFloorplanDefaultView, invalidateFloorCaches, invalidateUnitRecordCaches, resolveUnitRecordRef, saveFloorplanMarkers, searchClientContacts, vacateUnitReal } from '../lib/facilioApiDataSource';
 import { listFloorplanFloorIds, loadFloorplanFile, persistFloorplanFile } from '../lib/floorplanFileStore';
 import { DEFAULT_PERMS_MODULE_NAME, loadEffectiveSettings, saveSettings, settingsFromState } from '../lib/settingsStore';
 import { floorFromLocation, pathForView, viewFromLocation, withFloorParam } from '../lib/routes';
@@ -502,6 +502,30 @@ function buildActions(state: AppState, dispatch: Dispatch<Action>, canvasRectRef
       }
     },
 
+    /**
+     * Re-read EVERYTHING for the floor already on screen (requested). Deliberately not
+     * `selectFloor(state.floorId)`: that re-runs the floor RESOLUTION, which can land you on a
+     * landing/default floor — a refresh must never move you. Caches are dropped first, or the
+     * reads would replay the very answers this is meant to refresh, and the camera is left alone
+     * so you keep your zoom and pan.
+     */
+    refreshFloor: async () => {
+      if (state.unsavedChanges > 0) {
+        showToast('Save or discard your changes first — refreshing would re-read over them', { variant: 'error' });
+        return;
+      }
+      dispatch({ type: 'SET_REFRESHING', value: true });
+      try {
+        invalidateUnitRecordCaches();
+        invalidateFloorCaches(state.floorId);
+        await loadFloor(state.floorId);
+        showToast('Floor refreshed');
+      } catch (err) {
+        showToast(`Couldn't refresh this floor: ${(err as Error)?.message || 'unknown error'}`, { variant: 'error' });
+      } finally {
+        dispatch({ type: 'SET_REFRESHING', value: false });
+      }
+    },
     selectFloor: (floorId: string) => {
       if (floorId === state.floorId) return;
       loadFloor(floorId);

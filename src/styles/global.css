@@ -310,3 +310,10 @@ button {
     transition: none;
   }
 }
+
+/* Spinner for the toolbar's refresh control. */
+@keyframes fp-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
