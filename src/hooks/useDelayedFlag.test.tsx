@@ -58,6 +58,20 @@ describe('useDelayedFlag', () => {
     expect(shown(c)).toBe('content');
   });
 
+  it('shows the loader again after an action re-reads the same unit', () => {
+    // Stickiness must not outlive the read it was protecting. Callers key it on unit + action nonce,
+    // so running a transition (Vacate, assign) counts as new work: keyed on the unit alone, the
+    // loader was suppressed for the rest of that unit's life and a transition re-read showed nothing
+    // loading at all.
+    const c = render(<Probe active unitId="u1:0" />);
+    c.rerender(<Probe active={false} unitId="u1:0" />); // first read settled
+    expect(shown(c)).toBe('content');
+    // A transition runs -> nonce bumps -> same unit, new key.
+    c.rerender(<Probe active unitId="u1:1" />);
+    act(() => void vi.advanceTimersByTime(200));
+    expect(shown(c)).toBe('loading');
+  });
+
   it('reproduces the OLD flash when the delay and stickiness are removed', () => {
     // Guards the guard: with delayMs 0 and no stickiness — what the popup did before, reading the
     // flags straight — both reported symptoms come back. If this ever passes as 'content', the

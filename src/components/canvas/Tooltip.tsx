@@ -18,15 +18,22 @@ export function Tooltip() {
   //
   // DELAYED, because both of the reads this waits on are usually answered from cache within a frame
   // or two: painting the skeleton immediately made it flash and vanish, which reads as flickering
-  // rather than loading. Sticky per unit as well, so a flag raised again for a unit already showing
-  // real content (the panel and the popup each mount a stateflow section for it) can't pull that
-  // content back out.
-  // 400ms measured from the report, not guessed: frames of a real selection show the skeleton still
-  // up at 1.5s and the content in place by 1.7s, i.e. these reads land around 250-400ms. A shorter
-  // threshold flashes on exactly the common case. Nothing is hidden meanwhile — the popup already
-  // has the unit's name and type from the plan feed; only record-derived fields wait.
+  // rather than loading. 400ms measured from a recording of a real selection, not guessed — the
+  // skeleton is still up at 1.5s and the content in place by 1.7s, so these reads land around
+  // 250-400ms and a shorter threshold flashes on exactly the common case. Nothing is hidden
+  // meanwhile: the popup already has the unit's name and type from the plan feed.
+  //
+  // Sticky, so a flag raised again for content already on screen can't pull it back out — the
+  // assignment panel and the popup each mount a stateflow section for the same unit, and the second
+  // one to mount would otherwise send it back to skeletons.
+  //
+  // Keyed on unit AND `unitNonce`, which is what makes stickiness safe. Keyed on the unit alone it
+  // suppressed the loader for the rest of that unit's life, including the genuine re-read after a
+  // transition — running Vacate then showed no loading at all while the record was actually being
+  // re-read. The nonce bumps on every action, so an action-triggered read counts as new work and is
+  // allowed to show a loader again.
   const detailPending = !!unit && (state.unitDetailLoading === unit.id || state.flowPendingUnitId === unit.id);
-  const detailLoading = useDelayedFlag(detailPending, { key: unit?.id, sticky: true, delayMs: 400 });
+  const detailLoading = useDelayedFlag(detailPending, { key: unit ? `${unit.id}:${state.unitNonce}` : undefined, sticky: true, delayMs: 400 });
   if (!unit) return null;
   // EDIT mode: no popover. It floated right over the selected room and its corner handles,
   // blocking dimension edits — and closing it deselected the unit, which killed the handles
