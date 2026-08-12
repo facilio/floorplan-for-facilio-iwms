@@ -1,5 +1,5 @@
 import type { UnitType } from './types';
-import { cadCanvasToLightSnapshot, cadWorkerUrls, pinCadCamera } from './cadPreview';
+import { cadBudget, cadCanvasToLightSnapshot, cadWorkerUrls, openCadDocument, pinCadCamera, waitForCadEntities } from './cadPreview';
 
 /**
  * Opens a DWG/DXF once and produces BOTH the rendered preview snapshot and
@@ -64,7 +64,10 @@ interface WorldPoint {
 }
 
 export async function analyzeCadFile(file: File): Promise<CadAnalysis> {
-  const mod = await import('@mlightcad/cad-simple-viewer');
+  // Same single-deadline discipline as renderCadToDataUrl — see CAD_TIMEOUT_MS for the DWG hang
+  // this exists to end.
+  const budget = cadBudget();
+  const mod = await budget.guard(import('@mlightcad/cad-simple-viewer'), 'loading the CAD engine');
   const { AcApDocManager, AcApOpenViewMode } = mod;
 
   const container = document.createElement('div');
@@ -88,14 +91,11 @@ export async function analyzeCadFile(file: File): Promise<CadAnalysis> {
     if (!manager) throw new Error('CAD viewer failed to initialize');
 
     const buffer = await file.arrayBuffer();
-    const ok = await manager.openDocument(file.name, buffer, { openViewMode: AcApOpenViewMode.Extents });
+    const ok = await openCadDocument(manager, file, buffer, AcApOpenViewMode.Extents, budget);
     if (!ok) throw new Error('Could not parse this CAD file');
 
     // Same settle dance as renderCadToDataUrl (see cadPreview.ts for the why).
-    const deadline = Date.now() + 15000;
-    while (manager.curView.isProcessingEntities && Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 150));
-    }
+    await waitForCadEntities(manager.curView, budget);
     manager.curView.zoomToFitDrawing();
     await new Promise((r) => setTimeout(r, 1200));
     // Same DETERMINISTIC camera pin as renderCadToDataUrl — pinCadCamera reuses the FILE's one

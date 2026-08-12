@@ -17,6 +17,101 @@ export function cadWorkerUrls() {
 }
 
 /**
+ * WALL-CLOCK BUDGET for ONE CAD pass (engine load + document open + entity settle + snapshot),
+ * after which the attempt REJECTS instead of hanging.
+ *
+ * Why this exists (established by live investigation, not defensive guesswork): for a DWG,
+ * `cad-simple-viewer` and the mtext-render worker load fine but `libredwg-parser-worker.js` is
+ * NEVER requested at all (the asset itself serves 200, 12.5MB) — so `openDocument()`'s promise
+ * never settles, in either direction. Neither the lazy ~13MB engine import nor `openDocument`
+ * rejects on its own, so anything awaiting them waited forever with no error to report: the upload
+ * modal sat on "Rendering…" and the code that actually SENDS the file to Facilio was never reached.
+ * Fixing DWG parsing is a separate job; this only guarantees the wait ENDS, with a rejection a
+ * caller can turn into "couldn't read this CAD file".
+ *
+ * One budget for the whole pass rather than a timeout per await, so the total can't add up past it
+ * however slow each step is.
+ *
+ * SIZED FROM THE PARTS, deliberately: the lazy engine import is ~13MB (a slow cold fetch is easily
+ * 10-15s and is NOT the failure being caught here), `waitForCadEntities` allows itself 15s, and the
+ * camera-settle sleeps add a fixed 1.5s. A budget under ~35s would therefore start REJECTING real
+ * building-scale drawings that were merely slow — trading a hang for a false failure. This catches
+ * "never", not "slow", so it is set well above the sum of the legitimate parts.
+ */
+export const CAD_TIMEOUT_MS = 60_000;
+
+/** Rejects `promise` if it hasn't settled within `ms`, naming the stage. `cad-timeout:` prefixed so callers can word it differently from a parse failure. */
+export function withCadTimeout<T>(promise: Promise<T>, ms: number, what: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`cad-timeout: ${what} didn't finish within ${Math.round(ms / 1000)}s`)), Math.max(0, ms));
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      }
+    );
+  });
+}
+
+/** True for this module's own timeout rejection (a stalled engine/parser), as opposed to a file it read and couldn't parse. */
+export function isCadTimeoutError(err: unknown): boolean {
+  return /^cad-timeout:/.test((err as Error)?.message ?? '');
+}
+
+/** One shared deadline for a whole CAD pass — every step draws from the same remaining time. */
+export interface CadBudget {
+  remainingMs(): number;
+  /** Rejects with a `cad-timeout:` error if `work` hasn't settled by the deadline. */
+  guard<T>(work: Promise<T>, label: string): Promise<T>;
+}
+
+export function cadBudget(ms = CAD_TIMEOUT_MS): CadBudget {
+  const deadline = Date.now() + ms;
+  return {
+    remainingMs: () => deadline - Date.now(),
+    guard: <T,>(work: Promise<T>, label: string) => withCadTimeout(work, deadline - Date.now(), label),
+  };
+}
+
+/**
+ * `openDocument`, bounded by the pass budget. On timeout the underlying open may stay pending
+ * forever, so the viewer is torn down WITHOUT awaiting the teardown (a hung open can hang destroy
+ * too) — otherwise a timed-out attempt keeps its WebGL context, canvas and parser alive for the
+ * rest of the session.
+ */
+export async function openCadDocument(manager: any, file: File, buffer: ArrayBuffer, openViewMode: unknown, budget: CadBudget): Promise<boolean> {
+  try {
+    return await budget.guard(Promise.resolve(manager.openDocument(file.name, buffer, { openViewMode })), `reading ${file.name}`);
+  } catch (err) {
+    try {
+      void Promise.resolve(manager.destroy?.()).catch(() => {});
+    } catch {
+      /* best effort */
+    }
+    throw err;
+  }
+}
+
+/**
+ * Waits for entity conversion to finish, bounded by BOTH its own 15s allowance and what's left of
+ * the pass budget. `openDocument()` resolving doesn't mean conversion is done — for DWG especially
+ * (parsed off-thread via a web worker), batch conversion keeps running afterward, and the library's
+ * own docs warn that "parsing can report 100% before this reaches zero." A real building-scale DWG
+ * confirmed this: openDocument resolved, but the canvas was still fully blank moments later.
+ */
+export async function waitForCadEntities(view: any, budget: CadBudget): Promise<void> {
+  const deadline = Date.now() + 15_000;
+  // Leave ~1.5s of budget for the fixed camera-settle sleeps that follow.
+  while (view.isProcessingEntities && Date.now() < deadline && budget.remainingMs() > 1_500) {
+    await new Promise((r) => setTimeout(r, 150));
+  }
+}
+
+/**
  * Renders a DWG/DXF file to a PNG data URL using @mlightcad/cad-simple-viewer
  * (a pure client-side, WASM-backed CAD parser/renderer — no server round-trip).
  * The heavy parser bundle (~13MB for DWG via LibreDWG) is only fetched lazily,
@@ -28,7 +123,10 @@ export function cadWorkerUrls() {
  * higher-scale render frames the identical content — only sharper.
  */
 export async function renderCadToDataUrl(file: File, scale = 1): Promise<string> {
-  const mod = await import('@mlightcad/cad-simple-viewer');
+  // Every await below draws from ONE deadline (see CAD_TIMEOUT_MS) — an engine or parser that
+  // never answers rejects instead of hanging the caller forever.
+  const budget = cadBudget();
+  const mod = await budget.guard(import('@mlightcad/cad-simple-viewer'), 'loading the CAD engine');
   const { AcApDocManager, AcApOpenViewMode } = mod;
 
   const w = Math.round(1492 * scale);
@@ -61,19 +159,12 @@ export async function renderCadToDataUrl(file: File, scale = 1): Promise<string>
     // snapshot render (not an interactive edit session) that saved view can easily point at an
     // empty region, producing a blank canvas even though the drawing parsed fine. Forcing
     // `Extents` always fits the camera to the real content.
-    const ok = await manager.openDocument(file.name, buffer, { openViewMode: AcApOpenViewMode.Extents });
+    const ok = await openCadDocument(manager, file, buffer, AcApOpenViewMode.Extents, budget);
     if (!ok) throw new Error('Could not parse this CAD file');
 
-    // `openDocument()` resolving doesn't mean entity conversion is done — for DWG especially
-    // (parsed off-thread via a web worker), batch conversion keeps running afterward, and the
-    // library's own docs warn that "parsing can report 100% before this reaches zero." A real
-    // building-scale DWG confirmed this: openDocument resolved, but the canvas was still fully
-    // blank moments later. Wait for `isProcessingEntities` to clear, then fit the camera
+    // Entity conversion outlives openDocument — see waitForCadEntities. Then fit the camera
     // ourselves rather than trust the auto-fit's internal timing against our own snapshot delay.
-    const deadline = Date.now() + 15000;
-    while (manager.curView.isProcessingEntities && Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 150));
-    }
+    await waitForCadEntities(manager.curView, budget);
     manager.curView.zoomToFitDrawing();
     // The fit itself isn't synchronous either (confirmed against the real building DWG: the
     // camera's position/zoom were still at their pre-fit default a tick after this call, and
