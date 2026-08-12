@@ -26,13 +26,6 @@ const MODE_PERM_COLS: { id: keyof ModePerms; name: string; desc: string }[] = [
   { id: 'book', name: 'Booking', desc: 'The Booking tab — reserve hot desks, rooms, parking' },
 ];
 
-const SLOT_OPTIONS = [
-  { minutes: 15, label: '15m' },
-  { minutes: 30, label: '30m' },
-  { minutes: 60, label: '1h' },
-  { minutes: 120, label: '2h' },
-];
-
 export function SettingsScreen() {
   const { state, actions } = useFloorplan();
 
@@ -461,10 +454,15 @@ function ModuleSetupTab() {
   );
 }
 
+/**
+ * No "Default slot length" here any more (removed on request). It read as a per-module setting but
+ * wrote ONE shared `state.slotGranularity`, and picking a resource overwrites that from the
+ * resource itself (see reducer's booking-length rule) — so whatever was chosen here was discarded
+ * the moment a desk or room was selected.
+ */
 function ModuleTab({ type }: { type: UnitType }) {
   const { state, actions } = useFloorplan();
   const defs = STATE_DEFS[type];
-  const showSlot = type !== 'locker';
 
   return (
     <div className={styles.stack}>
@@ -498,25 +496,6 @@ function ModuleTab({ type }: { type: UnitType }) {
         ))}
       </div>
 
-      {showSlot && (
-        <div className={styles.card}>
-          <div className={styles.cardHead}>
-            <h3 className={styles.cardTitle}>Default slot length</h3>
-            <p className={styles.cardDesc}>New bookings start at this length. Drag the calendar edges to fine-tune any booking.</p>
-          </div>
-          <div className={styles.slotRow}>
-            {SLOT_OPTIONS.map((o) => (
-              <button
-                key={o.minutes}
-                className={[styles.slotChip, state.slotGranularity === o.minutes ? styles.slotChipActive : ''].join(' ')}
-                onClick={() => actions.setSlotGranularity(o.minutes)}
-              >
-                {o.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
