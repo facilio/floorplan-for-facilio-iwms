@@ -1,99 +1,171 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { DragEvent as ReactDragEvent } from 'react';
 import { useFloorplan } from '../../state/FloorplanContext';
 import { Modal, ModalFooter, ModalHeader } from '../primitives/Modal';
 import { Button } from '../primitives/Button';
-import { isCadFile } from '../../lib/cadPreview';
+import { isCadFile, isCadTimeoutError } from '../../lib/cadPreview';
 import { analyzeCadFile } from '../../lib/cadAnalyze';
 import type { CadGroup } from '../../lib/cadAnalyze';
 import { renderPdfToDataUrl } from '../../lib/pdfPreview';
 import { isFacilioApiConfigured } from '../../lib/facilioApi';
-import { uploadFloorplanFile } from '../../lib/facilioApiDataSource';
+import { updateFloorplanGeometry, uploadFloorplanFile, type FloorplanFileUploadResult } from '../../lib/facilioApiDataSource';
 import { measureImageDataUrl } from '../../lib/geoReference';
 import styles from './FloorUploadModal.module.css';
 
 const ACCEPT = '.png,.jpg,.jpeg,.svg,.pdf,.dwg,.dxf,image/png,image/jpeg,image/svg+xml,application/pdf';
 
+/**
+ * SVGs without width/height attributes measure as 0×0 (or a browser default), and a broken raster
+ * can measure tiny — anything implausible counts as UNMEASURED rather than sizing a geo-reference
+ * quad from it.
+ */
+function plausible(size: { width: number; height: number } | undefined): size is { width: number; height: number } {
+  return !!size && size.width > 10 && size.height > 10;
+}
+
 export function FloorUploadModal() {
   const { state, actions } = useFloorplan();
   const inputRef = useRef<HTMLInputElement>(null);
+  /**
+   * In-flight guard. Dropping a second file while the first upload was still running let BOTH run:
+   * whichever finished last won the plan record and the local image, so the file the user dropped
+   * first could end up being the one that stuck.
+   */
+  const busyRef = useRef(false);
   const [status, setStatus] = useState<'idle' | 'working' | 'error'>('idle');
+  const [phase, setPhase] = useState<'uploading' | 'rendering'>('uploading');
   const [error, setError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
 
+  // Reset between opens — status/error used to persist, so re-opening after a failure showed the
+  // OLD error over a fresh dropzone. An upload still running from a previous open keeps its state.
+  useEffect(() => {
+    if (!state.uploadOpen || busyRef.current) return;
+    setStatus('idle');
+    setError(null);
+    setFileName(null);
+  }, [state.uploadOpen]);
+
   if (!state.uploadOpen) return null;
 
+  /**
+   * UPLOAD FIRST, RENDER SECOND (requested order): (1) the file goes to Facilio, (2-3) the
+   * `indoorfloorplan` record and the floor's `indoorFloorPlanId` are written, (4) the plan record is
+   * read back as the source of truth — all four without touching the CAD/PDF engines — and only
+   * THEN (5) the drawing is rendered, measured, analysed and auto-mapped.
+   *
+   * This order IS the fix: the CAD analysis used to run first, and for a DWG whose parser never
+   * settles the upload request was never sent at all — no error, nothing in the network tab, the
+   * file simply never left the browser. Now a CAD file that can't be read still reaches the org,
+   * and the render is bounded by a timeout (see CAD_TIMEOUT_MS) instead of hanging.
+   */
   async function handleFile(file: File) {
+    if (busyRef.current) {
+      actions.showToast('Still working on the previous file — wait for it to finish', { variant: 'warning' });
+      return;
+    }
+    const cad = isCadFile(file.name);
+    const isSvg = /\.svg$/i.test(file.name);
+    const isPlainImage = /\.(png|jpe?g|svg)$/i.test(file.name);
+    const isPdf = /\.pdf$/i.test(file.name);
+    if (!cad && !isPlainImage && !isPdf) {
+      setStatus('error');
+      setError('Unsupported file type');
+      return;
+    }
+
+    busyRef.current = true;
     setFileName(file.name);
+    setPhase(isFacilioApiConfigured ? 'uploading' : 'rendering');
     setStatus('working');
     setError(null);
-    const cad = isCadFile(file.name);
     try {
-      const isSvg = /\.svg$/i.test(file.name);
-      const isPlainImage = /\.(png|jpe?g|svg)$/i.test(file.name);
-      // previewUrl stays null when the browser can't render the file (a DWG the CAD engine
-      // chokes on) — we then rely on Facilio's server-rendered image fetched by file id.
+      // A plain raster's size is readable with a FileReader + <img> — no parser that can stall — so
+      // it still rides along with the create and the record gets its exact quad first time.
       let previewUrl: string | null = null;
+      let dimensions: { width: number; height: number } | undefined;
+      if (isPlainImage) {
+        previewUrl = await fileToDataUrl(file).catch(() => null);
+        const measured = previewUrl ? await measureImageDataUrl(previewUrl).catch(() => undefined) : undefined;
+        if (plausible(measured)) dimensions = measured;
+      }
+
+      // ---- STEPS 1-4: file → plan record → floor link → read-back ----
+      let upload: FloorplanFileUploadResult | null = null;
+      let uploadFailedMsg: string | null = null;
+      if (isFacilioApiConfigured) {
+        try {
+          upload = await uploadFloorplanFile(state.floorId, state.planId, file, dimensions);
+        } catch (uploadErr) {
+          // The backend never received the file. A local preview may still render below, but this
+          // must NOT read as a successful "floorplan updated" — see uploadFailedMsg use.
+          uploadFailedMsg = (uploadErr as Error).message || 'upload failed';
+          // eslint-disable-next-line no-console
+          console.warn('[FloorUploadModal] Facilio upload failed', uploadErr);
+        }
+      }
+      const uploadedFileId = upload?.fileId ?? null;
+      const attachedToFloorPlan = upload?.attachedToFloorPlan ?? false;
+      if (upload && !upload.attachedToFloorPlan) {
+        // eslint-disable-next-line no-console
+        console.warn("[FloorUploadModal] Uploaded to Facilio but could not attach to this floor's indoorfloorplan record:", upload.attachError);
+      } else if (upload) {
+        // A create just changed which plan types this floor has — refresh the switcher.
+        void actions.refreshPlanTypes();
+      }
+
+      // ---- STEP 5: render the preview, measure it, analyse the CAD ----
+      setPhase('rendering');
       let cadGroups: CadGroup[] = [];
       let clientRenderFailed = false;
+      let cadTimedOut = false;
       if (cad) {
         // One document-open pass renders the snapshot AND extracts the drawing's mappable
-        // structure. If the embedded CAD engine can't parse this DWG, DON'T abort — fall
-        // through and let the server render it from the uploaded file id.
+        // structure. A CAD engine that can't read this file is NOT fatal any more — the file is
+        // already stored; fall through to Facilio's server-rendered image.
         try {
           const analysis = await analyzeCadFile(file);
           previewUrl = analysis.previewUrl;
           cadGroups = analysis.groups;
         } catch (cadErr) {
           clientRenderFailed = true;
+          cadTimedOut = isCadTimeoutError(cadErr);
           // eslint-disable-next-line no-console
           console.warn('[FloorUploadModal] Browser CAD render failed; will try the server-rendered image', cadErr);
         }
-      } else if (/\.pdf$/i.test(file.name)) {
-        previewUrl = await renderPdfToDataUrl(file);
-      } else if (isPlainImage) {
-        previewUrl = await fileToDataUrl(file);
-      } else {
-        throw new Error('Unsupported file type');
+      } else if (isPdf) {
+        try {
+          previewUrl = await renderPdfToDataUrl(file);
+        } catch (pdfErr) {
+          clientRenderFailed = true;
+          // eslint-disable-next-line no-console
+          console.warn('[FloorUploadModal] Browser PDF render failed; will try the server-rendered image', pdfErr);
+        }
+      }
+      // Plain raster: use the round-tripped original (proves the real round-trip). SVG keeps the
+      // LOCAL data URL — a round-tripped blob only renders as SVG when its MIME survived the trip,
+      // and the local read is guaranteed correct either way.
+      if (upload && isPlainImage && !isSvg) previewUrl = upload.previewUrl;
+      // Nothing the browser could draw → use Facilio's server-RENDERED image by file id.
+      let serverImageUsed = false;
+      if (!previewUrl && upload?.serverImageUrl) {
+        previewUrl = upload.serverImageUrl;
+        serverImageUsed = true;
       }
 
-      let uploadedFileId: number | null = null;
-      let attachedToFloorPlan = false;
-      let serverImageUsed = false;
-      let uploadFailedMsg: string | null = null;
-      if (isFacilioApiConfigured) {
-        try {
-          // Measured off the rendered preview when we have one (sizes the synthetic
-          // geo-reference quad). No local render (CAD failed) → skip; the server sizes it.
-          // SVGs without width/height attributes measure as 0×0 (or a browser default) —
-          // treat anything implausible as unmeasured rather than sizing geometry from it.
-          const measured = previewUrl ? await measureImageDataUrl(previewUrl).catch(() => undefined) : undefined;
-          const dimensions = measured && measured.width > 10 && measured.height > 10 ? measured : undefined;
-          const uploaded = await uploadFloorplanFile(state.floorId, state.planId, file, dimensions);
-          uploadedFileId = uploaded.fileId;
-          attachedToFloorPlan = uploaded.attachedToFloorPlan;
-          // Plain raster: use the round-tripped original (proves the real round-trip). SVG keeps
-          // the LOCAL data URL — a round-tripped blob only renders as SVG when its MIME survived
-          // the trip, and the local read is guaranteed correct either way.
-          if (isPlainImage && !isSvg) previewUrl = uploaded.previewUrl;
-          // No browser render (or CAD that failed) → use Facilio's server-RENDERED image by id.
-          if (!previewUrl && uploaded.serverImageUrl) {
-            previewUrl = uploaded.serverImageUrl;
-            serverImageUsed = true;
-          }
-          if (!uploaded.attachedToFloorPlan) {
+      // The plan record already carries a geo-reference quad (measured above, or the default one
+      // seeded at create time). Now that a real raster exists, refine it to that raster's true
+      // aspect — skipped server-side when it already matches, so this is usually a no-op read.
+      if (upload?.indoorFloorPlanId && upload.attachedToFloorPlan && !dimensions && previewUrl) {
+        const measured = await measureImageDataUrl(previewUrl).catch(() => undefined);
+        if (plausible(measured)) {
+          const result = await updateFloorplanGeometry(upload.indoorFloorPlanId, measured).catch(() => 'failed' as const);
+          if (result === 'failed') {
+            // Not fatal: the record still has the default quad, so markers remain positionable —
+            // they're just referenced against a frame of a different shape.
             // eslint-disable-next-line no-console
-            console.warn('[FloorUploadModal] Uploaded to Facilio but could not attach to this floor\'s indoorfloorplan record:', uploaded.attachError);
-          } else {
-            // A create just changed which plan types this floor has — refresh the switcher.
-            void actions.refreshPlanTypes();
+            console.warn(`[FloorUploadModal] couldn't refine the plan geometry to ${measured.width}×${measured.height}`);
           }
-        } catch (uploadErr) {
-          // The backend never received the file. The local preview still renders below, but
-          // this must NOT read as a successful "floorplan updated" — see uploadFailedMsg use.
-          uploadFailedMsg = (uploadErr as Error).message || 'upload failed';
-          // eslint-disable-next-line no-console
-          console.warn('[FloorUploadModal] Facilio upload failed', uploadErr);
         }
       }
 
@@ -130,11 +202,20 @@ export function FloorUploadModal() {
               : `Stored to Facilio (file #${uploadedFileId}) — can't preview it here; view it in AutoCAD`
           : `Floorplan updated from ${file.name}`
       );
+      // The write reported success but the read-back disagreed — surface it instead of letting the
+      // next save discover it.
+      if (upload?.readBackWarning) {
+        actions.showToast('Check this floorplan in Facilio', { variant: 'warning', description: upload.readBackWarning });
+      }
       // A stored-but-unpreviewable CAD file: keep the modal's error visible so the user knows
       // it's saved-but-not-shown, but don't discard the upload.
       if (!previewUrl && uploadedFileId != null) {
         setStatus('error');
-        setError(`Stored to Facilio (file #${uploadedFileId}), but it couldn't be rendered to an image here — open it in AutoCAD.`);
+        setError(
+          cadTimedOut
+            ? `Stored to Facilio (file #${uploadedFileId}), but this CAD file couldn't be read here — the CAD engine never finished. Open it in AutoCAD, or upload a PDF/PNG of the plan.`
+            : `Stored to Facilio (file #${uploadedFileId}), but it couldn't be rendered to an image here — open it in AutoCAD.`
+        );
         return;
       }
       actions.setUploadOpen(false);
@@ -150,14 +231,20 @@ export function FloorUploadModal() {
     } catch (err) {
       setStatus('error');
       const msg = (err as Error).message;
-      setError(cad || msg === 'cad-render-failed' ? 'Could not render this CAD file in the browser, and the server has no image for it. You can still store it and view it in AutoCAD.' : msg || 'Could not read this file.');
+      setError(
+        cad || msg === 'cad-render-failed'
+          ? 'Could not render this CAD file in the browser, and the server has no image for it. You can still store it and view it in AutoCAD.'
+          : msg || 'Could not read this file.'
+      );
+    } finally {
+      busyRef.current = false;
     }
   }
 
   function onDrop(e: ReactDragEvent) {
     e.preventDefault();
     const file = e.dataTransfer.files?.[0];
-    if (file) handleFile(file);
+    if (file) void handleFile(file);
   }
 
   return (
@@ -183,15 +270,18 @@ export function FloorUploadModal() {
             className={styles.hiddenInput}
             onChange={(e) => {
               const file = e.target.files?.[0];
-              if (file) handleFile(file);
+              // Clear the input's value or picking the SAME file again fires no change event —
+              // after a failed attempt, the obvious retry (re-pick that file) did nothing at all.
+              e.target.value = '';
+              if (file) void handleFile(file);
             }}
           />
         </div>
-        {status === 'working' && <p className={styles.status}>Rendering {fileName}…</p>}
+        {status === 'working' && <p className={styles.status}>{phase === 'uploading' ? `Uploading ${fileName}…` : `Rendering ${fileName}…`}</p>}
         {status === 'error' && <p className={styles.error}>{error}</p>}
         <p className={styles.note}>
-          DWG/DXF files render in your browser via an embedded CAD engine. If the browser can't render one, it's uploaded to Facilio and shown
-          from the server-rendered image (by file id) instead.
+          The file is uploaded to Facilio first, then rendered here. DWG/DXF render in your browser via an embedded CAD engine; if the browser
+          can't render one, it's still stored and shown from the server-rendered image (by file id) instead.
         </p>
       </div>
       <ModalFooter>
