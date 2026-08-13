@@ -344,8 +344,24 @@ async function connectedUploadSingleFile(file: File): Promise<{ fileId: number }
   return { fileId: Number(res.fileId) };
 }
 
+/**
+ * The org's own upload ceiling, confirmed live: a 28MB DWG came back with "File size exceeds 10 MB"
+ * from the platform. Checked HERE, before the file is handed over, so the limit is reported
+ * instantly and in the user's terms instead of after pushing 28MB through the SDK's base64
+ * postMessage hop only to be refused. Not a client-side policy — it mirrors the server's.
+ */
+export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+
 async function crudUploadFiles(files: File[]): Promise<{ error: Error | null; ids?: (string | number)[]; data?: unknown }> {
   if (!files.length) return { error: new Error('File(s) not valid') };
+  if (files[0].size > MAX_UPLOAD_BYTES) {
+    return {
+      error: new Error(
+        `${files[0].name} is ${fileSizeLabel(files[0].size)}, over Facilio's ${fileSizeLabel(MAX_UPLOAD_BYTES)} upload limit. ` +
+          `Export the plan as a PDF or PNG, or save a lighter DWG (purge unused blocks and xrefs, or save as an older version).`
+      ),
+    };
+  }
   const result = isConnectedApp ? await connectedUploadSingleFile(files[0]) : await devUploadSingleFile(files[0]);
   if ('fileId' in result) return { error: null, ids: [result.fileId] };
   return { error: result.error ?? null };

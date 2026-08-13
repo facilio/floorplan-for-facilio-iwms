@@ -183,11 +183,10 @@ export function FloorUploadModal() {
       if (!previewUrl && uploadedFileId == null) {
         if (uploadFailedMsg) {
           setStatus('error');
-          setError(
-            `Upload to Facilio failed: ${uploadFailedMsg}. Nothing was saved — retry.` +
-              (cad ? " This CAD file couldn't be rendered here either, so there's no local preview to fall back on." : '')
-          );
-          actions.showToast('Floorplan NOT uploaded', { variant: 'error', description: uploadFailedMsg });
+          // The message from the upload layer is already a complete, actionable sentence (it names
+          // the file, the size and what to do) — wrapping it in more prose just buried it.
+          setError(uploadFailedMsg);
+          actions.showToast('Floorplan not uploaded', { variant: 'error', description: uploadFailedMsg });
           return; // keep the modal open for a retry
         }
         throw new Error(cad ? 'cad-render-failed' : 'Could not read this file.');

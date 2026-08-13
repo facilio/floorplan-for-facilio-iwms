@@ -93,6 +93,9 @@
 
 .error { background: var(--danger-050); border-color: var(--danger-500); border-left-color: var(--danger-700); }
 .error .icon { background: var(--danger-600); color: #fff; }
+/* Errors auto-dismiss now (on a longer window), so they get a timer bar like every other variant —
+   without this rule the bar rendered with no colour at all. */
+.error .drain { background: var(--danger-500); }
 
 .info { border-color: var(--blue-100); border-left-color: var(--blue-500); }
 .info .icon { color: var(--blue-600); }

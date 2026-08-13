@@ -5,9 +5,11 @@ import styles from './Toast.module.css';
 /**
  * Design-system toast (Facilio DS "Feedback / Toast"): transient, non-blocking confirmation.
  * Semantic colour lives in the icon, the left hairline and the drain timer — never a full fill
- * (except error, which gets the subtle red wash and stays until dismissed). Stack is capped at 3
- * (enforced in the reducer); hovering a toast holds it; the 2px bottom bar drains over the
- * auto-dismiss window.
+ * (except error, which also gets the subtle red wash). Stack is capped at 3 (enforced in the
+ * reducer); hovering a toast holds it; the 2px bottom bar drains over the auto-dismiss window.
+ *
+ * EVERY variant auto-dismisses, errors simply get longer. They used to stay until dismissed, which
+ * left a failure parked over the plan until it was clicked away.
  */
 export type ToastVariant = 'success' | 'warning' | 'error' | 'info';
 
@@ -19,6 +21,13 @@ export interface ToastItem {
 }
 
 const DUR_MS = 5000;
+/**
+ * Errors get LONGER, not forever (requested). They used to stay until dismissed, which left a
+ * failure sitting over the plan indefinitely and had to be clicked away every time. Hovering still
+ * holds any toast open, and the drain bar shows the time left, so a message that needs reading can
+ * be kept without a click.
+ */
+const ERROR_DUR_MS = 9000;
 
 const ICONS: Record<ToastVariant, JSX.Element> = {
   success: (
@@ -46,10 +55,10 @@ const ICONS: Record<ToastVariant, JSX.Element> = {
 
 function ToastCard({ toast, onDismiss }: { toast: ToastItem; onDismiss: (id: number) => void }) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const persistent = toast.variant === 'error'; // errors stay until dismissed
+  const durationMs = toast.variant === 'error' ? ERROR_DUR_MS : DUR_MS;
 
   useEffect(() => {
-    if (!persistent) timer.current = setTimeout(() => onDismiss(toast.id), DUR_MS);
+    timer.current = setTimeout(() => onDismiss(toast.id), durationMs);
     return () => {
       if (timer.current) clearTimeout(timer.current);
     };
@@ -64,7 +73,7 @@ function ToastCard({ toast, onDismiss }: { toast: ToastItem; onDismiss: (id: num
         if (timer.current) clearTimeout(timer.current);
       }}
       onMouseLeave={() => {
-        if (!persistent) timer.current = setTimeout(() => onDismiss(toast.id), DUR_MS);
+        timer.current = setTimeout(() => onDismiss(toast.id), durationMs);
       }}
     >
       <div className={styles.icon}>{ICONS[toast.variant]}</div>
@@ -77,7 +86,7 @@ function ToastCard({ toast, onDismiss }: { toast: ToastItem; onDismiss: (id: num
           <path d="M18 6L6 18M6 6l12 12" />
         </svg>
       </button>
-      {!persistent && <div className={styles.drain} style={{ animationDuration: `${DUR_MS}ms` }} />}
+      <div className={styles.drain} style={{ animationDuration: `${durationMs}ms` }} />
     </div>
   );
 }
