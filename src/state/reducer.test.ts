@@ -44,3 +44,39 @@ describe('reducer: re-reading the current floor', () => {
     expect(next.unitNonce).toBe(before.unitNonce + 1);
   });
 });
+
+/**
+ * The people lists show ONE secondary line under a name: department when the org sets one, else
+ * client. The single-contact upsert resolves a name from a record summary and carries no
+ * department, so it must not wipe the line off someone already in the directory.
+ */
+describe('reducer: client contact upsert', () => {
+  const withContact = () => ({
+    ...buildInitialState(),
+    clientContacts: [
+      { id: '1', name: 'Ashjan Aly', client: 'Corporate Services' },
+      { id: '2', name: 'Anas Alassafi', client: 'Heritage' },
+    ],
+  });
+
+  it('keeps the existing department when a name-only upsert arrives', () => {
+    const next = reducer(withContact(), { type: 'UPSERT_CLIENT_CONTACT', contact: { id: '1', name: 'Ashjan Aly', client: '' } });
+    expect(next.clientContacts.find((c) => c.id === '1')?.client).toBe('Corporate Services');
+  });
+
+  it('keeps the person in place rather than moving them to the end', () => {
+    const next = reducer(withContact(), { type: 'UPSERT_CLIENT_CONTACT', contact: { id: '1', name: 'Ashjan Aly', client: '' } });
+    expect(next.clientContacts.map((c) => c.id)).toEqual(['1', '2']);
+  });
+
+  it('still takes a non-empty department from the incoming record', () => {
+    const next = reducer(withContact(), { type: 'UPSERT_CLIENT_CONTACT', contact: { id: '1', name: 'Ashjan Aly', client: 'Facilities' } });
+    expect(next.clientContacts.find((c) => c.id === '1')?.client).toBe('Facilities');
+  });
+
+  it('adds a contact that is not in the directory yet', () => {
+    const next = reducer(withContact(), { type: 'UPSERT_CLIENT_CONTACT', contact: { id: '9', name: 'New Person', client: 'Ops' } });
+    expect(next.clientContacts).toHaveLength(3);
+    expect(next.clientContacts[2]).toEqual({ id: '9', name: 'New Person', client: 'Ops' });
+  });
+});

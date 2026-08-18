@@ -167,6 +167,12 @@ export interface Unit {
 export interface ClientContact {
   id: string;
   name: string;
+  /**
+   * The single secondary line the people lists render under the name: the person's DEPARTMENT when
+   * the org sets one (`department_clientcontact`), else their client. Named `client` for history —
+   * every consumer already renders it as the department line (`personDept`/`dept`). Empty when the
+   * record carries neither, or when the contact was resolved name-only from a record summary.
+   */
   client: string;
 }
 

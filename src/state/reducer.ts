@@ -404,8 +404,23 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, spaceSearch: action.value };
     case 'PORTFOLIO_LOADED':
       return { ...state, portfolio: action.portfolio, clientContacts: action.clientContacts, assets: action.assets };
-    case 'UPSERT_CLIENT_CONTACT':
-      return { ...state, clientContacts: [...state.clientContacts.filter((c) => c.id !== action.contact.id), action.contact] };
+    case 'UPSERT_CLIENT_CONTACT': {
+      // MERGE onto the existing row, in place. This upsert's callers resolve a name from a record
+      // summary and pass `client: ''` because that projection carries no department/client — a
+      // straight replace therefore ERASED the department line of anyone already in the directory
+      // (and moved them to the end of the list, since filter-then-append reorders). Only non-empty
+      // incoming fields win.
+      const existing = state.clientContacts.find((c) => c.id === action.contact.id);
+      const merged = existing
+        ? { ...existing, ...Object.fromEntries(Object.entries(action.contact).filter(([, v]) => v !== '' && v != null)) }
+        : action.contact;
+      return {
+        ...state,
+        clientContacts: existing
+          ? state.clientContacts.map((c) => (c.id === merged.id ? merged : c))
+          : [...state.clientContacts, merged],
+      };
+    }
     case 'UPSERT_CLIENT_CONTACTS': {
       // Server search results merge into the directory: incoming rows win, order is preserved, so
       // a person found by searching stays available (and assignable) afterwards.

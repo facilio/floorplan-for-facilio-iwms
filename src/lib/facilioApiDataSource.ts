@@ -226,8 +226,19 @@ export class FacilioApiDataSource implements FloorplanDataSource {
   }
 }
 
+/**
+ * The one secondary line every people list shows under a name is the person's DEPARTMENT when the
+ * org sets one, falling back to their CLIENT when it doesn't (requested).
+ *
+ * Department lives on `department_clientcontact` — a custom field, so it's named
+ * `<field>_<module>` — and is read through the same shape-tolerant helper as every other lookup
+ * (bare string, or `{name}`/`{primaryValue}`) because the list projection isn't guaranteed to
+ * return it expanded. `department` is tried too, for orgs using the plain lookup name.
+ */
 function mapClientContact(c: any): ClientContact {
-  return { id: String(c.id), name: c.name, client: c.client?.name ?? c.clientName ?? '' };
+  const department = lookupDisplayName(c?.department_clientcontact) ?? lookupDisplayName(c?.department);
+  const client = lookupDisplayName(c?.client) ?? lookupDisplayName(c?.clientName);
+  return { id: String(c.id), name: c.name, client: department ?? client ?? '' };
 }
 
 /**
@@ -721,11 +732,20 @@ function roomContactRef(rec: Record<string, any> | undefined): { id: string; nam
   return Number.isFinite(n) && n > 0 && typeof name === 'string' && name.trim() ? { id: String(n), name: name.trim() } : null;
 }
 
+/**
+ * A lookup/enum field as a display string, whichever shape the projection used: a bare string, or
+ * an object carrying `name`/`primaryValue`. Blank and whitespace-only values read as absent so a
+ * caller's `??` fallback actually fires.
+ */
+function lookupDisplayName(value: unknown): string | undefined {
+  const v = value as { name?: unknown; primaryValue?: unknown } | string | undefined;
+  const name = typeof v === 'string' ? v : (v?.name ?? v?.primaryValue);
+  return typeof name === 'string' && name.trim() ? name.trim() : undefined;
+}
+
 /** The record's department lookup as a display string, whichever shape the projection used. */
 function departmentName(rec: Record<string, any> | undefined): string | undefined {
-  const d = rec?.department;
-  const name = typeof d === 'string' ? d : (d?.name ?? d?.primaryValue);
-  return typeof name === 'string' && name.trim() ? name.trim() : undefined;
+  return lookupDisplayName(rec?.department);
 }
 
 /**
