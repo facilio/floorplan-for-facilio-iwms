@@ -43,6 +43,11 @@ describe('mapClientContact secondary line', () => {
     expect(mapClientContact({ id: 1, name: 'A', department_clientcontact: { id: 3, name: '   ' }, client: { name: 'RCU' } }).client).toBe('RCU');
   });
 
+  it('ignores a plain `department` key — only department_clientcontact counts', () => {
+    // That fallback was a guess about other orgs' field naming and has been removed.
+    expect(mapClientContact({ id: 1, name: 'A', department: { name: 'Guessed' }, client: { name: 'RCU' } }).client).toBe('RCU');
+  });
+
   it('never returns undefined for the line', () => {
     expect(mapClientContact({ id: 1, name: 'A' }).client).toBe('');
   });

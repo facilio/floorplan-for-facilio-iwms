@@ -232,10 +232,10 @@ export class FacilioApiDataSource implements FloorplanDataSource {
  * The one secondary line every people list shows under a name is the person's DEPARTMENT when the
  * org sets one, falling back to their CLIENT when it doesn't (requested).
  *
- * Department lives on `department_clientcontact` — a custom field, so it's named
- * `<field>_<module>` — and is read through the same shape-tolerant helper as every other lookup
- * (bare string, or `{name}`/`{primaryValue}`) because the list projection isn't guaranteed to
- * return it expanded. `department` is tried too, for orgs using the plain lookup name.
+ * Department lives on `department_clientcontact` (a custom field, hence the `<field>_<module>`
+ * name) and ONLY there — the plain `department` key was dropped as a guess. It's read through the
+ * same shape-tolerant helper as every other lookup, because the list projection isn't guaranteed to
+ * return it expanded.
  */
 /**
  * `department_clientcontact` is a LOOKUP, and a list projection commonly returns a lookup as a bare
@@ -271,7 +271,7 @@ export function ensureDepartmentLabels(): Promise<void> {
 }
 
 export function mapClientContact(c: any): ClientContact {
-  const dept = c?.department_clientcontact ?? c?.department;
+  const dept = c?.department_clientcontact;
   // Expanded lookup -> its own name; bare id (or an id-only object) -> the department module's name.
   const department = lookupDisplayName(dept) ?? departmentLabels.get(Number((dept as any)?.id ?? dept));
   const client = lookupDisplayName(c?.client) ?? lookupDisplayName(c?.clientName);
