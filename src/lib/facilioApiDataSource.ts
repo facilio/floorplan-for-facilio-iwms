@@ -143,6 +143,8 @@ export class FacilioApiDataSource implements FloorplanDataSource {
     const PER_PAGE = 500;
     const MAX_PAGES = 20; // 10,000 people
     const all: ClientContact[] = [];
+    // Department names before any contact is mapped — the lookup can arrive as a bare id.
+    await ensureDepartmentLabels();
     for (let page = 1; page <= MAX_PAGES; page++) {
       const res = await facilioApi.fetchAll('clientcontact', { page, perPage: PER_PAGE });
       if (res.error) {
@@ -235,8 +237,43 @@ export class FacilioApiDataSource implements FloorplanDataSource {
  * (bare string, or `{name}`/`{primaryValue}`) because the list projection isn't guaranteed to
  * return it expanded. `department` is tried too, for orgs using the plain lookup name.
  */
-function mapClientContact(c: any): ClientContact {
-  const department = lookupDisplayName(c?.department_clientcontact) ?? lookupDisplayName(c?.department);
+/**
+ * `department_clientcontact` is a LOOKUP, and a list projection commonly returns a lookup as a bare
+ * id rather than an expanded `{id, name}` — in which case there is no name on the record to show.
+ * The department module is read ONCE per session to turn those ids into names; a failure leaves the
+ * map empty and the mapping falls back to the client, exactly as if no department were set.
+ *
+ * Same shape as ensureRoomTypeLabels: one in-flight promise, so the contact fetch's pages and the
+ * search path share a single request rather than one each.
+ */
+const DEPARTMENT_MODULE = 'department';
+const departmentLabels = new Map<number, string>();
+let departmentLabelsPromise: Promise<void> | null = null;
+
+export function ensureDepartmentLabels(): Promise<void> {
+  if (!departmentLabelsPromise) {
+    departmentLabelsPromise = (async () => {
+      if (!isFacilioApiConfigured) return;
+      const res: any = await facilioApi.fetchAll(DEPARTMENT_MODULE, { page: 1, perPage: 500 });
+      if (res?.error) throw new Error(res.error.message ?? 'department fetch failed');
+      for (const row of res?.list ?? []) {
+        const id = Number(row?.id);
+        const name = lookupDisplayName(row);
+        if (Number.isFinite(id) && name) departmentLabels.set(id, name);
+      }
+    })().catch((err) => {
+      // Non-fatal: without labels the secondary line just shows the client instead.
+      // eslint-disable-next-line no-console
+      console.warn('[facilio-api] department labels unavailable; people lists will show the client', err);
+    });
+  }
+  return departmentLabelsPromise;
+}
+
+export function mapClientContact(c: any): ClientContact {
+  const dept = c?.department_clientcontact ?? c?.department;
+  // Expanded lookup -> its own name; bare id (or an id-only object) -> the department module's name.
+  const department = lookupDisplayName(dept) ?? departmentLabels.get(Number((dept as any)?.id ?? dept));
   const client = lookupDisplayName(c?.client) ?? lookupDisplayName(c?.clientName);
   return { id: String(c.id), name: c.name, client: department ?? client ?? '' };
 }
@@ -249,6 +286,7 @@ function mapClientContact(c: any): ClientContact {
 export async function searchClientContacts(text: string): Promise<ClientContact[]> {
   const q = text.trim();
   if (!isFacilioApiConfigured || q.length < 2) return [];
+  await ensureDepartmentLabels(); // see mapClientContact — the lookup can arrive as a bare id
   const res = await facilioApi.fetchAll('clientcontact', { page: 1, perPage: 100, search: q }).catch(() => ({ error: true }) as any);
   if (res.error) return [];
   return (res.list ?? []).map(mapClientContact);
@@ -738,8 +776,8 @@ function roomContactRef(rec: Record<string, any> | undefined): { id: string; nam
  * caller's `??` fallback actually fires.
  */
 function lookupDisplayName(value: unknown): string | undefined {
-  const v = value as { name?: unknown; primaryValue?: unknown } | string | undefined;
-  const name = typeof v === 'string' ? v : (v?.name ?? v?.primaryValue);
+  const v = value as { name?: unknown; primaryValue?: unknown; displayName?: unknown } | string | undefined;
+  const name = typeof v === 'string' ? v : (v?.name ?? v?.primaryValue ?? v?.displayName);
   return typeof name === 'string' && name.trim() ? name.trim() : undefined;
 }
 
