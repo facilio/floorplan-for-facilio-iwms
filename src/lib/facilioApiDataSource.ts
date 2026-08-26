@@ -229,6 +229,35 @@ export class FacilioApiDataSource implements FloorplanDataSource {
 }
 
 /**
+ * A record by id WITHOUT a by-id GET.
+ *
+ * `GET v3/modules/{module}/{id}` answers 404 for a record that no longer exists, and in the
+ * connected app the HOST reacts to that 404 by navigating the WHOLE TAB to its "Something Missing"
+ * page — the app is gone, not just the surface that asked. Confirmed live: clicking a desk marker
+ * whose record had been deleted fired `GET v3/modules/desks/2062` -> 404 and bounced the tab.
+ * Catching the rejection can't help; the host reacts to the status, not to our promise.
+ *
+ * A FILTERED LIST asks the same question and answers 200 with an empty list, so a missing record is
+ * an ordinary "no rows" answer. Only when the list call ITSELF fails (an org that rejects this
+ * filter shape) does this fall back to the by-id read, so an unsupported filter degrades to the old
+ * behaviour rather than to silently missing data.
+ */
+async function fetchRecordById<T = any>(moduleName: string, id: string | number): Promise<T | null> {
+  const recordId = Number(id);
+  if (!Number.isFinite(recordId) || recordId <= 0) return null;
+  const res: any = await facilioApi.fetchAll(moduleName, {
+    page: 1,
+    perPage: 1,
+    filters: JSON.stringify({ id: { operatorId: 9, value: [String(recordId)] } }),
+  });
+  if (!res?.error) return (Array.isArray(res?.list) ? (res.list[0] as T) : null) ?? null;
+  // eslint-disable-next-line no-console
+  console.warn(`[facilio-api] id filter on ${moduleName} rejected; falling back to the by-id read`, res.error);
+  const direct: any = await facilioApi.fetchRecord<any>(moduleName, { id: recordId });
+  return direct?.error ? null : ((direct?.[moduleName] ?? direct?.data ?? null) as T | null);
+}
+
+/**
  * The one secondary line every people list shows under a name is the person's DEPARTMENT when the
  * org sets one, falling back to their CLIENT when it doesn't (requested).
  *
@@ -344,10 +373,10 @@ export interface FloorParents {
  */
 export async function findFloorParents(floorId: string): Promise<FloorParents | null> {
   if (!isFacilioApiConfigured) return null;
-  const res = await facilioApi.fetchRecord<any>('floor', { id: floorId });
-  if (res.error || !res.floor) return null;
-  const siteId = lookupId(res.floor, 'site');
-  const buildingId = lookupId(res.floor, 'building');
+  const floor = await fetchRecordById<any>('floor', floorId);
+  if (!floor) return null;
+  const siteId = lookupId(floor, 'site');
+  const buildingId = lookupId(floor, 'building');
   if (!siteId || !buildingId) return null;
   return { siteId: String(siteId), buildingId: String(buildingId) };
 }
@@ -1354,15 +1383,10 @@ export async function fetchUnitRecordDetails(unit: Unit): Promise<UnitRecordDeta
   if (unit.type === 'room') await ensureRoomTypeLabels();
   const moduleName = unit.type === 'room' ? ROOM_RECORDS_MODULE : REAL_SPACE_MODULE[unit.type];
   if (!moduleName || !/^\d+$/.test(unit.id)) return null;
-  // A DELETED/missing record 404s. That is a normal answer here — the marker outlived its record
-  // — so it resolves to "no details" rather than throwing into the popup (reported: the whole app
-  // went down on clicking such a marker).
-  const res: any = await facilioApi.fetchRecord<any>(moduleName, { id: Number(unit.id) }).catch((err) => {
-    // eslint-disable-next-line no-console
-    console.warn(`[facilio-api] ${moduleName}/${unit.id} record read failed`, err);
-    return null;
-  });
-  const rec = res && !res.error ? res[moduleName] ?? res.data ?? null : null;
+  // A marker routinely outlives its record, so "this desk is gone" must be an ORDINARY answer
+  // here — see fetchRecordById. Asking by id made the host bounce the whole tab to its 404 page
+  // (reported, and confirmed live on `desks/2062`); the filtered read returns no rows instead.
+  const rec = await fetchRecordById<any>(moduleName, unit.id);
   if (!rec) return null;
   const patch: Partial<Unit> = {};
   const rt = roomTypeName(rec);
@@ -1449,8 +1473,8 @@ export async function fetchPortalPlanFloors(): Promise<PortalPlanScope | null> {
 /** Whether a floor record actually resolves — guards `?floor=` deep links from dead ids. */
 export async function floorExists(floorId: string): Promise<boolean> {
   if (!isFacilioApiConfigured) return true; // local mode: ids resolve against the local seed
-  const res: any = await facilioApi.fetchRecord('floor', { id: floorId }).catch(() => null);
-  return !!res && !res.error && !!res.floor?.id;
+  const floor = await fetchRecordById<any>('floor', floorId);
+  return !!floor?.id;
 }
 
 export async function getAnyFloor(): Promise<{ id: string; name: string } | null> {
@@ -1586,9 +1610,8 @@ export async function uploadFloorplanFile(
     // `fetchRecord`'s resolved value nests the record under `res[moduleName]` (e.g. `res.floor`),
     // NOT `res.data` — confirmed live: `res.data` is always undefined, which silently failed
     // every attach as "floor not found" regardless of whether the floor actually existed.
-    const floorRes = await facilioApi.fetchRecord<any>('floor', { id: floorId });
-    if (floorRes.error || !floorRes.floor) throw new Error(floorRes.error?.message || `floor ${floorId} not found`);
-    const floorRec = floorRes.floor;
+    const floorRec = await fetchRecordById<any>('floor', floorId);
+    if (!floorRec) throw new Error(`floor ${floorId} not found`);
     const siteId = lookupId(floorRec, 'site');
     const buildingId = lookupId(floorRec, 'building');
     if (!siteId || !buildingId) throw new Error('floor record has no site/building lookup');
@@ -1859,9 +1882,7 @@ export async function saveFloorplanMarkers(floorId: string, planId: PlanId, unit
  * `saveFloorplanMarkers`).
  */
 async function fetchIndoorFloorPlanRecord(indoorFloorPlanId: number): Promise<any | null> {
-  const res = await facilioApi.fetchRecord<any>('indoorfloorplan', { id: indoorFloorPlanId });
-  if (res.error || !res.indoorfloorplan) return null;
-  return res.indoorfloorplan;
+  return fetchRecordById<any>('indoorfloorplan', indoorFloorPlanId);
 }
 
 /**
@@ -2344,10 +2365,10 @@ interface RealSpaceRef {
  * first booking) so a brand-new room gets the same treatment either way.
  */
 async function createRealZoneSpaceRecord(unit: Unit): Promise<{ recordId: number; zoneModuleId: number | null; siteId?: number } | null> {
-  const floorRes = await facilioApi.fetchRecord<any>('floor', { id: unit.floor });
-  if (floorRes.error || !floorRes.floor) return null;
-  const siteId = Number(lookupId(floorRes.floor, 'site')) || undefined;
-  const buildingId = lookupId(floorRes.floor, 'building');
+  const floorRec = await fetchRecordById<any>('floor', unit.floor);
+  if (!floorRec) return null;
+  const siteId = Number(lookupId(floorRec, 'site')) || undefined;
+  const buildingId = lookupId(floorRec, 'building');
 
   const createRes = await facilioApi.createRecord<any>(ROOM_SPACE_MODULE, {
     data: { name: unit.label, site: { id: siteId }, building: { id: buildingId }, floor: { id: unit.floor }, reservable: unit.isReservable ?? true },
@@ -2438,10 +2459,10 @@ async function ensureRealSpaceRecord(unit: Unit): Promise<RealSpaceRef | null> {
     if (createRes.error) return null;
   }
 
-  const floorRes = await facilioApi.fetchRecord<any>('floor', { id: unit.floor });
-  if (floorRes.error || !floorRes.floor) return null;
-  const siteId = Number(lookupId(floorRes.floor, 'site')) || undefined;
-  const buildingId = lookupId(floorRes.floor, 'building');
+  const floorRec = await fetchRecordById<any>('floor', unit.floor);
+  if (!floorRec) return null;
+  const siteId = Number(lookupId(floorRec, 'site')) || undefined;
+  const buildingId = lookupId(floorRec, 'building');
 
   if (marker.recordId) {
     const ref = { recordId: marker.recordId, siteId };
@@ -2527,8 +2548,8 @@ async function ensureRealZoneRecord(unit: Unit): Promise<RealSpaceRef | null> {
 
   if (!zone.recordId) return null;
   if (siteId === undefined) {
-    const floorRes = await facilioApi.fetchRecord<any>('floor', { id: unit.floor });
-    siteId = floorRes.error || !floorRes.floor ? undefined : Number(lookupId(floorRes.floor, 'site')) || undefined;
+    const floorRec = await fetchRecordById<any>('floor', unit.floor);
+    siteId = floorRec ? Number(lookupId(floorRec, 'site')) || undefined : undefined;
   }
 
   const ref: RealSpaceRef = { recordId: zone.recordId, siteId, parentModuleId: zone.zoneModuleId };
@@ -2577,9 +2598,8 @@ export async function resolveUnitRecordRef(unit: Unit): Promise<{ moduleName: st
 export async function fetchUnitModuleState(unit: Unit): Promise<string | null> {
   const ref = await resolveUnitRecordRef(unit);
   if (!ref) return null;
-  const res = await facilioApi.fetchRecord<any>(ref.moduleName, { id: ref.recordId });
-  if (res.error || !res[ref.moduleName]) return null;
-  return stateName(res[ref.moduleName].moduleState);
+  const rec = await fetchRecordById<any>(ref.moduleName, ref.recordId);
+  return rec ? stateName(rec.moduleState) : null;
 }
 
 /**
@@ -2591,9 +2611,8 @@ export async function fetchUnitModuleState(unit: Unit): Promise<string | null> {
 export async function fetchUnitAssigneeFromSummary(unit: Unit): Promise<{ id: string; name: string } | null> {
   const ref = await resolveUnitRecordRef(unit);
   if (!ref) return null;
-  const res = await facilioApi.fetchRecord<any>(ref.moduleName, { id: ref.recordId });
-  const rec = res?.[ref.moduleName];
-  if (res.error || !rec) return null;
+  const rec = await fetchRecordById<any>(ref.moduleName, ref.recordId);
+  if (!rec) return null;
   const lookup = rec.clientcontact_desks ?? rec.clientcontact_rooms ?? rec.employee ?? rec.clientContact ?? null;
   const id = Number(lookup?.id ?? lookup);
   if (!Number.isFinite(id) || id <= 0) return null;
@@ -2603,8 +2622,7 @@ export async function fetchUnitAssigneeFromSummary(unit: Unit): Promise<{ id: st
     ) ?? '';
   let name = nameOf(lookup);
   if (!name) {
-    const cres = await facilioApi.fetchRecord<any>('clientcontact', { id }).catch(() => null);
-    name = nameOf(cres?.clientcontact);
+    name = nameOf(await fetchRecordById<any>('clientcontact', id));
   }
   return name ? { id: String(id), name: name.trim() } : null;
 }
@@ -3810,8 +3828,8 @@ const moduleIdCache = new Map<string, number>();
 async function moduleIdFor(moduleName: string, sampleRecordId: number): Promise<number | null> {
   const cached = moduleIdCache.get(moduleName);
   if (cached) return cached;
-  const res = await facilioApi.fetchRecord<any>(moduleName, { id: sampleRecordId });
-  const id = res?.[moduleName]?.moduleId;
+  const res = await fetchRecordById<any>(moduleName, sampleRecordId);
+  const id = res?.moduleId;
   if (typeof id === 'number') moduleIdCache.set(moduleName, id);
   return typeof id === 'number' ? id : null;
 }
