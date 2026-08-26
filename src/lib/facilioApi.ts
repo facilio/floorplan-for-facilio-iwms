@@ -565,7 +565,7 @@ export async function customGet(path: string, params?: Record<string, unknown>, 
  * POST sibling of `customGet` for custom (non-module) V3 endpoints that take a JSON body — e.g.
  * `v3/floorplan/viewerData`. Same dual-mode transport and same verbatim-body contract (no envelope
  * unwrapping; the caller reads `.code`/`.data` itself). `params` are query-string args (e.g.
- * `skipPermission`), kept separate from the JSON `body`.
+ * `moduleName`), kept separate from the JSON `body`.
  *
  * Connected mode routes through `request.invokeFacilioAPI` with `{ method: 'POST', data: body }`.
  * That the SDK forwards `data` as the request body for POST mirrors how the module-CRUD calls
@@ -612,7 +612,7 @@ export async function customPatch(
 /**
  * DELETE sibling of `customPost` — for `v3/modules/data/delete`, the bulk record-delete endpoint
  * the real web client uses (confirmed live capture: `DELETE
- * v3/modules/data/delete?skipPermission=true` with body
+ * v3/modules/data/delete` with body
  * `{moduleName, data: {<moduleName>: [ids…]}}`). A DELETE-with-body, which is why the module-CRUD
  * `deleteRecord(id)` helper can't express it.
  *

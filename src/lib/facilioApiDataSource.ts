@@ -543,7 +543,7 @@ function fetchViewerData(floorplanId: number, mode: ViewerMode, opts: ViewerData
     if (opts.startTime != null) body.startTime = opts.startTime;
     if (opts.endTime != null) body.endTime = opts.endTime;
 
-    const res = await customPost('v3/floorplan/viewerData', body, { skipPermission: true });
+    const res = await customPost('v3/floorplan/viewerData', body);
     if (res?.code !== 0) throw new Error(res?.message || `viewerData code ${res?.code ?? '?'}`);
     return res.data ?? {};
   })();
@@ -716,7 +716,7 @@ export function fetchEnumLabels(moduleName: string, fieldName: string): Promise<
   const promise = (async () => {
     const out = new Map<number, string>();
     if (!isFacilioApiConfigured) return out;
-    const body: any = await customGet(`v2/forms/${moduleName}`, { skipPermission: true }).catch(() => null);
+    const body: any = await customGet(`v2/forms/${moduleName}`).catch(() => null);
     const form = body?.form ?? body?.result?.form ?? body?.data?.form ?? null;
     const fields: any[] = form?.fields ?? (form?.sections ?? form?.formSections ?? []).flatMap((sec: any) => sec?.fields ?? []);
     const wanted = fieldName.toLowerCase();
@@ -2261,7 +2261,7 @@ async function syncMarkersForIndoorFloorPlan(indoorFloorPlanId: number, units: U
 const ZONE_ROW_MODULE = 'floorplanmarkedzone';
 
 /**
- * Bulk-deletes plan row records via `DELETE v3/modules/data/delete?skipPermission=true` with body
+ * Bulk-deletes plan row records via `DELETE v3/modules/data/delete` with body
  * `{moduleName, data: {<moduleName>: [ids…]}}` — the exact endpoint/payload the real web client
  * uses when markers are removed from a plan (confirmed live capture). Falls back to per-id
  * `deleteRecord` when the bulk endpoint isn't available (connected-mode DELETE-with-body isn't
@@ -2271,7 +2271,7 @@ const ZONE_ROW_MODULE = 'floorplanmarkedzone';
 async function deleteFloorplanRows(moduleName: string, ids: number[]): Promise<void> {
   if (!isFacilioApiConfigured || !ids.length) return;
   try {
-    const body = await customDelete('v3/modules/data/delete', { moduleName, data: { [moduleName]: ids } }, { skipPermission: true });
+    const body = await customDelete('v3/modules/data/delete', { moduleName, data: { [moduleName]: ids } });
     if (body?.code === 0 || body?.code === undefined) return;
     throw new Error(body?.message || `code ${body?.code}`);
   } catch (err) {
@@ -2623,7 +2623,7 @@ function toModuleSummary(m: any): ModuleSummary {
 }
 
 /**
- * All modules in the org (`v3/modules/list/all?skipPermission=true` — confirmed live) — the
+ * All modules in the org (`v3/modules/list/all` — confirmed live) — the
  * "Select Module" dropdown when creating a custom marker type (recordModuleId). The response
  * carries TWO separate lists — system modules and custom modules (per the user's description of
  * the real payload; exact key names not captured, so common spellings of each are tried) — which
@@ -2634,7 +2634,7 @@ function toModuleSummary(m: any): ModuleSummary {
 export function getAllModules(): Promise<ModuleSummary[]> {
   if (!isFacilioApiConfigured) return Promise.resolve([]);
   if (!modulesListCache) {
-    modulesListCache = customGet('v3/modules/list/all', { skipPermission: true })
+    modulesListCache = customGet('v3/modules/list/all')
       .then((body: any) => {
         const root = body?.data ?? body?.result ?? body ?? {};
         const asArray = (v: unknown) => (Array.isArray(v) ? v : []);
@@ -4082,7 +4082,7 @@ const bookingFormListCache = new Map<string, Promise<BookingFormSummary[]>>();
 const bookingFormDetailCache = new Map<string, Promise<BookingFormMeta | null>>();
 
 /**
- * All of the module's forms (`v2/{moduleName}/forms?moduleName=&skipPermission=true` — confirmed
+ * All of the module's forms (`v2/{moduleName}/forms?moduleName=` — confirmed
  * live) — the modal's switcher when there's more than one. Cached per module for the session;
  * resolves [] when unconfigured or on API failure so the modal can fall back to its built-in
  * field list.
@@ -4093,7 +4093,7 @@ export function fetchBookingFormList(module: 'space' | 'facility'): Promise<Book
   let pending = bookingFormListCache.get(moduleName);
   if (!pending) {
     // v2/{moduleName}/forms answers the plain {responseCode, result} envelope — customGet returns the body verbatim.
-    pending = customGet(`v2/${moduleName}/forms`, { moduleName, skipPermission: true })
+    pending = customGet(`v2/${moduleName}/forms`, { moduleName })
       .then((body: { result?: { forms?: BookingFormSummary[] } }) => (body?.result?.forms ?? []).filter((f) => !f.hideInList))
       .catch((err: unknown) => {
         // eslint-disable-next-line no-console
@@ -4132,11 +4132,11 @@ export async function fetchBookingForm(module: 'space' | 'facility', unitType: U
 }
 
 async function loadBookingFormDetail(module: 'space' | 'facility', moduleName: 'spacebooking' | 'facilitybooking', formId: number): Promise<BookingFormMeta | null> {
-  // `v2/forms/{moduleName}?fetchFormRuleFields=true&forCreate=true&formId=&skipPermission=true`
+  // `v2/forms/{moduleName}?fetchFormRuleFields=true&forCreate=true&formId=`
   // (confirmed live for a different module — desks). Response shape for THIS specific endpoint
   // wasn't confirmed, so both `result.form` and `result` itself (in case the form is the direct
   // payload rather than nested under `.form`) are tried before giving up.
-  const detailBody = await customGet(`v2/forms/${moduleName}`, { fetchFormRuleFields: true, forCreate: true, formId, skipPermission: true });
+  const detailBody = await customGet(`v2/forms/${moduleName}`, { fetchFormRuleFields: true, forCreate: true, formId });
   const form = detailBody?.result?.form ?? (detailBody?.result?.sections ? detailBody.result : null);
   if (!form) {
     // Detail endpoint came back empty — keep the id usable with the list's naming.
