@@ -253,61 +253,112 @@ export interface FacilioApiListResult<T = any> extends FacilioApiResult<T[]> {
   list: T[] | null;
 }
 
-async function crudFetchAll(moduleName: string, params: Record<string, unknown> = {}): Promise<FacilioApiListResult> {
-  if (isConnectedApp) {
-    const app = await facilioAppReady();
-    return app.api.fetchAll(moduleName, params);
+/**
+ * A thrown transport failure as the `{error}` these helpers are DECLARED to return.
+ *
+ * `FacilioApiResult.error` is the contract every caller in this app is written against — the data
+ * source checks `res.error` and degrades — but none of the crud helpers used to honour it: axios
+ * REJECTS on any 4xx/5xx, and the connected-mode SDK can reject too. So a plain 400 on a record
+ * read never produced `{error}` at all; it rejected past every one of those checks. In the desk and
+ * room popovers that took the entire map view down with it, because the whole view sits under one
+ * error boundary.
+ *
+ * Normalising here rather than at each call site is deliberate: the checks are already written, they
+ * simply never fired. Write paths are unaffected in kind — `syncMarkersForIndoorFloorPlan` still
+ * throws on `res.error`, so a failed save is still reported as failed rather than as "saved".
+ */
+function toApiError(err: unknown): NonNullable<FacilioApiResult['error']> {
+  const e = err as { response?: { status?: number; data?: any }; code?: string; message?: string; name?: string };
+  const status = e?.response?.status;
+  const body = e?.response?.data;
+  const detail = body?.message ?? body?.error?.message ?? body?.error ?? e?.message ?? 'request failed';
+  const message = typeof detail === 'string' ? detail : JSON.stringify(detail).slice(0, 200);
+  return {
+    code: status ?? e?.code,
+    message: status ? `${status} ${message}` : message,
+    isCancelled: e?.name === 'CanceledError' || e?.code === 'ERR_CANCELED',
+  };
+}
+
+/** Runs a crud call so it RESOLVES with `{error}` instead of rejecting. See toApiError. */
+async function settled<T extends FacilioApiResult>(run: () => Promise<T>, onError: (error: NonNullable<FacilioApiResult['error']>) => T): Promise<T> {
+  try {
+    return await run();
+  } catch (err) {
+    return onError(toApiError(err));
   }
-  return devFetchAll(moduleName, params);
+}
+
+const asRecord = <T,>(error: NonNullable<FacilioApiResult['error']>) => ({ data: null, error }) as FacilioApiResult<T>;
+const asList = <T,>(error: NonNullable<FacilioApiResult['error']>) => ({ list: null, data: null, error }) as FacilioApiListResult<T>;
+
+async function crudFetchAll(moduleName: string, params: Record<string, unknown> = {}): Promise<FacilioApiListResult> {
+  return settled(async () => {
+    if (isConnectedApp) {
+      const app = await facilioAppReady();
+      return app.api.fetchAll(moduleName, params);
+    }
+    return devFetchAll(moduleName, params);
+  }, asList);
 }
 
 async function crudFetchRecord<T = any>(moduleName: string, params: { id: string | number; [k: string]: unknown }): Promise<FacilioApiResult<T>> {
-  if (isConnectedApp) {
-    const app = await facilioAppReady();
-    return app.api.fetchRecord(moduleName, params);
-  }
-  return devFetchRecord<T>(moduleName, params);
+  return settled(async () => {
+    if (isConnectedApp) {
+      const app = await facilioAppReady();
+      return app.api.fetchRecord(moduleName, params);
+    }
+    return devFetchRecord<T>(moduleName, params);
+  }, asRecord<T>);
 }
 
 async function crudCreateRecord<T = any>(moduleName: string, params: { data: Record<string, unknown> }): Promise<FacilioApiResult<T>> {
-  if (isConnectedApp) {
-    const app = await facilioAppReady();
-    return app.api.createRecord(moduleName, params);
-  }
-  return devCreateRecord<T>(moduleName, params);
+  return settled(async () => {
+    if (isConnectedApp) {
+      const app = await facilioAppReady();
+      return app.api.createRecord(moduleName, params);
+    }
+    return devCreateRecord<T>(moduleName, params);
+  }, asRecord<T>);
 }
 
 async function crudUpdateRecord<T = any>(moduleName: string, params: { id: string | number; data: Record<string, unknown> }): Promise<FacilioApiResult<T>> {
-  if (isConnectedApp) {
-    const app = await facilioAppReady();
-    return app.api.updateRecord(moduleName, params);
-  }
-  return devUpdateRecord<T>(moduleName, params);
+  return settled(async () => {
+    if (isConnectedApp) {
+      const app = await facilioAppReady();
+      return app.api.updateRecord(moduleName, params);
+    }
+    return devUpdateRecord<T>(moduleName, params);
+  }, asRecord<T>);
 }
 
 async function crudDeleteRecord<T = any>(moduleName: string, id: string | number): Promise<FacilioApiResult<T>> {
-  if (isConnectedApp) {
-    const app = await facilioAppReady();
-    return app.api.deleteRecord(moduleName, { id });
-  }
-  return devDeleteRecord<T>(moduleName, id);
+  return settled(async () => {
+    if (isConnectedApp) {
+      const app = await facilioAppReady();
+      return app.api.deleteRecord(moduleName, { id });
+    }
+    return devDeleteRecord<T>(moduleName, id);
+  }, asRecord<T>);
 }
 
 async function crudFetchAllRelatedList<T = any>(
   opts: { moduleName: string; id: string | number; relatedModuleName: string; relatedFieldName: string },
   params: Record<string, unknown> = {}
 ): Promise<FacilioApiListResult<T>> {
-  if (isConnectedApp) {
-    // The connected-app SDK exposes no dedicated related-list call (only generic module CRUD) —
-    // approximated by filtering the related module on the parent lookup field. NOT verified
-    // against a live org; the dev-mode path above uses the real `relatedList` V3 endpoint
-    // instead (verified — see the `@facilio/api` source this was copied from) since dev mode
-    // still talks to the org directly.
-    const app = await facilioAppReady();
-    const filters = JSON.stringify({ [opts.relatedFieldName]: { operatorId: 36, value: [String(opts.id)] } });
-    return app.api.fetchAll(opts.relatedModuleName, { ...params, filters });
-  }
-  return devFetchAllRelatedList<T>(opts, params);
+  return settled(async () => {
+    if (isConnectedApp) {
+      // The connected-app SDK exposes no dedicated related-list call (only generic module CRUD) —
+      // approximated by filtering the related module on the parent lookup field. NOT verified
+      // against a live org; the dev-mode path above uses the real `relatedList` V3 endpoint
+      // instead (verified — see the `@facilio/api` source this was copied from) since dev mode
+      // still talks to the org directly.
+      const app = await facilioAppReady();
+      const filters = JSON.stringify({ [opts.relatedFieldName]: { operatorId: 36, value: [String(opts.id)] } });
+      return app.api.fetchAll(opts.relatedModuleName, { ...params, filters });
+    }
+    return devFetchAllRelatedList<T>(opts, params);
+  }, asList<T>);
 }
 
 /** Human-readable file size, so an upload error can state the size that was actually attempted. */
@@ -362,7 +413,11 @@ async function crudUploadFiles(files: File[]): Promise<{ error: Error | null; id
       ),
     };
   }
-  const result = isConnectedApp ? await connectedUploadSingleFile(files[0]) : await devUploadSingleFile(files[0]);
+  // Never rejects: the SDK bridge (and `facilioAppReady` itself) can throw, and the upload modal
+  // reports `{error}` — a rejection here would escape it as an unhandled failure instead.
+  const result = await (isConnectedApp ? connectedUploadSingleFile(files[0]) : devUploadSingleFile(files[0])).catch((err) => ({
+    error: new Error(toApiError(err).message ?? 'upload failed'),
+  }));
   if ('fileId' in result) return { error: null, ids: [result.fileId] };
   return { error: result.error ?? null };
 }
