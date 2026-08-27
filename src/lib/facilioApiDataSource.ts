@@ -2787,15 +2787,19 @@ async function fetchSpaceBookingsForRange(
      * Cancelled rows excluded AT SOURCE, by two criteria that cover different records:
      *
      *  - `isCancelled` — the record's own BOOLEAN flag, and the authoritative one. Operator 15 is
-     *    the boolean "is not", matched against `true` rather than asking for `false`: an older row
-     *    that never set the field holds NULL, and matching on false would drop those — silently
-     *    hiding LIVE bookings and showing a taken desk as free. "Is not true" keeps false and NULL
-     *    alike, so the only rows excluded are the ones genuinely flagged cancelled.
+     *    the boolean "IS", so a LIVE booking is asked for directly: `isCancelled IS false`.
+     *
+     *    CAVEAT worth knowing if bookings ever go missing: this selects rows whose flag is
+     *    explicitly false. Any row that never set the field (NULL) is excluded by the server and
+     *    can't be recovered client-side, because it never arrives — a live booking would vanish
+     *    from the calendar and its desk would read as free. The fail-safe below only catches a
+     *    REJECTED criteria, not a wrongly-narrow one. If that is ever seen, drop this line and let
+     *    the mapper's own check do the filtering; it is NULL-safe by construction.
      *  - `moduleState` — the state ids learned from rows already seen, for orgs whose cancelled
      *    bookings carry no flag.
      */
     const excludeCancelled: Record<string, unknown> = {
-      isCancelled: { operatorId: 15, value: ['true'] },
+      isCancelled: { operatorId: 15, value: ['false'] },
       ...(cancelledStateIds.size ? { moduleState: { operatorId: 10, value: [...cancelledStateIds] } } : {}),
     };
     const fetchPages = async (filters: Record<string, unknown>): Promise<any[]> => {

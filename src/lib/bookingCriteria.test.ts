@@ -20,10 +20,10 @@ import { fetchOrgBookingsForRange } from './facilioApiDataSource';
 const filtersOf = (call: unknown[]) => JSON.parse((call[1] as any).filters);
 
 /**
- * Cancelled bookings are excluded server-side so they can't hold a slot. The OPERATOR matters more
- * than the field: matching on false would drop rows whose flag was never set (NULL), hiding LIVE
- * bookings and showing a taken desk as free — strictly worse than not filtering at all. 15 is the
- * org's boolean "is not"; the value stays `true` so only explicitly-cancelled rows are excluded.
+ * Cancelled bookings are excluded server-side so they can't hold a slot. 15 is the org's boolean
+ * "IS", so live rows are asked for directly (`isCancelled IS false`). Getting the operator or the
+ * value wrong here inverts the query — asking for `true` would return ONLY cancelled bookings, so
+ * every desk would read as free — which is why the exact criteria is asserted rather than assumed.
  */
 describe('spacebooking cancelled criteria', () => {
   beforeEach(() => {
@@ -31,10 +31,10 @@ describe('spacebooking cancelled criteria', () => {
     fetchAll.mockResolvedValue({ list: [], error: null });
   });
 
-  it('excludes isCancelled = true, and does NOT filter on false', async () => {
+  it('asks for live rows only: isCancelled IS false', async () => {
     await fetchOrgBookingsForRange('2026-08-26', '2026-08-26');
     const sent = filtersOf(fetchAll.mock.calls[0]);
-    expect(sent.isCancelled).toEqual({ operatorId: 15, value: ['true'] });
+    expect(sent.isCancelled).toEqual({ operatorId: 15, value: ['false'] });
   });
 
   it('retries without the criteria when the org rejects them', async () => {
