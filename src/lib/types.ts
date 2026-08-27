@@ -208,6 +208,12 @@ export interface Booking {
   approvalStatusName?: string | null;
   /** Printable stateflow state label (from the record's moduleState lookup). */
   stateName?: string | null;
+  /**
+   * The record's OWN cancelled flag. Authoritative over the state name: a cancelled booking does
+   * not hold its slot, so the desk/room is bookable in that range regardless of what the org
+   * happens to call the state.
+   */
+  isCancelled?: boolean;
   /** Booking name/title (the form's required "Name"). */
   name?: string;
   description?: string;

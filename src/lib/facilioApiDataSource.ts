@@ -2863,10 +2863,17 @@ async function fetchSpaceBookingsForRange(
         const approvalEnabled = b.approvalFlowId != null && b.approvalFlowId !== -1 && b.approvalStatus != null && typeof b.approvalStatus === 'object';
         const approvalPending = approvalEnabled && (approvalStatusName === null || isPendingApprovalName(approvalStatusName));
         const recordStateName = stateName(b.moduleState);
+        // The record's OWN cancelled flag, checked BEFORE the state name and treated as
+        // authoritative: a cancelled booking must not hold its slot even when the org's state is
+        // named something the pattern below doesn't recognise. Tolerates the string form, since a
+        // boolean can come back as "true" depending on the projection.
+        const cancelledFlag = b.isCancelled === true || String(b.isCancelled).toLowerCase() === 'true';
         // Remember the id behind a CANCELLED state so later requests can filter it out at source.
-        if (recordStateName && /cancel/i.test(recordStateName) && b.moduleState?.id != null) cancelledStateIds.add(String(b.moduleState.id));
+        if ((cancelledFlag || (recordStateName && /cancel/i.test(recordStateName))) && b.moduleState?.id != null) {
+          cancelledStateIds.add(String(b.moduleState.id));
+        }
         // Dead states beyond literal "cancel" — orgs name them Terminated/Declined/Void too.
-        if (recordStateName && /cancel|reject|terminat|declin|void/i.test(recordStateName)) return null;
+        if (cancelledFlag || (recordStateName && /cancel|reject|terminat|declin|void/i.test(recordStateName))) return null;
         // Each row lands on ITS OWN day (org wall clock) — the whole point of the range fetch.
         const wc = wallClockInTz(b.bookingStartTime, tz);
         const durMin = Math.max(0, Math.round(((b.bookingEndTime ?? b.bookingStartTime) - b.bookingStartTime) / 60_000));

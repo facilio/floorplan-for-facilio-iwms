@@ -29,13 +29,20 @@ export function initials(name: string): string {
 }
 
 /**
- * A CANCELLED booking doesn't hold the slot. Every row carries the record's own state name
- * (spacebooking `moduleState`), so this needs no extra request — and it works whatever the org
- * calls the state, which a hardcoded state id wouldn't. The booking form already ignored these;
- * the plan and the submit pre-flight didn't, so a cancelled booking still greyed a desk out.
+ * A CANCELLED booking doesn't hold the slot — the unit is bookable in that range as if the booking
+ * weren't there. Two independent signals, either sufficient:
+ *
+ *  - `isCancelled`, the record's own flag. AUTHORITATIVE, and checked first: a state the pattern
+ *    below doesn't recognise still must not hold a slot.
+ *  - the state name, which covers rows that carry no flag (local/older rows) and works whatever
+ *    the org calls the state, which a hardcoded state id wouldn't.
+ *
+ * Neither needs an extra request; every row carries both. Used by the plan colouring, the calendar
+ * and the submit pre-flight — the booking form already ignored cancelled rows, but those three
+ * didn't, so a cancelled booking still greyed a desk out.
  */
 export function isCancelledBooking(b: Booking): boolean {
-  return /cancel/i.test(b.stateName ?? '');
+  return b.isCancelled === true || /cancel/i.test(b.stateName ?? '');
 }
 
 /** Units with any LIVE booking overlapping [start,end) on `date`. */
