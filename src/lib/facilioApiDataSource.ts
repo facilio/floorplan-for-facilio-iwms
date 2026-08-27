@@ -2786,15 +2786,16 @@ async function fetchSpaceBookingsForRange(
     /**
      * Cancelled rows excluded AT SOURCE, by two criteria that cover different records:
      *
-     *  - `isCancelled` — the record's own flag, and the authoritative one. "IS NOT true"
-     *    (operatorId 10) rather than "is false", deliberately: a row that never set the field
-     *    holds NULL, and "is false" would drop those — silently hiding LIVE bookings and showing
-     *    a taken desk as free. Excluding only the explicit `true` can never do that.
+     *  - `isCancelled` — the record's own BOOLEAN flag, and the authoritative one. Operator 15 is
+     *    the boolean "is not", matched against `true` rather than asking for `false`: an older row
+     *    that never set the field holds NULL, and matching on false would drop those — silently
+     *    hiding LIVE bookings and showing a taken desk as free. "Is not true" keeps false and NULL
+     *    alike, so the only rows excluded are the ones genuinely flagged cancelled.
      *  - `moduleState` — the state ids learned from rows already seen, for orgs whose cancelled
      *    bookings carry no flag.
      */
     const excludeCancelled: Record<string, unknown> = {
-      isCancelled: { operatorId: 10, value: ['true'] },
+      isCancelled: { operatorId: 15, value: ['true'] },
       ...(cancelledStateIds.size ? { moduleState: { operatorId: 10, value: [...cancelledStateIds] } } : {}),
     };
     const fetchPages = async (filters: Record<string, unknown>): Promise<any[]> => {
