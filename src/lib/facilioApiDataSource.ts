@@ -2783,18 +2783,33 @@ async function fetchSpaceBookingsForRange(
 
     // Once a cancelled row has been seen, its state id is known and the NEXT request can exclude
     // those rows server-side — no per-org configuration, learned from the data itself.
-    const excludeCancelled = cancelledStateIds.size ? { moduleState: { operatorId: 10, value: [...cancelledStateIds] } } : null;
+    /**
+     * Cancelled rows excluded AT SOURCE, by two criteria that cover different records:
+     *
+     *  - `isCancelled` — the record's own flag, and the authoritative one. "IS NOT true"
+     *    (operatorId 10) rather than "is false", deliberately: a row that never set the field
+     *    holds NULL, and "is false" would drop those — silently hiding LIVE bookings and showing
+     *    a taken desk as free. Excluding only the explicit `true` can never do that.
+     *  - `moduleState` — the state ids learned from rows already seen, for orgs whose cancelled
+     *    bookings carry no flag.
+     */
+    const excludeCancelled: Record<string, unknown> = {
+      isCancelled: { operatorId: 10, value: ['true'] },
+      ...(cancelledStateIds.size ? { moduleState: { operatorId: 10, value: [...cancelledStateIds] } } : {}),
+    };
     const fetchPages = async (filters: Record<string, unknown>): Promise<any[]> => {
       const acc: any[] = [];
-      // FAIL SAFE, as with the desk/room type filters: if the org rejects the state criteria the
-      // request is retried without it, and the client-side name check still excludes them.
-      let withState = !!excludeCancelled;
+      // FAIL SAFE, as with the desk/room type filters: if the org rejects either criterion (an org
+      // without the field, or a shape it won't accept) the request is retried without BOTH, and the
+      // client-side check in the mapper still excludes cancelled rows. Correctness never depends on
+      // this filter — it only keeps the response smaller.
+      let withState = true;
       for (let page = 1; page <= 6; page++) {
         const sent = withState ? { ...filters, ...excludeCancelled } : filters;
         let res = await facilioApi.fetchAll('spacebooking', { page, perPage: 500, filters: JSON.stringify(sent) });
         if (res.error && withState) {
           // eslint-disable-next-line no-console
-          console.warn('[facilio-api] cancelled-state filter rejected — refetching without it', res.error);
+          console.warn('[facilio-api] cancelled criteria rejected — refetching without them', res.error);
           withState = false;
           cancelledStateIds.clear();
           res = await facilioApi.fetchAll('spacebooking', { page, perPage: 500, filters: JSON.stringify(filters) });
