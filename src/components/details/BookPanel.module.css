@@ -169,3 +169,32 @@
   border-radius: 5px;
   padding: 1px 5px;
 }
+
+/* Booking card header — the name owns its own line (see BookPanel's cardHead). */
+.headText {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.headEyebrow {
+  display: flex;
+  align-items: center;
+  margin-bottom: 2px;
+}
+/* On the eyebrow the chip leads the line, so it carries no left offset of its own. */
+.headEyebrow .idChip {
+  margin-left: 0;
+}
+.headTitle {
+  margin: 0;
+  /* Wrap between words when the panel is narrow, but never split a word — and never let a long
+     unbroken name push the view toggle off the row. */
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+.headPills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+  min-width: 0;
+}
