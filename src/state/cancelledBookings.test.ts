@@ -48,3 +48,50 @@ describe('cancelled bookings never block a time range', () => {
     expect(conflictsFor([live], 'WS-01', '2026-08-26', 540, 600)).toHaveLength(1);
   });
 });
+
+/**
+ * The user-visible question: does a cancelled booking still paint the desk RED on the plan, and
+ * still occupy the calendar? Both surfaces read the same two things, so both are covered — the
+ * marker/list colour resolves through unitStatus -> conflictsFor, and the calendar renders
+ * state.bookings, which cancelled rows never enter.
+ */
+describe('a cancelled booking does not mark the unit booked', () => {
+  const deskUnit = {
+    id: 'WS-01',
+    type: 'workstation' as const,
+    label: 'WS-01',
+    room: null,
+    geom: { kind: 'point' as const, x: 0.5, y: 0.5 },
+    floor: '1',
+    plan: 'workstation' as const,
+    deskType: 'HOT' as const, // bookable, so "booked" is a state it can reach
+  };
+
+  it('is not coloured booked when the only overlapping booking is cancelled', async () => {
+    const { unitStatus } = await import('../lib/unitStatus');
+    const state = {
+      ...buildInitialState(),
+      mode: 'book' as const, // the booked/red state only exists in booking mode
+      date: '2026-08-26',
+      start: 540,
+      end: 600,
+      units: [deskUnit],
+      bookings: [booking({ isCancelled: true, unitId: 'WS-01' })],
+    };
+    expect(unitStatus(state, deskUnit, () => '').key).not.toBe('booked');
+  });
+
+  it('IS coloured booked when a live booking overlaps', async () => {
+    const { unitStatus } = await import('../lib/unitStatus');
+    const state = {
+      ...buildInitialState(),
+      mode: 'book' as const, // the booked/red state only exists in booking mode
+      date: '2026-08-26',
+      start: 540,
+      end: 600,
+      units: [deskUnit],
+      bookings: [booking({ isCancelled: false, unitId: 'WS-01' })],
+    };
+    expect(unitStatus(state, deskUnit, () => '').key).toBe('booked');
+  });
+});
