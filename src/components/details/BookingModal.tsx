@@ -728,7 +728,19 @@ function BookingFormInner() {
             max={maxDate}
             minutes={startMin}
             minuteStep={30}
-            minMinutes={slotDate === minDate ? nowOrg.minutes : undefined}
+            // The picker applies these only ON its min/max date (judged against its draft).
+            minMinutes={nowOrg.minutes}
+            // Saved as ONE commit (date + time together) — the end nudges below must see the
+            // NEW start date, which separate onChange/onMinutesChange calls would read stale.
+            onCommit={(iso, m) => {
+              setSlotDate(iso);
+              setStartMin(m);
+              const cap = addDaysIso(iso, 7);
+              const nextEndDate = endDate < iso ? iso : endDate > cap ? cap : endDate;
+              if (nextEndDate !== endDate) setEndDate(nextEndDate);
+              if (nextEndDate === iso && endMin <= m) setEndMin(Math.min(1440, m + 30));
+              else if (nextEndDate === cap && endMin > m) setEndMin(m);
+            }}
             onChange={(iso) => {
               setSlotDate(iso);
               if (endDate < iso) setEndDate(iso);
@@ -754,14 +766,19 @@ function BookingFormInner() {
             minutes={isRoom ? roomEndMin : endMin}
             disabled={isRoom}
             minuteStep={30}
-            minMinutes={endDate === slotDate ? startMin + 30 : undefined}
-            maxMinutes={endDate === endMaxDate ? startMin : undefined}
+            minMinutes={startMin + 30}
+            maxMinutes={isRoom ? undefined : startMin}
             onChange={(iso) => {
               // Landing on the last allowed day pulls the time back inside the 7-day span.
               setEndDate(iso);
               if (iso === endMaxDate && endMin > startMin) setEndMin(startMin);
             }}
             onMinutesChange={setEndMin}
+            onCommit={(iso, m) => {
+              setEndDate(iso);
+              // The last allowed day can't run past the start's time-of-day (the 7-day span).
+              setEndMin(iso === endMaxDate && m > startMin ? startMin : m);
+            }}
             fullWidth
             aria-label="End time"
           />

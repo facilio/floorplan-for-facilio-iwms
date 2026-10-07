@@ -19,6 +19,7 @@ export function DatePicker({
   minuteStep = 1,
   minMinutes,
   maxMinutes,
+  onCommit,
   disabled,
   'aria-label': ariaLabel,
 }: {
@@ -40,12 +41,22 @@ export function DatePicker({
   /** Earliest selectable minute ON the min date (org clock) — past times can't be picked. */
   minMinutes?: number;
   maxMinutes?: number;
+  /**
+   * DATETIME mode commits on SAVE only: picks inside the popup are a draft, and Save hands the
+   * final date + minutes over in ONE call (outside tap / Esc discards). Without it Save falls
+   * back to onChange + onMinutesChange — fine for independent fields, but a caller whose
+   * minute logic reads the date should take this to avoid seeing the stale one.
+   */
+  onCommit?: (iso: string, minutes: number) => void;
   /** Read-only display — a DERIVED value (e.g. a room's end = start + 2h) can't be edited. */
   disabled?: boolean;
   'aria-label'?: string;
 }) {
   const isDateTime = minutes != null && !!onMinutesChange;
   const [open, setOpen] = useState(false);
+  // The DRAFT the popup edits in datetime mode — the field keeps its committed value until Save.
+  const [draftIso, setDraftIso] = useState(value);
+  const [draftMin, setDraftMin] = useState(minutes ?? 0);
   const selected = parseISO(value) ?? new Date();
   const [viewYear, setViewYear] = useState(selected.getFullYear());
   const [viewMonth, setViewMonth] = useState(selected.getMonth());
@@ -138,9 +149,26 @@ export function DatePicker({
     : 'Pick a date';
   // A year-long range read "Bookable 7 Oct – 7 Oct" — show the year when the ends differ in it.
   const crossYear = !!min && !!max && min.slice(0, 4) !== max.slice(0, 4);
-  // On the earliest allowed date, times before `minMinutes` (org clock "now") are disabled.
-  const minuteAllowed = (m: number) =>
-    !(minMinutes != null && value === min && m < minMinutes) && !(maxMinutes != null && value === max && m > maxMinutes);
+  // On the earliest allowed date, times before `minMinutes` (org clock "now") are disabled; on
+  // the last one, times after `maxMinutes`. Judged against the DRAFT date being edited.
+  const minuteAllowed = (m: number, iso = draftIso) =>
+    !(minMinutes != null && iso === min && m < minMinutes) && !(maxMinutes != null && iso === max && m > maxMinutes);
+  const step = Math.max(1, minuteStep);
+  /** Pull `m` onto the grid inside whatever window `iso` allows — so a date switch (e.g. onto
+   *  today, where earlier times are past) can never leave a draft Save would commit invalid. */
+  const clampFor = (iso: string, m: number) => {
+    const lo = minMinutes != null && iso === min ? Math.ceil(minMinutes / step) * step : 0;
+    const hi = maxMinutes != null && iso === max ? Math.floor(maxMinutes / step) * step : 1440 - step;
+    return Math.max(lo, Math.min(hi, m));
+  };
+  const save = () => {
+    if (onCommit) onCommit(draftIso, draftMin);
+    else {
+      if (draftIso !== value) onChange(draftIso);
+      if (draftMin !== minutes) onMinutesChange?.(draftMin);
+    }
+    setOpen(false);
+  };
 
   return (
     <div ref={rootRef} style={{ position: 'relative', ...(fullWidth ? { width: '100%' } : {}) }}>
@@ -148,7 +176,16 @@ export function DatePicker({
         type="button"
         aria-label={ariaLabel ?? 'Date'}
         disabled={disabled}
-        onClick={() => !disabled && setOpen((o) => !o)}
+        onClick={() => {
+          if (disabled) return;
+          if (!open) {
+            setDraftIso(value);
+            // A committed time that has since gone PAST (10:00 opened at 15:16) opens on the
+            // earliest valid slot — otherwise every MM cell is disabled and the column reads dead.
+            setDraftMin(isDateTime ? clampFor(value, minutes ?? 0) : minutes ?? 0);
+          }
+          setOpen((o) => !o);
+        }}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -235,7 +272,7 @@ export function DatePicker({
             {cells.map((iso, i) => {
               if (!iso) return <div key={i} />;
               const ok = inRange(iso);
-              const isSel = iso === value;
+              const isSel = iso === (isDateTime ? draftIso : value);
               const isToday = iso === todayIso;
               return (
                 <button
@@ -243,8 +280,13 @@ export function DatePicker({
                   type="button"
                   disabled={!ok}
                   onClick={() => {
+                    if (isDateTime) {
+                      setDraftIso(iso);
+                      setDraftMin((m) => clampFor(iso, m));
+                      return;
+                    }
                     onChange(iso);
-                    if (!isDateTime) setOpen(false);
+                    setOpen(false);
                   }}
                   style={{
                     width: pos.narrow ? '100%' : 32,
@@ -273,16 +315,20 @@ export function DatePicker({
             >
               {(
                 [
-                  { key: 'HH', values: Array.from({ length: 24 }, (_, h) => h), current: Math.floor(minutes! / 60), set: (h: number) => onMinutesChange!(h * 60 + (minutes! % 60)) },
-                  { key: 'MM', values: Array.from({ length: Math.ceil(60 / minuteStep) }, (_, i) => i * minuteStep), current: minutes! % 60, set: (mm: number) => onMinutesChange!(Math.floor(minutes! / 60) * 60 + mm) },
+                  { key: 'HH', values: Array.from({ length: 24 }, (_, h) => h), current: Math.floor(draftMin / 60), set: (h: number) => setDraftMin((m) => clampFor(draftIso, h * 60 + (m % 60))) },
+                  { key: 'MM', values: Array.from({ length: Math.ceil(60 / minuteStep) }, (_, i) => i * minuteStep), current: draftMin % 60, set: (mm: number) => setDraftMin((m) => Math.floor(m / 60) * 60 + mm) },
                 ] as const
               ).map((col) => (
                 <div key={col.key} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                   <div style={{ font: '600 10.5px var(--font-sans)', color: 'var(--ink-400)', padding: '2px 0 4px' }}>{col.key}</div>
                   <div data-col style={{ position: 'relative', maxHeight: pos.narrow ? 112 : 176, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2, paddingRight: 2 }}>
                     {col.values.map((v) => {
-                      const cand = col.key === 'HH' ? v * 60 + (minutes! % 60) : Math.floor(minutes! / 60) * 60 + v;
-                      const ok = minuteAllowed(cand);
+                      // An hour is offered when ANY minute in it is allowed (picking it then
+                      // clamps the minute); a minute only when it is allowed in the drafted hour.
+                      const ok =
+                        col.key === 'HH'
+                          ? Array.from({ length: Math.ceil(60 / step) }, (_, i) => v * 60 + i * step).some((c) => minuteAllowed(c))
+                          : minuteAllowed(Math.floor(draftMin / 60) * 60 + v);
                       const sel = col.current === v;
                       return (
                         <button
@@ -322,11 +368,10 @@ export function DatePicker({
                   // 10:51 -> 11:00, 11:01 -> 11:30) — the MM column only offers the grid, so a
                   // raw minute produced a time the user could not have picked by hand. Rolling
                   // past the end of the day would change the DATE, so the last slot is the cap.
-                  const step = Math.max(1, minuteStep);
-                  const upper = Math.min(maxMinutes ?? 1440 - step, 1440 - step);
-                  const snapped = Math.min(upper, Math.max(minMinutes ?? 0, Math.ceil(now.minutes / step) * step));
-                  if (inRange(now.dateISO)) onChange(now.dateISO);
-                  onMinutesChange!(snapped);
+                  // Still a DRAFT — Save commits it like any other pick.
+                  const iso = inRange(now.dateISO) ? now.dateISO : draftIso;
+                  setDraftIso(iso);
+                  setDraftMin(clampFor(iso, Math.ceil(now.minutes / step) * step));
                 }}
                 style={{ border: 'none', background: 'none', color: 'var(--blue-600)', font: '600 12.5px var(--font-sans)', cursor: 'pointer', padding: 0 }}
               >
@@ -334,10 +379,10 @@ export function DatePicker({
               </button>
               <button
                 type="button"
-                onClick={() => setOpen(false)}
+                onClick={save}
                 style={{ border: 'none', background: 'var(--blue-500)', color: '#fff', borderRadius: 7, padding: '6px 14px', font: '600 12.5px var(--font-sans)', cursor: 'pointer' }}
               >
-                Done
+                Save
               </button>
             </div>
           )}
