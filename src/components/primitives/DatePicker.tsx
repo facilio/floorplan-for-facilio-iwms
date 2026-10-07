@@ -54,15 +54,20 @@ export function DatePicker({
   // FLOATING placement (portal + fixed): inside a modal/panel an absolutely-positioned popup
   // pushed the form down / clipped against the scroll edge — this overlays instead, flipping
   // above the trigger when the viewport bottom is close.
-  const [pos, setPos] = useState<{ left: number; top: number; up: boolean } | null>(null);
+  // NARROW (phone) viewports get a full-width bottom SHEET instead: the datetime popup is
+  // ~390px wide (calendar + HH/MM), so on a 360px screen the time columns and Done button
+  // landed off-screen and the time could not be picked at all.
+  const [pos, setPos] = useState<{ left: number; top: number; up: boolean; narrow: boolean } | null>(null);
   useLayoutEffect(() => {
     if (!open) return;
     const place = () => {
       const r = rootRef.current?.getBoundingClientRect();
       if (!r) return;
+      const narrow = window.innerWidth < 560;
       const POP_H = 330;
+      const popW = isDateTime ? 390 : 260;
       const up = window.innerHeight - r.bottom < POP_H && r.top > POP_H;
-      setPos({ left: Math.min(Math.max(r.left, 8), window.innerWidth - 260), top: up ? r.top - 6 : r.bottom + 6, up });
+      setPos({ left: Math.max(8, Math.min(r.left, window.innerWidth - popW - 8)), top: up ? r.top - 6 : r.bottom + 6, up, narrow });
     };
     place();
     window.addEventListener('resize', place);
@@ -71,7 +76,18 @@ export function DatePicker({
       window.removeEventListener('resize', place);
       window.removeEventListener('scroll', place, true);
     };
-  }, [open]);
+  }, [open, isDateTime]);
+
+  // Scroll the HH / MM columns to the CURRENT value on open — otherwise a 9:30 start shows
+  // 00–05 and the selected hour is hidden below the fold.
+  const placed = open && pos != null;
+  useLayoutEffect(() => {
+    if (!placed) return;
+    popRef.current?.querySelectorAll<HTMLElement>('[data-col]').forEach((col) => {
+      const sel = col.querySelector<HTMLElement>('[data-sel="1"]');
+      if (sel) col.scrollTop = sel.offsetTop - col.clientHeight / 2 + sel.offsetHeight / 2;
+    });
+  }, [placed]);
 
   // Re-anchor the visible month whenever the popup opens on a new value.
   useEffect(() => {
@@ -120,6 +136,8 @@ export function DatePicker({
   const display = parseISO(value)
     ? `${parseISO(value)!.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}${isDateTime ? ` · ${fmt12(minutes!)}` : ''}`
     : 'Pick a date';
+  // A year-long range read "Bookable 7 Oct – 7 Oct" — show the year when the ends differ in it.
+  const crossYear = !!min && !!max && min.slice(0, 4) !== max.slice(0, 4);
   // On the earliest allowed date, times before `minMinutes` (org clock "now") are disabled.
   const minuteAllowed = (m: number) =>
     !(minMinutes != null && value === min && m < minMinutes) && !(maxMinutes != null && value === max && m > maxMinutes);
@@ -158,21 +176,42 @@ export function DatePicker({
       {open &&
         pos &&
         createPortal(
+        <>
+        {pos.narrow && (
+          // Sheet backdrop: a tap outside closes, like the floating popup's outside-click.
+          <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 319, background: 'rgba(40,54,72,0.32)' }} />
+        )}
         <div
           ref={popRef}
-          style={{
-            position: 'fixed',
-            zIndex: 320, // above the Modal overlay (200) — the popup opened BEHIND it and read as a dead button
-            top: pos.top,
-            left: pos.left,
-            transform: pos.up ? 'translateY(-100%)' : undefined,
-            minWidth: 252,
-            background: '#fff',
-            border: '1px solid var(--ink-200)',
-            borderRadius: 10,
-            boxShadow: '0 10px 28px rgba(28,39,51,0.16)',
-            padding: 10,
-          }}
+          style={
+            pos.narrow
+              ? {
+                  position: 'fixed',
+                  zIndex: 320,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  maxHeight: '88vh',
+                  overflowY: 'auto',
+                  background: '#fff',
+                  borderRadius: '16px 16px 0 0',
+                  boxShadow: '0 -10px 28px rgba(28,39,51,0.18)',
+                  padding: '14px 16px calc(14px + env(safe-area-inset-bottom))',
+                }
+              : {
+                  position: 'fixed',
+                  zIndex: 320, // above the Modal overlay (200) — the popup opened BEHIND it and read as a dead button
+                  top: pos.top,
+                  left: pos.left,
+                  transform: pos.up ? 'translateY(-100%)' : undefined,
+                  minWidth: 252,
+                  background: '#fff',
+                  border: '1px solid var(--ink-200)',
+                  borderRadius: 10,
+                  boxShadow: '0 10px 28px rgba(28,39,51,0.16)',
+                  padding: 10,
+                }
+          }
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
             <button type="button" disabled={!prevOk} onClick={() => setViewMonth((m) => (m === 0 ? (setViewYear((y) => y - 1), 11) : m - 1))} style={navBtn(!prevOk)} aria-label="Previous month">
@@ -183,8 +222,8 @@ export function DatePicker({
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6" /></svg>
             </button>
           </div>
-          <div style={{ display: 'flex', gap: 10 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 32px)', gap: 2, justifyContent: 'center' }}>
+          <div style={{ display: 'flex', flexDirection: pos.narrow ? 'column' : 'row', gap: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: pos.narrow ? 'repeat(7, 1fr)' : 'repeat(7, 32px)', gap: 2, justifyContent: 'center' }}>
             {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
               <div key={i} style={{ textAlign: 'center', font: '600 10.5px var(--font-sans)', color: 'var(--ink-400)', padding: '2px 0' }}>
                 {d}
@@ -205,8 +244,8 @@ export function DatePicker({
                     if (!isDateTime) setOpen(false);
                   }}
                   style={{
-                    width: 32,
-                    height: 30,
+                    width: pos.narrow ? '100%' : 32,
+                    height: pos.narrow ? 38 : 30,
                     borderRadius: 7,
                     border: isToday && !isSel ? '1.5px solid var(--blue-300)' : '1px solid transparent',
                     background: isSel ? 'var(--blue-500)' : 'transparent',
@@ -222,7 +261,13 @@ export function DatePicker({
           </div>
           {isDateTime && (
             // HH / MM columns, same shape as the org's native datetime picker.
-            <div style={{ display: 'flex', gap: 6, borderLeft: '1px solid var(--ink-100)', paddingLeft: 10 }}>
+            <div
+              style={
+                pos.narrow
+                  ? { display: 'flex', justifyContent: 'center', gap: 28, borderTop: '1px solid var(--ink-100)', paddingTop: 8 }
+                  : { display: 'flex', gap: 6, borderLeft: '1px solid var(--ink-100)', paddingLeft: 10 }
+              }
+            >
               {(
                 [
                   { key: 'HH', values: Array.from({ length: 24 }, (_, h) => h), current: Math.floor(minutes! / 60), set: (h: number) => onMinutesChange!(h * 60 + (minutes! % 60)) },
@@ -231,7 +276,7 @@ export function DatePicker({
               ).map((col) => (
                 <div key={col.key} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                   <div style={{ font: '600 10.5px var(--font-sans)', color: 'var(--ink-400)', padding: '2px 0 4px' }}>{col.key}</div>
-                  <div style={{ maxHeight: 176, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2, paddingRight: 2 }}>
+                  <div data-col style={{ position: 'relative', maxHeight: pos.narrow ? 150 : 176, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2, paddingRight: 2 }}>
                     {col.values.map((v) => {
                       const cand = col.key === 'HH' ? v * 60 + (minutes! % 60) : Math.floor(minutes! / 60) * 60 + v;
                       const ok = minuteAllowed(cand);
@@ -240,11 +285,12 @@ export function DatePicker({
                         <button
                           key={v}
                           type="button"
+                          data-sel={sel ? '1' : undefined}
                           disabled={!ok}
                           onClick={() => col.set(v)}
                           style={{
-                            width: 40,
-                            padding: '4px 0',
+                            width: pos.narrow ? 64 : 40,
+                            padding: pos.narrow ? '8px 0' : '4px 0',
                             borderRadius: 6,
                             border: '1px solid transparent',
                             background: sel ? 'var(--blue-025, #eef4fd)' : 'transparent',
@@ -294,10 +340,13 @@ export function DatePicker({
           )}
           {(min || max) && (
             <div style={{ marginTop: 8, font: '500 11px var(--font-sans)', color: 'var(--ink-500)', textAlign: 'center' }}>
-              {min === max ? 'Today only' : `Bookable ${min ? fmtShort(min) : '…'} – ${max ? fmtShort(max) : '…'}`}
+              {min === max
+                ? 'Today only'
+                : `Bookable ${min ? fmtShort(min, crossYear) : '…'} – ${max ? fmtShort(max, crossYear) : '…'}`}
             </div>
           )}
-        </div>,
+        </div>
+        </>,
         document.body
       )}
     </div>
@@ -333,7 +382,7 @@ function fmt12(m: number): string {
   const ampm = h < 12 ? 'AM' : 'PM';
   return `${String(h % 12 || 12)}:${mm} ${ampm}`;
 }
-function fmtShort(iso: string): string {
+function fmtShort(iso: string, withYear = false): string {
   const d = parseISO(iso);
-  return d ? d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : iso;
+  return d ? d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', ...(withYear ? { year: 'numeric' } : {}) }) : iso;
 }
