@@ -8,7 +8,7 @@ import { floorImageKey, resolveMarkerDef, TYPE_META } from '../lib/types';
 import type { AmenityIcon, Assignments, Booking, ClientContact, DefaultPlanView, MarkerDef, ModePerms, PlanId, Role, Site, Unit, UnitType } from '../lib/types';
 import type { CadGroup } from '../lib/cadAnalyze';
 import type { Asset } from '../lib/assets';
-import { isFacilioApiConfigured } from '../lib/facilioApi';
+import { getHostUrlProps, isFacilioApiConfigured, pushHostUrlProps } from '../lib/facilioApi';
 import { runAssignTransition } from '../lib/stateflowApi';
 import { assignUnitReal, createRealBooking, fetchCurrentApp, fetchCurrentPeopleId, fetchFloorplanCustomization, fetchFloorplanImageResult, fetchMyDesk, fetchOrgTimezone, fetchPortalPlanFloors, fetchUnitAssigneeFromSummary, fetchUnitRecordDetails, findFloorParents, floorExists, findUnitIdForDeskRecord, getAnyFloor, getFloorPlanSummary, patchUnitContact, resolveHardcodedRolePerms, resolveModePermsForCurrentUser, saveFloorplanDefaultView, invalidateFloorCaches, invalidateUnitRecordCaches, resolveUnitRecordRef, saveFloorplanMarkers, searchClientContacts, setBypassReadCaches, vacateUnitReal } from '../lib/facilioApiDataSource';
 import { listFloorplanFloorIds, loadFloorplanFile, persistFloorplanFile } from '../lib/floorplanFileStore';
@@ -1737,6 +1737,16 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
       window.history.replaceState({}, '', url);
     }
   }, [state.activeView, state.floorId]);
+  // Mirror the floor onto the HOST page's url (connected app only) so reloading or sharing the
+  // host URL reopens the same floor. Skips the boot-time mock floor: until a real floor has
+  // loaded, floorId is the placeholder and must not overwrite a host deep link.
+  const lastPushedHostFloor = useRef<string | null>(null);
+  useEffect(() => {
+    const floorId = state.floorId;
+    if (!floorId || !!state.loading || floorId === lastPushedHostFloor.current) return;
+    lastPushedHostFloor.current = floorId;
+    void pushHostUrlProps({ floor: floorId });
+  }, [state.floorId, !state.loading]);
   useEffect(() => {
     const onPopState = () => dispatch({ type: 'SET_ACTIVE_VIEW', view: viewFromLocation(window.location) });
     window.addEventListener('popstate', onPopState);
@@ -1921,6 +1931,9 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
       let myDesk: Awaited<ReturnType<typeof fetchMyDesk>> = null;
       let firstRealFloor: string | undefined;
       if (isFacilioApiConfigured) {
+        // The HOST page's `floor` url prop (pushed by the sync effect below) — started now so a
+        // host that never answers costs nothing extra by the time the landing decision needs it.
+        const hostFloorPromise = getHostUrlProps().then((q) => (q?.floor && q.floor.trim() ? q.floor.trim() : null));
         // Resolve the ORG TIMEZONE first thing — every "now"/"today" in the UI reads the org
         // clock (see lib/orgTime), and the sync accessor needs this fetch to have landed.
         // Then re-anchor the DEFAULT booking window to the org's CURRENT time: the reducer
@@ -1979,7 +1992,10 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
         // A `?floor=` deep link WINS over the my-desk landing — but only when the floor
         // actually resolves; a dead id falls back (with a toast) instead of stranding the
         // user on an empty canvas.
-        const urlFloor = floorFromLocation(window.location);
+        // Embedded, the iframe's own URL never reaches the browser bar — the HOST url prop is
+        // what survives a refresh / a shared link, so it counts as the deep link too (the
+        // iframe's own ?floor= still wins when both are present).
+        const urlFloor = floorFromLocation(window.location) ?? (await hostFloorPromise);
         // A dead ?floor= id falls back SILENTLY (no toast — removed on request) to the normal
         // my-desk/any-floor landing.
         const deepLinkFloor = urlFloor && floorAllowed(urlFloor) && (await floorExists(urlFloor).catch(() => false)) ? urlFloor : null;

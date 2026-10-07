@@ -551,6 +551,47 @@ export function sdkProperties(): Promise<any | null> {
   return sdkPropsCache;
 }
 
+/**
+ * HOST URL props — the connected-app host's `interface.getUrlProps` / `interface.pushUrlProps`
+ * (facilio-client-v2 utils/connectedAppActions.js): read the HOST page's route query, and merge
+ * keys into it with a router.push, so state the embed puts there survives a host refresh and
+ * rides along when the host URL is shared. The CDN SDK build has no wrapper for either yet, so
+ * they go over the same `_postMessageWithPromise` channel its own `interface.*` methods use.
+ *
+ * Hosts that don't know the event (the mobile host, older web builds) never answer — the host's
+ * handler has no fallback branch — so every call is capped by a timeout and resolves null/false
+ * instead of hanging. Outside connected mode there is no host: null/false immediately.
+ */
+const HOST_URL_PROPS_TIMEOUT_MS = 2500;
+async function hostInterfaceCall(key: 'getUrlProps' | 'pushUrlProps', params: Record<string, unknown>): Promise<any | null> {
+  if (!isConnectedApp) return null;
+  const app: any = await facilioAppReady().catch(() => null);
+  if (!app) return null;
+  const direct = app.interface?.[key];
+  const call: Promise<any> =
+    typeof direct === 'function'
+      ? Promise.resolve(direct.call(app.interface, params))
+      : typeof app._postMessageWithPromise === 'function'
+        ? app._postMessageWithPromise(`interface.${key}`, params)
+        : Promise.resolve(null);
+  return Promise.race([call.catch(() => null), new Promise((resolve) => setTimeout(() => resolve(null), HOST_URL_PROPS_TIMEOUT_MS))]);
+}
+
+/** The host page's current route query (string values), or null when unavailable. */
+export async function getHostUrlProps(): Promise<Record<string, string> | null> {
+  const res = await hostInterfaceCall('getUrlProps', {});
+  const query = res?.query ?? res?.data?.query;
+  if (!query || typeof query !== 'object') return null;
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(query)) if (v != null) out[k] = String(Array.isArray(v) ? v[0] : v);
+  return out;
+}
+
+/** Merge `query` into the host page's route query. True when the host acknowledged it. */
+export async function pushHostUrlProps(query: Record<string, string>): Promise<boolean> {
+  return !!(await hostInterfaceCall('pushUrlProps', { query }));
+}
+
 export async function customGet(path: string, params?: Record<string, unknown>, opts?: { devAbsoluteUrl?: string }): Promise<any> {
   if (isConnectedApp) {
     const app = await facilioAppReady();
