@@ -196,7 +196,7 @@ export function DatePicker({
                   background: '#fff',
                   borderRadius: '16px 16px 0 0',
                   boxShadow: '0 -10px 28px rgba(28,39,51,0.18)',
-                  padding: '14px 16px calc(14px + env(safe-area-inset-bottom))',
+                  padding: '10px 16px calc(10px + env(safe-area-inset-bottom))',
                 }
               : {
                   position: 'fixed',
@@ -213,7 +213,10 @@ export function DatePicker({
                 }
           }
         >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+          {/* Sheet content is capped and centred — stretched edge-to-edge the grid grew to a
+              ~40px cell and the sheet took over most of the screen (reported). */}
+          <div style={pos.narrow ? { maxWidth: 320, margin: '0 auto' } : undefined}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: pos.narrow ? 4 : 8 }}>
             <button type="button" disabled={!prevOk} onClick={() => setViewMonth((m) => (m === 0 ? (setViewYear((y) => y - 1), 11) : m - 1))} style={navBtn(!prevOk)} aria-label="Previous month">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
             </button>
@@ -245,7 +248,7 @@ export function DatePicker({
                   }}
                   style={{
                     width: pos.narrow ? '100%' : 32,
-                    height: pos.narrow ? 38 : 30,
+                    height: pos.narrow ? 32 : 30,
                     borderRadius: 7,
                     border: isToday && !isSel ? '1.5px solid var(--blue-300)' : '1px solid transparent',
                     background: isSel ? 'var(--blue-500)' : 'transparent',
@@ -264,7 +267,7 @@ export function DatePicker({
             <div
               style={
                 pos.narrow
-                  ? { display: 'flex', justifyContent: 'center', gap: 28, borderTop: '1px solid var(--ink-100)', paddingTop: 8 }
+                  ? { display: 'flex', justifyContent: 'center', gap: 24, borderTop: '1px solid var(--ink-100)', paddingTop: 4 }
                   : { display: 'flex', gap: 6, borderLeft: '1px solid var(--ink-100)', paddingLeft: 10 }
               }
             >
@@ -276,7 +279,7 @@ export function DatePicker({
               ).map((col) => (
                 <div key={col.key} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                   <div style={{ font: '600 10.5px var(--font-sans)', color: 'var(--ink-400)', padding: '2px 0 4px' }}>{col.key}</div>
-                  <div data-col style={{ position: 'relative', maxHeight: pos.narrow ? 150 : 176, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2, paddingRight: 2 }}>
+                  <div data-col style={{ position: 'relative', maxHeight: pos.narrow ? 112 : 176, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2, paddingRight: 2 }}>
                     {col.values.map((v) => {
                       const cand = col.key === 'HH' ? v * 60 + (minutes! % 60) : Math.floor(minutes! / 60) * 60 + v;
                       const ok = minuteAllowed(cand);
@@ -289,8 +292,8 @@ export function DatePicker({
                           disabled={!ok}
                           onClick={() => col.set(v)}
                           style={{
-                            width: pos.narrow ? 64 : 40,
-                            padding: pos.narrow ? '8px 0' : '4px 0',
+                            width: pos.narrow ? 56 : 40,
+                            padding: pos.narrow ? '5px 0' : '4px 0',
                             borderRadius: 6,
                             border: '1px solid transparent',
                             background: sel ? 'var(--blue-025, #eef4fd)' : 'transparent',
@@ -345,6 +348,7 @@ export function DatePicker({
                 : `Bookable ${min ? fmtShort(min, crossYear) : '…'} – ${max ? fmtShort(max, crossYear) : '…'}`}
             </div>
           )}
+          </div>
         </div>
         </>,
         document.body
