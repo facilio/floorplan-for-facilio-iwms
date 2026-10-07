@@ -13,7 +13,7 @@ import { runAssignTransition } from '../lib/stateflowApi';
 import { assignUnitReal, createRealBooking, fetchCurrentApp, fetchCurrentPeopleId, fetchFloorplanCustomization, fetchFloorplanImageResult, fetchMyDesk, fetchOrgTimezone, fetchPortalPlanFloors, fetchUnitAssigneeFromSummary, fetchUnitRecordDetails, findFloorParents, floorExists, findUnitIdForDeskRecord, getAnyFloor, getFloorPlanSummary, patchUnitContact, resolveHardcodedRolePerms, resolveModePermsForCurrentUser, saveFloorplanDefaultView, invalidateFloorCaches, invalidateUnitRecordCaches, resolveUnitRecordRef, saveFloorplanMarkers, searchClientContacts, setBypassReadCaches, vacateUnitReal } from '../lib/facilioApiDataSource';
 import { listFloorplanFloorIds, loadFloorplanFile, persistFloorplanFile } from '../lib/floorplanFileStore';
 import { DEFAULT_PERMS_MODULE_NAME, loadEffectiveSettings, saveSettings, settingsFromState } from '../lib/settingsStore';
-import { floorFromLocation, pathForView, viewFromLocation, withFloorParam } from '../lib/routes';
+import { floorFromLocation, pathForView, validRecordFloorId, viewFromLocation, withFloorParam } from '../lib/routes';
 import { orgNow } from '../lib/orgTime';
 import { buildInitialState, reducer } from './reducer';
 import type { Action } from './reducer';
@@ -1933,7 +1933,9 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
       if (isFacilioApiConfigured) {
         // The HOST page's `floor` url prop (pushed by the sync effect below) — started now so a
         // host that never answers costs nothing extra by the time the landing decision needs it.
-        const hostFloorPromise = getHostUrlProps().then((q) => (q?.floor && q.floor.trim() ? q.floor.trim() : null));
+        const hostFloorPromise = getHostUrlProps()
+          .then((q) => q?.floor ?? null)
+          .catch(() => null);
         // Resolve the ORG TIMEZONE first thing — every "now"/"today" in the UI reads the org
         // clock (see lib/orgTime), and the sync accessor needs this fetch to have landed.
         // Then re-anchor the DEFAULT booking window to the org's CURRENT time: the reducer
@@ -1995,7 +1997,15 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
         // Embedded, the iframe's own URL never reaches the browser bar — the HOST url prop is
         // what survives a refresh / a shared link, so it counts as the deep link too (the
         // iframe's own ?floor= still wins when both are present).
-        const urlFloor = floorFromLocation(window.location) ?? (await hostFloorPromise);
+        // Floor ids are integers here: a text/garbled value is IGNORED (warned, never sent to
+        // the API) and the landing falls through as if there were no link at all.
+        const rawUrlFloor = floorFromLocation(window.location);
+        const rawHostFloor = await hostFloorPromise;
+        const urlFloor = validRecordFloorId(rawUrlFloor) ?? validRecordFloorId(rawHostFloor);
+        for (const [src, raw] of [['?floor=', rawUrlFloor], ['host url prop floor', rawHostFloor]] as const) {
+          // eslint-disable-next-line no-console
+          if (raw != null && !validRecordFloorId(raw)) console.warn(`[boot] ignoring ${src}${JSON.stringify(raw)} — floor ids are positive integers`);
+        }
         // A dead ?floor= id falls back SILENTLY (no toast — removed on request) to the normal
         // my-desk/any-floor landing.
         const deepLinkFloor = urlFloor && floorAllowed(urlFloor) && (await floorExists(urlFloor).catch(() => false)) ? urlFloor : null;
@@ -2007,7 +2017,9 @@ export function FloorplanProvider({ children }: { children: ReactNode }) {
         // eslint-disable-next-line no-console
         console.info('[boot] landing decision', { peopleId, myDesk, firstRealFloor, portalScopedFloors: portalScope ? Object.keys(portalScope.floors).length : null });
       }
-      const floorId = firstRealFloor ?? floorFromLocation(window.location) ?? state.floorId;
+      // Against a real org the raw ?floor= is never used unvalidated (a text id would go
+      // straight to the per-floor endpoints); local/mock ids are text ('hqA3') so it stays there.
+      const floorId = firstRealFloor ?? (isFacilioApiConfigured ? validRecordFloorId(floorFromLocation(window.location)) : floorFromLocation(window.location)) ?? state.floorId;
       if (floorId !== state.floorId) dispatch({ type: 'SELECT_FLOOR_START', floorId });
       if (firstRealFloor) void revealFloorInPortfolio(dispatch, firstRealFloor);
 

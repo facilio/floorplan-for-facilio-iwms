@@ -61,6 +61,19 @@ export function floorFromLocation(loc: { search: string }): string | null {
   }
 }
 
+/**
+ * A REAL org's floor ids are positive integers (record ids) — `?floor=abc`, `?floor=12.5`,
+ * `?floor=-3` or an overflowing number can never name a floor, and sending one to the API only
+ * produces a 400/500. Returns the canonical id string, or null for anything else; callers treat
+ * null as "no deep link" and fall back to the normal landing (silently — never a crash).
+ */
+export function validRecordFloorId(raw: string | null | undefined): string | null {
+  const v = (raw ?? '').trim();
+  if (!/^\d+$/.test(v)) return null;
+  const n = Number(v);
+  return Number.isSafeInteger(n) && n > 0 ? String(n) : null;
+}
+
 export function withFloorParam(path: string, floorId: string | null): string {
   // PRESERVE the existing query string. The host embeds this app with ?origin=&capp_id=
   // (FacilioAppSDK.init() HARD-REQUIRES them — it returns false without them, confirmed in
